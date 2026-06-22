@@ -107,8 +107,8 @@ export default function SettingsPage(): JSX.Element {
               value={settings.gameMode}
               onChange={(e) => set('gameMode', e.currentTarget.value as GameSettings['gameMode'])}
             >
-              <option value="classic">Classic — 3 points per word</option>
-              <option value="arcade">Score Attack — 3 + word length</option>
+              <option value="classic">Classic</option>
+              <option value="arcade">Score Attack</option>
               <option value="fastestNWords">Word Sprint</option>
               <option value="battleRoyale">Knockout</option>
               <option value="typist">Blind Type</option>
