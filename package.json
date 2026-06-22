@@ -1,0 +1,16 @@
+{
+  "name": "words-of-word",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.32.1",
+  "scripts": {
+    "dev": "pnpm build && NODE_OPTIONS=--conditions=development turbo dev --parallel",
+    "build": "turbo build",
+    "typecheck": "turbo typecheck",
+    "lint": "turbo lint"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.8",
+    "typescript": "^5.8.3"
+  }
+}
