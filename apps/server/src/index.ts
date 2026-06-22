@@ -1,6 +1,10 @@
 import cors from '@fastify/cors';
 import Fastify from 'fastify';
 import { createRequire } from 'node:module';
+import { existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import { extname, join, normalize } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { customAlphabet } from 'nanoid';
 import { Server, Socket } from 'socket.io';
 import { z } from 'zod';
@@ -37,6 +41,7 @@ import {
 } from '@wow/game-engine';
 
 const PORT = Number(process.env.PORT ?? 4000);
+const WEB_DIST_DIR = fileURLToPath(new URL('../../web/dist', import.meta.url));
 const WAIT_BETWEEN_ROUNDS_SECONDS = 10;
 const FASTEST_N_BONUS = 10;
 const CATEGORY_WORDS: Record<string, string[]> = {
@@ -601,9 +606,9 @@ function validationMessage(errorMessage: string): string {
 const fastify = Fastify({ logger: true });
 
 const configuredOrigin = process.env.CLIENT_ORIGIN;
-const clientOrigins = configuredOrigin
+const clientOrigins: string[] | boolean = configuredOrigin
   ? configuredOrigin.split(',').map((origin) => origin.trim()).filter(Boolean)
-  : ['http://localhost:3000', 'http://127.0.0.1:3000'];
+  : true;
 
 await fastify.register(cors, {
   origin: clientOrigins,
@@ -611,6 +616,32 @@ await fastify.register(cors, {
 });
 
 fastify.get('/health', async () => ({ ok: true }));
+
+const contentTypes: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.ico': 'image/x-icon',
+  '.json': 'application/json; charset=utf-8'
+};
+
+fastify.get('/*', async (request, reply) => {
+  if (!existsSync(WEB_DIST_DIR)) {
+    return reply.code(404).send({ ok: false, error: 'Web build not found. Run pnpm build first.' });
+  }
+
+  const requestPath = request.url.split('?')[0] ?? '/';
+  const safePath = normalize(decodeURIComponent(requestPath)).replace(/^(\.\.[/\\])+/, '');
+  const requestedFile = join(WEB_DIST_DIR, safePath === '/' ? 'index.html' : safePath);
+  const filePath = existsSync(requestedFile) ? requestedFile : join(WEB_DIST_DIR, 'index.html');
+  const extension = extname(filePath);
+  reply.type(contentTypes[extension] ?? 'application/octet-stream');
+  return reply.send(await readFile(filePath));
+});
 
 const io: TypedIo = new Server(fastify.server, {
   cors: {
