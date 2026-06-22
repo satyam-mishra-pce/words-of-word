@@ -506,7 +506,7 @@ export default function RoomPage(): JSX.Element {
                   type={isTypistMode ? 'password' : 'text'}
                   value={inputWord}
                   onChange={(e) => setInputWord(e.currentTarget.value)}
-                  placeholder={canSubmit ? (isTypistMode ? 'Typist mode: hidden word' : 'Type a word and press Enter') : 'Rejoin to submit words'}
+                  placeholder={canSubmit ? (isTypistMode ? 'Blind Type: hidden word' : 'Type a word and press Enter') : 'Rejoin to submit words'}
                   disabled={!canSubmit}
                   hasError={inputFeedback === 'error'}
                   hasSuccess={inputFeedback === 'success'}
@@ -583,7 +583,7 @@ export default function RoomPage(): JSX.Element {
         </h2>
         <Separator />
         <ul>
-          <li>{isArcadeMode ? <>Arcade scores <strong>3 + word length</strong>.</> : snapshot.settings.gameMode === 'fastestNWords' ? <>First to <strong>{snapshot.settings.fastestWordTarget} words</strong> ends the round and gets a highlighted <strong>10 point bonus</strong>.</> : snapshot.settings.gameMode === 'battleRoyale' ? <>Lowest scoring <strong>{snapshot.settings.eliminationsPerRound}</strong> player(s) are eliminated each round.</> : snapshot.settings.gameMode === 'typist' ? <>Typist mode hides your input until you submit.</> : snapshot.settings.gameMode === 'oneWordForAll' ? <>Once any player finds a word, nobody else can use it. If it is taken, you will be told clearly.</> : <>Each accepted word scores <strong>3 points</strong>.</>}</li>
+          <li>{isArcadeMode ? <>Score Attack scores <strong>3 + word length</strong>.</> : snapshot.settings.gameMode === 'fastestNWords' ? <>Word Sprint: first to <strong>{snapshot.settings.fastestWordTarget} words</strong> ends the round and gets a highlighted <strong>10 point bonus</strong>.</> : snapshot.settings.gameMode === 'battleRoyale' ? <>Knockout: lowest scoring <strong>{snapshot.settings.eliminationsPerRound}</strong> player(s) are eliminated each round.</> : snapshot.settings.gameMode === 'typist' ? <>Blind Type hides your input until you submit.</> : snapshot.settings.gameMode === 'oneWordForAll' ? <>Claim Mode: once any player finds a word, nobody else can use it. If it is taken, you will be told clearly.</> : <>Each accepted word scores <strong>3 points</strong>.</>}</li>
           <li>Letters must come from the source word.</li>
           <li>No reusing the same word in a round.</li>
           <li>The host controls start and restart.</li>
@@ -603,7 +603,7 @@ export default function RoomPage(): JSX.Element {
         </h1>
         <ul style={{ paddingLeft: 14, lineHeight: 2.1, color: 'var(--sub)', fontSize: '0.88rem', marginBottom: 20 }}>
           <li>Find words hidden inside the big word.</li>
-          <li>{isArcadeMode ? <>Arcade scores <strong style={{ color: 'var(--text)' }}>3 + word length</strong>.</> : snapshot.settings.gameMode === 'fastestNWords' ? <>First to <strong style={{ color: 'var(--text)' }}>{snapshot.settings.fastestWordTarget} words</strong> ends the round and gets a highlighted <strong style={{ color: 'var(--text)' }}>10 point bonus</strong>.</> : snapshot.settings.gameMode === 'battleRoyale' ? <>Lowest scoring <strong style={{ color: 'var(--text)' }}>{snapshot.settings.eliminationsPerRound}</strong> player(s) are eliminated each round.</> : snapshot.settings.gameMode === 'typist' ? <>Typist mode hides your input until you submit.</> : snapshot.settings.gameMode === 'oneWordForAll' ? <>Once any player finds a word, nobody else can use it. If it is taken, you will be told clearly.</> : <>Each accepted word scores <strong style={{ color: 'var(--text)' }}>3 points</strong>.</>}</li>
+          <li>{isArcadeMode ? <>Score Attack scores <strong style={{ color: 'var(--text)' }}>3 + word length</strong>.</> : snapshot.settings.gameMode === 'fastestNWords' ? <>Word Sprint: first to <strong style={{ color: 'var(--text)' }}>{snapshot.settings.fastestWordTarget} words</strong> ends the round and gets a highlighted <strong style={{ color: 'var(--text)' }}>10 point bonus</strong>.</> : snapshot.settings.gameMode === 'battleRoyale' ? <>Knockout: lowest scoring <strong style={{ color: 'var(--text)' }}>{snapshot.settings.eliminationsPerRound}</strong> player(s) are eliminated each round.</> : snapshot.settings.gameMode === 'typist' ? <>Blind Type hides your input until you submit.</> : snapshot.settings.gameMode === 'oneWordForAll' ? <>Claim Mode: once any player finds a word, nobody else can use it. If it is taken, you will be told clearly.</> : <>Each accepted word scores <strong style={{ color: 'var(--text)' }}>3 points</strong>.</>}</li>
           <li>Letters must come from the source word.</li>
           <li>No reusing the same word in a round.</li>
           <li>The host controls start and restart.</li>

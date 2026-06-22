@@ -113,7 +113,7 @@ class GameRoomManager {
     }
 
     if (settings.eliminationsPerRound * settings.rounds >= playerCount) {
-      return 'Battle Royale would finish before all rounds are played. Lower eliminations, lower rounds, or add more players.';
+      return 'Knockout would finish before all rounds are played. Lower eliminations, lower rounds, or add more players.';
     }
 
     return undefined;
@@ -295,7 +295,7 @@ class GameRoomManager {
     if (player.isEliminated) {
       this.io.to(socketId).emit('wordRejected', {
         word: submittedWord,
-        message: 'You have been eliminated from this Battle Royale.'
+        message: 'You have been eliminated from Knockout.'
       } satisfies WordRejectedPayload);
       return { ok: true, data: { ok: true } };
     }
@@ -528,7 +528,7 @@ class GameRoomManager {
 
     if (eliminatedPlayers.length > 0) {
       this.io.to(room.id).emit('notice', {
-        message: `${eliminatedPlayers.map((player) => player.name).join(', ')} eliminated from Battle Royale.`
+        message: `${eliminatedPlayers.map((player) => player.name).join(', ')} eliminated from Knockout.`
       });
     }
   }
