@@ -1009,6 +1009,18 @@ p { margin-top: 0; }
 .word-chip-list { display: flex; flex-wrap: wrap; gap: 4px 8px; }
 .word-chip-list em { color: var(--sub); font-size: 0.80rem; font-style: normal; }
 
+.daily-share-card {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--main);
+  border-radius: var(--r-sm);
+  background: var(--main-10);
+  color: var(--text);
+  text-align: center;
+}
+.daily-share-card p { margin: 0; line-height: 1.7; }
+.daily-share-card strong { color: var(--main); }
+
 /* Results card */
 .results-card {
   border-radius: var(--r-sm);
@@ -1365,19 +1377,35 @@ p { margin-top: 0; }
 
   /* Keep the source word visible while the phone keyboard is open. */
   .game-shell.is-typing .word-stage { gap: 10px; }
-  .game-shell.is-typing .current-word-card {
-    position: sticky;
-    top: env(safe-area-inset-top, 0px);
-    z-index: 20;
-    margin-inline: -16px;
-    padding: 10px 16px 12px;
-    background: linear-gradient(180deg, var(--bg) 0%, var(--bg) 82%, rgba(17,17,17,0) 100%);
+  .daily-shell.is-typing {
+    place-items: start center;
+    overflow: visible;
   }
-  .game-shell.is-typing .current-word-label {
+  .game-shell.is-typing .word-stage,
+  .daily-shell.is-typing .panel-card {
+    padding-top: 96px;
+  }
+  .game-shell.is-typing .current-word-card,
+  .daily-shell.is-typing .current-word-card {
+    position: fixed;
+    top: 0;
+    top: calc(var(--vv-top, 0px) + env(safe-area-inset-top, 0px));
+    left: 0;
+    right: 0;
+    z-index: 100;
+    margin: 0 !important;
+    padding: 10px 16px 12px;
+    background: linear-gradient(180deg, var(--bg) 0%, var(--bg) 88%, rgba(17,17,17,0) 100%);
+    border-bottom: 1px solid var(--sub-2);
+    transform: translateZ(0);
+  }
+  .game-shell.is-typing .current-word-label,
+  .daily-shell.is-typing .current-word-label {
     margin-bottom: 6px;
     font-size: 0.58rem;
   }
-  .game-shell.is-typing .current-word-text {
+  .game-shell.is-typing .current-word-text,
+  .daily-shell.is-typing .current-word-text {
     font-size: clamp(2rem, 11vw, 3rem);
     line-height: 1.05;
   }

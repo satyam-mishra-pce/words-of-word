@@ -1,7 +1,8 @@
-import { FormEvent, useMemo, useRef, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Alert, Badge, Button, Input, Label, Separator, TimerRing } from '../components/ui';
 
+const DAILY_SECONDS = 30;
 const DAILY_WORDS = [
   'extraordinary',
   'communication',
@@ -15,8 +16,58 @@ const DAILY_WORDS = [
   'adventure'
 ];
 
-function dayIndex(): number {
-  return Math.floor(Date.now() / 86_400_000) % DAILY_WORDS.length;
+interface DailyAttempt {
+  day: number;
+  sourceWord: string;
+  startedAt: number;
+  endsAt: number;
+  finished: boolean;
+  words: string[];
+}
+
+function currentDayNumber(): number {
+  return Math.floor(Date.now() / 86_400_000);
+}
+
+function dayIndex(day = currentDayNumber()): number {
+  return day % DAILY_WORDS.length;
+}
+
+function dailyStorageKey(day = currentDayNumber()): string {
+  return `wow.daily.${day}`;
+}
+
+function loadDailyAttempt(day = currentDayNumber()): DailyAttempt | undefined {
+  try {
+    const raw = localStorage.getItem(dailyStorageKey(day));
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw) as Partial<DailyAttempt>;
+    if (
+      parsed.day !== day ||
+      typeof parsed.sourceWord !== 'string' ||
+      typeof parsed.startedAt !== 'number' ||
+      typeof parsed.endsAt !== 'number' ||
+      typeof parsed.finished !== 'boolean' ||
+      !Array.isArray(parsed.words)
+    ) {
+      return undefined;
+    }
+
+    return {
+      day: parsed.day,
+      sourceWord: parsed.sourceWord,
+      startedAt: parsed.startedAt,
+      endsAt: parsed.endsAt,
+      finished: parsed.finished,
+      words: parsed.words.filter((word): word is string => typeof word === 'string')
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function saveDailyAttempt(attempt: DailyAttempt): void {
+  localStorage.setItem(dailyStorageKey(attempt.day), JSON.stringify(attempt));
 }
 
 function letterCounts(word: string): Map<string, number> {
@@ -34,41 +85,111 @@ function canMakeWord(candidate: string, source: string): boolean {
   return true;
 }
 
+function pluralizeWords(count: number): string {
+  return `${count} word${count === 1 ? '' : 's'}`;
+}
+
 export default function DailyWordPage(): JSX.Element {
-  const sourceWord = useMemo(() => DAILY_WORDS[dayIndex()] ?? 'extraordinary', []);
-  const [timeLeft, setTimeLeft] = useState(30);
-  const [isRunning, setIsRunning] = useState(false);
-  const [isFinished, setIsFinished] = useState(false);
+  const day = useMemo(() => currentDayNumber(), []);
+  const sourceWord = useMemo(() => DAILY_WORDS[dayIndex(day)] ?? 'extraordinary', [day]);
+  const existingAttempt = useMemo(() => loadDailyAttempt(day), [day]);
+  const initialRemaining = existingAttempt ? Math.max(0, Math.ceil((existingAttempt.endsAt - Date.now()) / 1000)) : DAILY_SECONDS;
+  const initialFinished = Boolean(existingAttempt?.finished || (existingAttempt && initialRemaining <= 0));
+
+  const [timeLeft, setTimeLeft] = useState(initialFinished ? 0 : initialRemaining);
+  const [isRunning, setIsRunning] = useState(Boolean(existingAttempt && !initialFinished));
+  const [isFinished, setIsFinished] = useState(initialFinished);
   const [inputWord, setInputWord] = useState('');
-  const [words, setWords] = useState<string[]>([]);
-  const [message, setMessage] = useState('Press start, then make as many words as possible in 30 seconds.');
+  const [words, setWords] = useState<string[]>(existingAttempt?.words ?? []);
+  const [message, setMessage] = useState(
+    existingAttempt
+      ? initialFinished
+        ? 'Your daily run is complete. Share it and challenge a friend.'
+        : 'Daily run in progress. Keep going!'
+      : 'Press start, then make as many words as possible in 30 seconds. You can resubmit for a better score.'
+  );
+  const [shareStatus, setShareStatus] = useState('');
+  const [isWordInputFocused, setIsWordInputFocused] = useState(false);
   const timerRef = useRef<number | undefined>();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const attemptRef = useRef<DailyAttempt | undefined>(existingAttempt);
 
-  function start(): void {
+  function finishAttempt(finalWords = words): void {
     window.clearInterval(timerRef.current);
-    setWords([]);
-    setInputWord('');
-    setTimeLeft(30);
-    setIsFinished(false);
-    setIsRunning(true);
-    setMessage('Go!');
+    timerRef.current = undefined;
+    setIsRunning(false);
+    setIsFinished(true);
+    setTimeLeft(0);
+    setMessage('Time! Daily run complete.');
 
-    let remaining = 30;
+    if (attemptRef.current) {
+      attemptRef.current = {
+        ...attemptRef.current,
+        finished: true,
+        words: finalWords
+      };
+      saveDailyAttempt(attemptRef.current);
+    }
+  }
+
+  useEffect(() => {
+    if (!attemptRef.current) return undefined;
+
+    if (attemptRef.current.finished || attemptRef.current.endsAt <= Date.now()) {
+      finishAttempt(attemptRef.current.words);
+      return undefined;
+    }
+
     timerRef.current = window.setInterval(() => {
-      remaining -= 1;
+      if (!attemptRef.current) return;
+      const remaining = Math.max(0, Math.ceil((attemptRef.current.endsAt - Date.now()) / 1000));
       setTimeLeft(remaining);
       if (remaining <= 0) {
-        window.clearInterval(timerRef.current);
-        setIsRunning(false);
-        setIsFinished(true);
-        setMessage('Time! Daily run complete.');
+        finishAttempt(attemptRef.current.words);
       }
-    }, 1000);
+    }, 250);
+
+    return () => window.clearInterval(timerRef.current);
+    // Run once on mount. finishAttempt reads the latest ref when the interval fires.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function start(): void {
+    if (isRunning) return;
+
+    const now = Date.now();
+    const attempt: DailyAttempt = {
+      day,
+      sourceWord,
+      startedAt: now,
+      endsAt: now + DAILY_SECONDS * 1000,
+      finished: false,
+      words: []
+    };
+
+    attemptRef.current = attempt;
+    saveDailyAttempt(attempt);
+    setWords([]);
+    setInputWord('');
+    setTimeLeft(DAILY_SECONDS);
+    setIsFinished(false);
+    setIsRunning(true);
+    setShareStatus('');
+    setMessage('Go!');
+
+    window.clearInterval(timerRef.current);
+    timerRef.current = window.setInterval(() => {
+      const remaining = Math.max(0, Math.ceil((attempt.endsAt - Date.now()) / 1000));
+      setTimeLeft(remaining);
+      if (remaining <= 0) {
+        finishAttempt(attemptRef.current?.words ?? []);
+      }
+    }, 250);
   }
 
   function submitWord(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
-    if (!isRunning) return;
+    if (!isRunning || !attemptRef.current) return;
 
     const word = inputWord.trim().toLowerCase();
     setInputWord('');
@@ -78,7 +199,7 @@ export default function DailyWordPage(): JSX.Element {
       setMessage('Words can only contain letters.');
       return;
     }
-    if (words.includes(word)) {
+    if (attemptRef.current.words.includes(word)) {
       setMessage('You already made that word.');
       return;
     }
@@ -87,16 +208,42 @@ export default function DailyWordPage(): JSX.Element {
       return;
     }
 
-    setWords((prev) => [...prev, word].sort());
+    const nextWords = [...attemptRef.current.words, word].sort();
+    attemptRef.current = { ...attemptRef.current, words: nextWords };
+    saveDailyAttempt(attemptRef.current);
+    setWords(nextWords);
     setMessage(`Accepted: ${word}`);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }
+
+  async function shareScore(): Promise<void> {
+    const dailyUrl = `${window.location.origin}/daily`;
+    const text = `I made ${pluralizeWords(words.length)} from "${sourceWord}" in 30 seconds on Words of Word. I challenge you to make more. ${dailyUrl}`;
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: 'Words of Word Daily Challenge',
+          text,
+          url: dailyUrl
+        });
+        setShareStatus('Shared!');
+        return;
+      }
+
+      await navigator.clipboard.writeText(text);
+      setShareStatus('Challenge copied. Paste it on WhatsApp, Instagram, or anywhere.');
+    } catch {
+      setShareStatus(text);
+    }
   }
 
   return (
-    <main className="page-shell">
+    <main className={`page-shell daily-shell ${isWordInputFocused ? 'is-typing' : ''}`}>
       <section className="panel-card">
         <p className="eyebrow">daily word</p>
         <h1>Daily Word</h1>
-        <p className="muted">Everyone gets the same daily source word. You get 30 seconds.</p>
+        <p className="muted">Everyone gets the same daily source word. You get 30 seconds. Resubmit to chase a better score.</p>
 
         <div className="current-word-card" style={{ margin: '18px 0' }}>
           <span className="current-word-label">Today&apos;s word</span>
@@ -104,22 +251,26 @@ export default function DailyWordPage(): JSX.Element {
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 18 }}>
-          <TimerRing timeLeft={timeLeft} totalTime={30} size={96} />
+          <TimerRing timeLeft={timeLeft} totalTime={DAILY_SECONDS} size={96} />
         </div>
 
         <form className="word-form" onSubmit={submitWord}>
           <div>
             <Label htmlFor="daily-word-input">Your word</Label>
             <Input
+              ref={inputRef}
               id="daily-word-input"
               value={inputWord}
               onChange={(e) => setInputWord(e.currentTarget.value)}
+              onFocus={() => setIsWordInputFocused(true)}
+              onBlur={() => setIsWordInputFocused(false)}
               placeholder={isRunning ? 'Type and press Enter' : 'Start the timer first'}
               disabled={!isRunning}
               autoComplete="off"
               autoCorrect="off"
               autoCapitalize="none"
               spellCheck={false}
+              enterKeyHint="done"
             />
           </div>
           <Button variant="primary" type="submit" disabled={!isRunning || !inputWord.trim()}>Submit</Button>
@@ -127,21 +278,37 @@ export default function DailyWordPage(): JSX.Element {
 
         <Alert variant={isFinished ? 'success' : 'notice'} style={{ marginTop: 16 }}>{message}</Alert>
 
+        {shareStatus && <Alert variant="notice" style={{ marginTop: 10 }}>{shareStatus}</Alert>}
+
         <Separator style={{ margin: '18px 0' }} />
 
         <div className="words-card">
           <div className="words-header">
-            <h3>Your Daily Score: {words.length * 3}</h3>
-            <span className="words-count">{words.length} words</span>
+            <h3>Your Daily Result</h3>
+            <span className="words-count">{pluralizeWords(words.length)}</span>
           </div>
           <div className="word-chip-list">
-            {words.length > 0 ? words.map((word) => <Badge key={word} variant="word">{word} +3</Badge>) : <em>No words yet.</em>}
+            {words.length > 0 ? words.map((word) => <Badge key={word} variant="word">{word}</Badge>) : <em>No words yet.</em>}
           </div>
         </div>
 
+        {isFinished && (
+          <div className="daily-share-card">
+            <p>I made <strong>{pluralizeWords(words.length)}</strong> in 30 seconds.</p>
+            <p>I challenge you to make more.</p>
+          </div>
+        )}
+
         <div className="button-row" style={{ marginTop: 20 }}>
           <Link to="/"><Button variant="secondary">← Home</Button></Link>
-          <Button variant="primary" onClick={start}>{isRunning ? 'Restart' : isFinished ? 'Try Again' : 'Start 30s'}</Button>
+          {isFinished && <Button variant="secondary" onClick={start}>Try Again</Button>}
+          {isFinished ? (
+            <Button variant="primary" onClick={shareScore}>Share Challenge</Button>
+          ) : (
+            <Button variant="primary" onClick={start} disabled={isRunning}>
+              {isRunning ? 'Running…' : 'Start 30s'}
+            </Button>
+          )}
         </div>
       </section>
     </main>
