@@ -211,6 +211,9 @@ export interface GameOverPayload {
   finalScores: FinalScore[];
   playerWords: Record<string, string[]>;
   snapshot: RoomSnapshot;
+  currentRound?: number;
+  validWords?: string[];
+  results?: RoundResultPlayer[];
 }
 
 export interface GameRestartedPayload {

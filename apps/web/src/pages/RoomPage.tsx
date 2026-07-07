@@ -43,6 +43,7 @@ export default function RoomPage(): JSX.Element {
   const [waitingSeconds, setWaitingSeconds] = useState(0);
   const [validWordCount, setValidWordCount] = useState(0);
   const [roundHistory, setRoundHistory] = useState<RoundEntry[]>([]);
+  const [isWordInputFocused, setIsWordInputFocused] = useState(false);
 
   // Keep a ref to the word input so we can restore focus after submit
   const inputRef = useRef<HTMLInputElement>(null);
@@ -109,6 +110,7 @@ export default function RoomPage(): JSX.Element {
         return;
       }
       setSnapshot(response.data.snapshot);
+      currentWordRef.current = response.data.snapshot.currentWord;
       setWaitingSeconds(response.data.snapshot.waitingSeconds);
     });
   }, [roomId]);
@@ -116,6 +118,7 @@ export default function RoomPage(): JSX.Element {
   useEffect(() => {
     const onSnapshot = (payload: { snapshot: RoomSnapshot }): void => {
       setSnapshot(payload.snapshot);
+      currentWordRef.current = payload.snapshot.currentWord;
       setWaitingSeconds(payload.snapshot.waitingSeconds);
     };
 
@@ -177,7 +180,29 @@ export default function RoomPage(): JSX.Element {
     socket.on('gameOver', (p) => {
       setSnapshot(p.snapshot);
       setFinalScores(p.finalScores);
+      setRoundResults(p.results);
       setWaitingSeconds(0);
+      if (p.results && p.currentRound) {
+        const finalRound = p.currentRound;
+        const finalRoundResults = p.results;
+        const finalRoundValidWordCount = p.validWords?.length ?? 0;
+
+        setRoundHistory((prev) => {
+          if (prev.some((entry) => entry.round === finalRound)) {
+            return prev;
+          }
+
+          return [
+            ...prev,
+            {
+              round: finalRound,
+              word: currentWordRef.current || p.snapshot.currentWord,
+              results: finalRoundResults,
+              validWordCount: finalRoundValidWordCount,
+            },
+          ];
+        });
+      }
       setNotice('Game over!');
     });
     socket.on('gameRestarted', (p) => {
@@ -296,7 +321,7 @@ export default function RoomPage(): JSX.Element {
 
   /* ── main game view ── */
   return (
-    <main className="game-shell">
+    <main className={`game-shell ${isWordInputFocused ? 'is-typing' : ''}`}>
 
       {/* ── HEADER ── */}
       <header className="game-header">
@@ -506,6 +531,8 @@ export default function RoomPage(): JSX.Element {
                   type={isTypistMode ? 'password' : 'text'}
                   value={inputWord}
                   onChange={(e) => setInputWord(e.currentTarget.value)}
+                  onFocus={() => setIsWordInputFocused(true)}
+                  onBlur={() => setIsWordInputFocused(false)}
                   placeholder={canSubmit ? (isTypistMode ? 'Blind Type: hidden word' : 'Type a word and press Enter') : 'Rejoin to submit words'}
                   disabled={!canSubmit}
                   hasError={inputFeedback === 'error'}
@@ -515,6 +542,7 @@ export default function RoomPage(): JSX.Element {
                   autoCorrect="off"
                   autoCapitalize="none"
                   spellCheck={false}
+                  enterKeyHint="done"
                 />
                 <Button
                   variant="primary"
