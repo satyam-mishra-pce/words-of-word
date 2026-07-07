@@ -43,6 +43,7 @@ export default function RoomPage(): JSX.Element {
   const [waitingSeconds, setWaitingSeconds] = useState(0);
   const [validWordCount, setValidWordCount] = useState(0);
   const [roundHistory, setRoundHistory] = useState<RoundEntry[]>([]);
+  const [isWordInputFocused, setIsWordInputFocused] = useState(false);
 
   // Keep a ref to the word input so we can restore focus after submit
   const inputRef = useRef<HTMLInputElement>(null);
@@ -109,6 +110,7 @@ export default function RoomPage(): JSX.Element {
         return;
       }
       setSnapshot(response.data.snapshot);
+      currentWordRef.current = response.data.snapshot.currentWord;
       setWaitingSeconds(response.data.snapshot.waitingSeconds);
     });
   }, [roomId]);
@@ -116,6 +118,7 @@ export default function RoomPage(): JSX.Element {
   useEffect(() => {
     const onSnapshot = (payload: { snapshot: RoomSnapshot }): void => {
       setSnapshot(payload.snapshot);
+      currentWordRef.current = payload.snapshot.currentWord;
       setWaitingSeconds(payload.snapshot.waitingSeconds);
     };
 
@@ -177,7 +180,29 @@ export default function RoomPage(): JSX.Element {
     socket.on('gameOver', (p) => {
       setSnapshot(p.snapshot);
       setFinalScores(p.finalScores);
+      setRoundResults(p.results);
       setWaitingSeconds(0);
+      if (p.results && p.currentRound) {
+        const finalRound = p.currentRound;
+        const finalRoundResults = p.results;
+        const finalRoundValidWordCount = p.validWords?.length ?? 0;
+
+        setRoundHistory((prev) => {
+          if (prev.some((entry) => entry.round === finalRound)) {
+            return prev;
+          }
+
+          return [
+            ...prev,
+            {
+              round: finalRound,
+              word: currentWordRef.current || p.snapshot.currentWord,
+              results: finalRoundResults,
+              validWordCount: finalRoundValidWordCount,
+            },
+          ];
+        });
+      }
       setNotice('Game over!');
     });
     socket.on('gameRestarted', (p) => {
@@ -296,7 +321,7 @@ export default function RoomPage(): JSX.Element {
 
   /* ── main game view ── */
   return (
-    <main className="game-shell">
+    <main className={`game-shell ${isWordInputFocused ? 'is-typing' : ''}`}>
 
       {/* ── HEADER ── */}
       <header className="game-header">
@@ -506,7 +531,9 @@ export default function RoomPage(): JSX.Element {
                   type={isTypistMode ? 'password' : 'text'}
                   value={inputWord}
                   onChange={(e) => setInputWord(e.currentTarget.value)}
-                  placeholder={canSubmit ? (isTypistMode ? 'Typist mode: hidden word' : 'Type a word and press Enter') : 'Rejoin to submit words'}
+                  onFocus={() => setIsWordInputFocused(true)}
+                  onBlur={() => setIsWordInputFocused(false)}
+                  placeholder={canSubmit ? (isTypistMode ? 'Blind Type: hidden word' : 'Type a word and press Enter') : 'Rejoin to submit words'}
                   disabled={!canSubmit}
                   hasError={inputFeedback === 'error'}
                   hasSuccess={inputFeedback === 'success'}
@@ -515,6 +542,7 @@ export default function RoomPage(): JSX.Element {
                   autoCorrect="off"
                   autoCapitalize="none"
                   spellCheck={false}
+                  enterKeyHint="done"
                 />
                 <Button
                   variant="primary"
@@ -583,7 +611,7 @@ export default function RoomPage(): JSX.Element {
         </h2>
         <Separator />
         <ul>
-          <li>{isArcadeMode ? <>Arcade scores <strong>3 + word length</strong>.</> : snapshot.settings.gameMode === 'fastestNWords' ? <>First to <strong>{snapshot.settings.fastestWordTarget} words</strong> ends the round and gets a highlighted <strong>10 point bonus</strong>.</> : snapshot.settings.gameMode === 'battleRoyale' ? <>Lowest scoring <strong>{snapshot.settings.eliminationsPerRound}</strong> player(s) are eliminated each round.</> : snapshot.settings.gameMode === 'typist' ? <>Typist mode hides your input until you submit.</> : snapshot.settings.gameMode === 'oneWordForAll' ? <>Once any player finds a word, nobody else can use it. If it is taken, you will be told clearly.</> : <>Each accepted word scores <strong>3 points</strong>.</>}</li>
+          <li>{isArcadeMode ? <>Score Attack scores <strong>3 + word length</strong>.</> : snapshot.settings.gameMode === 'fastestNWords' ? <>Word Sprint: first to <strong>{snapshot.settings.fastestWordTarget} words</strong> ends the round and gets a highlighted <strong>10 point bonus</strong>.</> : snapshot.settings.gameMode === 'battleRoyale' ? <>Knockout: lowest scoring <strong>{snapshot.settings.eliminationsPerRound}</strong> player(s) are eliminated each round.</> : snapshot.settings.gameMode === 'typist' ? <>Blind Type hides your input until you submit.</> : snapshot.settings.gameMode === 'oneWordForAll' ? <>Claim Mode: once any player finds a word, nobody else can use it. If it is taken, you will be told clearly.</> : <>Each accepted word scores <strong>3 points</strong>.</>}</li>
           <li>Letters must come from the source word.</li>
           <li>No reusing the same word in a round.</li>
           <li>The host controls start and restart.</li>
@@ -603,7 +631,7 @@ export default function RoomPage(): JSX.Element {
         </h1>
         <ul style={{ paddingLeft: 14, lineHeight: 2.1, color: 'var(--sub)', fontSize: '0.88rem', marginBottom: 20 }}>
           <li>Find words hidden inside the big word.</li>
-          <li>{isArcadeMode ? <>Arcade scores <strong style={{ color: 'var(--text)' }}>3 + word length</strong>.</> : snapshot.settings.gameMode === 'fastestNWords' ? <>First to <strong style={{ color: 'var(--text)' }}>{snapshot.settings.fastestWordTarget} words</strong> ends the round and gets a highlighted <strong style={{ color: 'var(--text)' }}>10 point bonus</strong>.</> : snapshot.settings.gameMode === 'battleRoyale' ? <>Lowest scoring <strong style={{ color: 'var(--text)' }}>{snapshot.settings.eliminationsPerRound}</strong> player(s) are eliminated each round.</> : snapshot.settings.gameMode === 'typist' ? <>Typist mode hides your input until you submit.</> : snapshot.settings.gameMode === 'oneWordForAll' ? <>Once any player finds a word, nobody else can use it. If it is taken, you will be told clearly.</> : <>Each accepted word scores <strong style={{ color: 'var(--text)' }}>3 points</strong>.</>}</li>
+          <li>{isArcadeMode ? <>Score Attack scores <strong style={{ color: 'var(--text)' }}>3 + word length</strong>.</> : snapshot.settings.gameMode === 'fastestNWords' ? <>Word Sprint: first to <strong style={{ color: 'var(--text)' }}>{snapshot.settings.fastestWordTarget} words</strong> ends the round and gets a highlighted <strong style={{ color: 'var(--text)' }}>10 point bonus</strong>.</> : snapshot.settings.gameMode === 'battleRoyale' ? <>Knockout: lowest scoring <strong style={{ color: 'var(--text)' }}>{snapshot.settings.eliminationsPerRound}</strong> player(s) are eliminated each round.</> : snapshot.settings.gameMode === 'typist' ? <>Blind Type hides your input until you submit.</> : snapshot.settings.gameMode === 'oneWordForAll' ? <>Claim Mode: once any player finds a word, nobody else can use it. If it is taken, you will be told clearly.</> : <>Each accepted word scores <strong style={{ color: 'var(--text)' }}>3 points</strong>.</>}</li>
           <li>Letters must come from the source word.</li>
           <li>No reusing the same word in a round.</li>
           <li>The host controls start and restart.</li>

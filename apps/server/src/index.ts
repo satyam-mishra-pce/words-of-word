@@ -1,6 +1,10 @@
 import cors from '@fastify/cors';
 import Fastify from 'fastify';
 import { createRequire } from 'node:module';
+import { existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import { extname, join, normalize } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { customAlphabet } from 'nanoid';
 import { Server, Socket } from 'socket.io';
 import { z } from 'zod';
@@ -37,8 +41,10 @@ import {
 } from '@wow/game-engine';
 
 const PORT = Number(process.env.PORT ?? 4000);
+const WEB_DIST_DIR = fileURLToPath(new URL('../../web/dist', import.meta.url));
 const WAIT_BETWEEN_ROUNDS_SECONDS = 10;
 const FASTEST_N_BONUS = 10;
+const EMPTY_ROOM_TTL_MS = 10 * 60 * 1000;
 const CATEGORY_WORDS: Record<string, string[]> = {
   genz: ['aesthetic', 'maincharacter', 'delulu', 'bussin', 'cringe', 'glowup', 'stan', 'vibing', 'rizzler', 'brainrot'],
   sports: ['football', 'cricket', 'tennis', 'basketball', 'baseball', 'hockey', 'soccer', 'badminton', 'volleyball', 'athletics'],
@@ -74,6 +80,7 @@ interface InternalRoom {
   acceptedWords: Map<string, Set<string>>;
   tickTimer: NodeJS.Timeout | undefined;
   nextRoundTimer: NodeJS.Timeout | undefined;
+  emptyCleanupTimer: NodeJS.Timeout | undefined;
   waitingSeconds: number;
 }
 
@@ -113,7 +120,7 @@ class GameRoomManager {
     }
 
     if (settings.eliminationsPerRound * settings.rounds >= playerCount) {
-      return 'Battle Royale would finish before all rounds are played. Lower eliminations, lower rounds, or add more players.';
+      return 'Knockout would finish before all rounds are played. Lower eliminations, lower rounds, or add more players.';
     }
 
     return undefined;
@@ -154,6 +161,7 @@ class GameRoomManager {
       acceptedWords: new Map([[socketId, new Set<string>()]]),
       tickTimer: undefined,
       nextRoundTimer: undefined,
+      emptyCleanupTimer: undefined,
       waitingSeconds: 0
     };
 
@@ -190,12 +198,22 @@ class GameRoomManager {
       return { ok: false, error: 'This game has already started.' };
     }
 
+    if (room.emptyCleanupTimer) {
+      clearTimeout(room.emptyCleanupTimer);
+      room.emptyCleanupTimer = undefined;
+    }
+
+    const isFirstPlayerBack = room.players.length === 0;
     const player: Player = {
       id: socketId,
       name: username,
       score: 0,
-      isHost: false
+      isHost: isFirstPlayerBack
     };
+
+    if (isFirstPlayerBack) {
+      room.hostId = socketId;
+    }
 
     room.players.push(player);
     room.acceptedWords.set(socketId, new Set<string>());
@@ -222,8 +240,22 @@ class GameRoomManager {
     room.acceptedWords.delete(socketId);
 
     if (room.players.length === 0) {
-      this.clearTimers(room);
-      this.rooms.delete(roomId);
+      this.clearTickTimer(room);
+      if (room.nextRoundTimer) {
+        clearTimeout(room.nextRoundTimer);
+        room.nextRoundTimer = undefined;
+      }
+      room.phase = 'lobby';
+      room.currentWord = '';
+      room.currentRound = 0;
+      room.timeLeft = room.settings.timePerRound;
+      room.waitingSeconds = 0;
+      room.validWords.clear();
+      room.acceptedWords.clear();
+      room.emptyCleanupTimer = setTimeout(() => {
+        this.clearTimers(room);
+        this.rooms.delete(roomId);
+      }, EMPTY_ROOM_TTL_MS);
       return { ok: true, data: { roomId, snapshot: undefined, hostChanged: false } };
     }
 
@@ -295,7 +327,7 @@ class GameRoomManager {
     if (player.isEliminated) {
       this.io.to(socketId).emit('wordRejected', {
         word: submittedWord,
-        message: 'You have been eliminated from this Battle Royale.'
+        message: 'You have been eliminated from Knockout.'
       } satisfies WordRejectedPayload);
       return { ok: true, data: { ok: true } };
     }
@@ -421,12 +453,7 @@ class GameRoomManager {
     this.clearTickTimer(room);
 
     const playerWords = this.acceptedWordsRecord(room);
-    const results: RoundResultPlayer[] = room.players.map((player) => ({
-      playerId: player.id,
-      playerName: player.name,
-      score: player.score,
-      words: playerWords[player.id] ?? []
-    }));
+    const results = this.roundResults(room, playerWords);
 
     if (room.settings.gameMode === 'battleRoyale') {
       this.eliminateLowestScorers(room);
@@ -435,7 +462,12 @@ class GameRoomManager {
     const isGameOver = room.currentRound >= room.settings.rounds;
 
     if (isGameOver) {
-      this.finishGame(room);
+      this.finishGame(room, {
+        playerWords,
+        validWords: Array.from(room.validWords).sort(),
+        results,
+        currentRound: room.currentRound
+      });
       return;
     }
 
@@ -460,12 +492,12 @@ class GameRoomManager {
     }, WAIT_BETWEEN_ROUNDS_SECONDS * 1000);
   }
 
-  private finishGame(room: InternalRoom): void {
+  private finishGame(room: InternalRoom, finalRound?: { playerWords: Record<string, string[]>; validWords: string[]; results: RoundResultPlayer[]; currentRound: number }): void {
     this.clearTimers(room);
     room.phase = 'gameOver';
     room.waitingSeconds = 0;
 
-    const playerWords = this.acceptedWordsRecord(room);
+    const playerWords = finalRound?.playerWords ?? this.acceptedWordsRecord(room);
     const finalScores = [...room.players]
       .sort((left, right) => right.score - left.score)
       .map((player, index) => ({
@@ -475,11 +507,19 @@ class GameRoomManager {
         rank: index + 1
       }));
 
-    this.io.to(room.id).emit('gameOver', {
+    const payload: GameOverPayload = {
       finalScores,
       playerWords,
       snapshot: this.toSnapshot(room)
-    } satisfies GameOverPayload);
+    };
+
+    if (finalRound) {
+      payload.currentRound = finalRound.currentRound;
+      payload.validWords = finalRound.validWords;
+      payload.results = finalRound.results;
+    }
+
+    this.io.to(room.id).emit('gameOver', payload);
   }
 
   private resetScores(room: InternalRoom): void {
@@ -528,7 +568,7 @@ class GameRoomManager {
 
     if (eliminatedPlayers.length > 0) {
       this.io.to(room.id).emit('notice', {
-        message: `${eliminatedPlayers.map((player) => player.name).join(', ')} eliminated from Battle Royale.`
+        message: `${eliminatedPlayers.map((player) => player.name).join(', ')} eliminated from Knockout.`
       });
     }
   }
@@ -560,6 +600,23 @@ class GameRoomManager {
     };
   }
 
+  private roundResults(room: InternalRoom, playerWords: Record<string, string[]>): RoundResultPlayer[] {
+    return room.players.map((player) => {
+      const words = playerWords[player.id] ?? [];
+      const wordScore = words.reduce((total, word) => total + scoreWord(word, room.settings.gameMode), 0);
+      const fastestBonus = room.settings.gameMode === 'fastestNWords' && words.length >= room.settings.fastestWordTarget
+        ? FASTEST_N_BONUS
+        : 0;
+
+      return {
+        playerId: player.id,
+        playerName: player.name,
+        score: wordScore + fastestBonus,
+        words
+      };
+    });
+  }
+
   private acceptedWordsRecord(room: InternalRoom): Record<string, string[]> {
     const record: Record<string, string[]> = {};
     for (const [playerId, playerWords] of room.acceptedWords.entries()) {
@@ -577,6 +634,10 @@ class GameRoomManager {
     if (room.nextRoundTimer) {
       clearTimeout(room.nextRoundTimer);
       room.nextRoundTimer = undefined;
+    }
+    if (room.emptyCleanupTimer) {
+      clearTimeout(room.emptyCleanupTimer);
+      room.emptyCleanupTimer = undefined;
     }
   }
 
@@ -601,9 +662,9 @@ function validationMessage(errorMessage: string): string {
 const fastify = Fastify({ logger: true });
 
 const configuredOrigin = process.env.CLIENT_ORIGIN;
-const clientOrigins = configuredOrigin
+const clientOrigins: string[] | boolean = configuredOrigin
   ? configuredOrigin.split(',').map((origin) => origin.trim()).filter(Boolean)
-  : ['http://localhost:3000', 'http://127.0.0.1:3000'];
+  : true;
 
 await fastify.register(cors, {
   origin: clientOrigins,
@@ -611,6 +672,32 @@ await fastify.register(cors, {
 });
 
 fastify.get('/health', async () => ({ ok: true }));
+
+const contentTypes: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.ico': 'image/x-icon',
+  '.json': 'application/json; charset=utf-8'
+};
+
+fastify.get('/*', async (request, reply) => {
+  if (!existsSync(WEB_DIST_DIR)) {
+    return reply.code(404).send({ ok: false, error: 'Web build not found. Run pnpm build first.' });
+  }
+
+  const requestPath = request.url.split('?')[0] ?? '/';
+  const safePath = normalize(decodeURIComponent(requestPath)).replace(/^(\.\.[/\\])+/, '');
+  const requestedFile = join(WEB_DIST_DIR, safePath === '/' ? 'index.html' : safePath);
+  const filePath = existsSync(requestedFile) ? requestedFile : join(WEB_DIST_DIR, 'index.html');
+  const extension = extname(filePath);
+  reply.type(contentTypes[extension] ?? 'application/octet-stream');
+  return reply.send(await readFile(filePath));
+});
 
 const io: TypedIo = new Server(fastify.server, {
   cors: {

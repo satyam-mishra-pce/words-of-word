@@ -18,13 +18,13 @@ const DEFAULT_SETTINGS: GameSettings = {
 };
 
 const GAME_MODE_INFO: Array<{ value: GameSettings['gameMode']; label: string; description: string }> = [
-  { value: 'classic', label: 'Classic', description: 'Every accepted word gives 3 points.' },
-  { value: 'arcade', label: 'Arcade', description: 'Every word gives 3 points plus bonus points equal to word length.' },
-  { value: 'fastestNWords', label: 'Fastest N words', description: 'First player to reach N words ends the round and gets a 10 point bonus.' },
-  { value: 'battleRoyale', label: 'Battle Royale', description: 'Lowest scoring players are eliminated after each round.' },
-  { value: 'typist', label: 'Typist mode', description: 'Your typed word stays hidden until you submit it.' },
-  { value: 'category', label: 'Category mode', description: 'Source words come from the selected category or your custom list.' },
-  { value: 'oneWordForAll', label: 'One word for all', description: 'Once any player uses a word, no one else can use it.' }
+  { value: 'classic', label: 'Classic', description: 'Standard rules: every accepted word gives 3 points.' },
+  { value: 'arcade', label: 'Score Attack', description: 'Reward bigger finds: every word gives 3 points plus bonus points equal to word length.' },
+  { value: 'fastestNWords', label: 'Word Sprint', description: 'First player to reach the target word count ends the round and earns a 10 point bonus.' },
+  { value: 'battleRoyale', label: 'Knockout', description: 'Lowest scoring players are eliminated after each round until a winner emerges.' },
+  { value: 'typist', label: 'Blind Type', description: 'Your typed word stays hidden until you submit it.' },
+  { value: 'category', label: 'Theme Challenge', description: 'Source words come from the selected theme or your custom list.' },
+  { value: 'oneWordForAll', label: 'Claim Mode', description: 'Once any player claims a word, no one else can use it.' }
 ];
 
 export default function SettingsPage(): JSX.Element {
@@ -35,7 +35,7 @@ export default function SettingsPage(): JSX.Element {
   const [isCreating, setIsCreating] = useState(false);
   const [infoMode, setInfoMode] = useState<(typeof GAME_MODE_INFO)[number] | undefined>();
   const battleRoyaleWarning = settings.gameMode === 'battleRoyale' && settings.eliminationsPerRound * settings.rounds >= settings.maxPlayers
-    ? 'Battle Royale would finish before all rounds are played. Lower eliminations, lower rounds, or increase max players.'
+    ? 'Knockout would finish before all rounds are played. Lower eliminations, lower rounds, or increase max players.'
     : '';
 
   if (!username) {
@@ -107,13 +107,13 @@ export default function SettingsPage(): JSX.Element {
               value={settings.gameMode}
               onChange={(e) => set('gameMode', e.currentTarget.value as GameSettings['gameMode'])}
             >
-              <option value="classic">Classic — 3 points per word</option>
-              <option value="arcade">Arcade — 3 + word length</option>
-              <option value="fastestNWords">Fastest N words</option>
-              <option value="battleRoyale">Battle Royale</option>
-              <option value="typist">Typist mode</option>
-              <option value="category">Category mode</option>
-              <option value="oneWordForAll">One word for all</option>
+              <option value="classic">Classic</option>
+              <option value="arcade">Score Attack</option>
+              <option value="fastestNWords">Word Sprint</option>
+              <option value="battleRoyale">Knockout</option>
+              <option value="typist">Blind Type</option>
+              <option value="category">Theme Challenge</option>
+              <option value="oneWordForAll">Claim Mode</option>
             </Select>
           </div>
 
