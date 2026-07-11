@@ -1021,6 +1021,7 @@ p { margin-top: 0; }
 .daily-share-card p { margin: 0; line-height: 1.7; }
 .daily-share-card strong { color: var(--main); }
 
+
 /* Results card */
 .results-card {
   border-radius: var(--r-sm);
@@ -1251,71 +1252,80 @@ p { margin-top: 0; }
 }
 
 /* ============================================================
-   LIGHT MODE — Monkeytype "light" theme
+   LIGHT MODE — Monkeytype "tangerine" inspired theme
    ============================================================ */
 [data-theme="light"] {
   color-scheme: light;
 
-  --bg:     #e1e1e1;
-  --bg-sub: #d5d5d5;
-  --bg-3:   #c9c9c9;
+  --bg:     #fff3e4;
+  --bg-sub: #ffe2bf;
+  --bg-3:   #ffc98f;
 
-  --text:   #2c2e31;
-  --sub:    #8f8f8f;
-  --sub-2:  #bdbdbd;
+  --main:   #f27f24;
+  --main-10: rgba(242,127,36,0.12);
+  --main-15: rgba(242,127,36,0.18);
+  --main-25: rgba(242,127,36,0.30);
 
-  /* main stays #e2b714 — Monkeytype keeps the same accent in light */
-  /* error stays #ca4754 */
+  --text:   #51321f;
+  --sub:    #a8754f;
+  --sub-2:  #e4b180;
+  --error:  #b33a2f;
+  --error-10: rgba(179,58,47,0.10);
 
-  --main-10: rgba(226,183,20,0.14);
-  --main-15: rgba(226,183,20,0.20);
-  --main-25: rgba(226,183,20,0.32);
+  --ink:        #51321f;
+  --paper:      #ffe2bf;
+  --paper-warm: #fff3e4;
+  --paper-deep: #ffd2a3;
 
-  --ink:        #2c2e31;
-  --paper:      #d5d5d5;
-  --paper-warm: #e1e1e1;
-  --paper-deep: #cacaca;
+  --red:        #b33a2f;
+  --red-dark:   #8f2b23;
+  --blue:       #2f7f8f;
+  --blue-dark:  #246575;
+  --green:      #5b8f3a;
+  --green-dark: #426f2a;
+  --gold:       #f27f24;
+  --gold-dark:  #c96316;
 
-  --shadow-sm: 0 1px 4px rgba(0,0,0,0.14);
-  --shadow-md: 0 4px 16px rgba(0,0,0,0.18);
-  --shadow-lg: 0 12px 40px rgba(0,0,0,0.22);
+  --shadow-sm: 0 1px 4px rgba(81,50,31,0.10);
+  --shadow-md: 0 4px 16px rgba(81,50,31,0.14);
+  --shadow-lg: 0 12px 40px rgba(81,50,31,0.18);
 }
 
-/* Light mode — float letter outlines */
+/* Tangerine mode — float letter outlines */
 [data-theme="light"] .float-letter {
-  -webkit-text-stroke-color: rgba(44,46,49,0.050);
+  -webkit-text-stroke-color: rgba(81,50,31,0.055);
 }
 
-/* Light mode — hero watermark */
+/* Tangerine mode — hero watermark */
 [data-theme="light"] .hero-card::after {
-  -webkit-text-stroke-color: rgba(44,46,49,0.040);
+  -webkit-text-stroke-color: rgba(81,50,31,0.045);
 }
 
-/* Light mode — primary button: dark fill so gold text is readable */
+/* Tangerine mode — primary button */
 [data-theme="light"] .ui-btn-primary {
-  background: var(--text);
-  color: var(--bg);
+  background: var(--main);
+  color: #fff3e4;
 }
-[data-theme="light"] .ui-btn-primary:hover:not(:disabled) { opacity: 0.82; }
-[data-theme="light"] .ui-btn-primary:active:not(:disabled) { opacity: 0.72; transform: scale(0.98); }
+[data-theme="light"] .ui-btn-primary:hover:not(:disabled) { background: var(--gold-dark); }
+[data-theme="light"] .ui-btn-primary:active:not(:disabled) { opacity: 0.86; transform: scale(0.98); }
 
-/* Light mode — secondary button */
+/* Tangerine mode — secondary button */
 [data-theme="light"] .ui-btn-secondary {
-  background: var(--bg-3);
+  background: var(--bg-sub);
   color: var(--text);
 }
-[data-theme="light"] .ui-btn-secondary:hover:not(:disabled) { background: var(--bg-sub); color: var(--text); }
+[data-theme="light"] .ui-btn-secondary:hover:not(:disabled) { background: var(--bg-3); color: var(--text); }
 
-/* Light mode — mini button */
-[data-theme="light"] .ui-btn-mini { background: var(--bg-3); }
-[data-theme="light"] .ui-btn-mini:hover:not(:disabled) { background: var(--bg-sub); }
+/* Tangerine mode — mini button */
+[data-theme="light"] .ui-btn-mini { background: var(--bg-sub); color: var(--text); }
+[data-theme="light"] .ui-btn-mini:hover:not(:disabled) { background: var(--bg-3); }
 
-/* Light mode — dialog backdrop */
-[data-theme="light"] .ui-dialog-backdrop { background: rgba(44,46,49,0.60); }
+/* Tangerine mode — dialog backdrop */
+[data-theme="light"] .ui-dialog-backdrop { background: rgba(81,50,31,0.42); }
 [data-theme="light"] .ui-dialog { background: var(--bg-sub); border-color: var(--sub-2); }
 
-/* Light mode — select option background */
-[data-theme="light"] .ui-select option { background: var(--bg-sub); }
+/* Tangerine mode — select option background */
+[data-theme="light"] .ui-select option { background: var(--bg-sub); color: var(--text); }
 
 /* ============================================================
    THEME TOGGLE BUTTON
