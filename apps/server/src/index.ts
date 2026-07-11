@@ -84,11 +84,144 @@ interface InternalRoom {
   waitingSeconds: number;
 }
 
+interface AnalyticsPlayer {
+  socketId: string;
+  name: string | undefined;
+  connectedAt: string;
+  disconnectedAt: string | undefined;
+  lastRoomId: string | undefined;
+  roomsCreated: string[];
+  roomsJoined: string[];
+  wordsAccepted: number;
+}
+
+interface AnalyticsGame {
+  id: string;
+  roomId: string;
+  gameMode: GameSettings['gameMode'];
+  wordCategory: GameSettings['wordCategory'];
+  startedAt: string;
+  endedAt: string | undefined;
+  players: Array<{ playerId: string; playerName: string }>;
+  finalScores: GameOverPayload['finalScores'] | undefined;
+  totalWordsAccepted: number;
+}
+
+class AnalyticsStore {
+  private readonly players = new Map<string, AnalyticsPlayer>();
+  private readonly recentPlayers: AnalyticsPlayer[] = [];
+  private readonly activeGamesByRoom = new Map<string, AnalyticsGame>();
+  private readonly recentGames: AnalyticsGame[] = [];
+  private readonly maxEntries = 250;
+
+  public recordConnect(socketId: string): void {
+    const player: AnalyticsPlayer = {
+      socketId,
+      name: undefined,
+      connectedAt: new Date().toISOString(),
+      disconnectedAt: undefined,
+      lastRoomId: undefined,
+      roomsCreated: [],
+      roomsJoined: [],
+      wordsAccepted: 0
+    };
+    this.players.set(socketId, player);
+    this.pushRecent(this.recentPlayers, player);
+  }
+
+  public recordDisconnect(socketId: string): void {
+    const player = this.players.get(socketId);
+    if (!player) return;
+    player.disconnectedAt = new Date().toISOString();
+    this.players.delete(socketId);
+  }
+
+  public recordRoomCreated(socketId: string, username: string, roomId: string): void {
+    const player = this.ensurePlayer(socketId);
+    player.name = username;
+    player.lastRoomId = roomId;
+    player.roomsCreated.push(roomId);
+  }
+
+  public recordRoomJoined(socketId: string, username: string, roomId: string): void {
+    const player = this.ensurePlayer(socketId);
+    player.name = username;
+    player.lastRoomId = roomId;
+    player.roomsJoined.push(roomId);
+  }
+
+  public recordGameStarted(room: InternalRoom): void {
+    const game: AnalyticsGame = {
+      id: `${room.id}-${Date.now()}`,
+      roomId: room.id,
+      gameMode: room.settings.gameMode,
+      wordCategory: room.settings.wordCategory,
+      startedAt: new Date().toISOString(),
+      endedAt: undefined,
+      players: room.players.map((player) => ({ playerId: player.id, playerName: player.name })),
+      finalScores: undefined,
+      totalWordsAccepted: 0
+    };
+    this.activeGamesByRoom.set(room.id, game);
+    this.pushRecent(this.recentGames, game);
+  }
+
+  public recordWordAccepted(room: InternalRoom, socketId: string): void {
+    const player = this.ensurePlayer(socketId);
+    player.wordsAccepted += 1;
+    const game = this.activeGamesByRoom.get(room.id);
+    if (game) game.totalWordsAccepted += 1;
+  }
+
+  public recordGameFinished(room: InternalRoom, finalScores: GameOverPayload['finalScores'], playerWords: Record<string, string[]>): void {
+    const game = this.activeGamesByRoom.get(room.id) ?? {
+      id: `${room.id}-${Date.now()}`,
+      roomId: room.id,
+      gameMode: room.settings.gameMode,
+      wordCategory: room.settings.wordCategory,
+      startedAt: new Date().toISOString(),
+      endedAt: undefined,
+      players: room.players.map((player) => ({ playerId: player.id, playerName: player.name })),
+      finalScores: undefined,
+      totalWordsAccepted: 0
+    };
+    game.endedAt = new Date().toISOString();
+    game.finalScores = finalScores;
+    game.totalWordsAccepted = Object.values(playerWords).reduce((total, wordsForPlayer) => total + wordsForPlayer.length, 0);
+    this.activeGamesByRoom.delete(room.id);
+    if (!this.recentGames.includes(game)) this.pushRecent(this.recentGames, game);
+  }
+
+  public snapshot(): { activePlayers: AnalyticsPlayer[]; recentPlayers: AnalyticsPlayer[]; activeGames: AnalyticsGame[]; recentGames: AnalyticsGame[] } {
+    return {
+      activePlayers: Array.from(this.players.values()).sort((left, right) => left.connectedAt.localeCompare(right.connectedAt)),
+      recentPlayers: [...this.recentPlayers].reverse(),
+      activeGames: Array.from(this.activeGamesByRoom.values()),
+      recentGames: [...this.recentGames].reverse()
+    };
+  }
+
+  private ensurePlayer(socketId: string): AnalyticsPlayer {
+    let player = this.players.get(socketId);
+    if (!player) {
+      this.recordConnect(socketId);
+      player = this.players.get(socketId);
+    }
+    if (!player) throw new Error('Unable to create analytics player.');
+    return player;
+  }
+
+  private pushRecent<T>(items: T[], item: T): void {
+    items.push(item);
+    if (items.length > this.maxEntries) items.shift();
+  }
+}
+
 class GameRoomManager {
   private readonly rooms = new Map<string, InternalRoom>();
   private readonly socketToRoom = new Map<string, string>();
 
-  public constructor(private readonly io: TypedIo, private readonly dictionary: readonly string[]) {}
+  public constructor(private readonly io: TypedIo, private readonly dictionary: readonly string[], private readonly analytics: AnalyticsStore) {}
 
   private sourceDictionaryFor(room: InternalRoom): readonly string[] {
     if (room.settings.gameMode !== 'category') {
@@ -167,6 +300,7 @@ class GameRoomManager {
 
     this.rooms.set(roomId, room);
     this.socketToRoom.set(socketId, roomId);
+    this.analytics.recordRoomCreated(socketId, username, roomId);
 
     return { ok: true, data: this.toSnapshot(room) };
   }
@@ -218,6 +352,7 @@ class GameRoomManager {
     room.players.push(player);
     room.acceptedWords.set(socketId, new Set<string>());
     this.socketToRoom.set(socketId, roomId);
+    this.analytics.recordRoomJoined(socketId, username, roomId);
 
     return { ok: true, data: { snapshot: this.toSnapshot(room), player } };
   }
@@ -300,6 +435,7 @@ class GameRoomManager {
     }
 
     this.resetScores(room);
+    this.analytics.recordGameStarted(room);
     this.startRound(room);
 
     return { ok: true, data: { ok: true } };
@@ -354,6 +490,7 @@ class GameRoomManager {
 
     playerWords.add(evaluation.normalizedWord);
     player.score += scoreWord(evaluation.normalizedWord, room.settings.gameMode);
+    this.analytics.recordWordAccepted(room, socketId);
 
     this.io.to(socketId).emit('wordAccepted', {
       playerId: socketId,
@@ -506,6 +643,8 @@ class GameRoomManager {
         score: player.score,
         rank: index + 1
       }));
+
+    this.analytics.recordGameFinished(room, finalScores, playerWords);
 
     const payload: GameOverPayload = {
       finalScores,
@@ -671,7 +810,21 @@ await fastify.register(cors, {
   methods: ['GET', 'POST']
 });
 
+const analytics = new AnalyticsStore();
+
 fastify.get('/health', async () => ({ ok: true }));
+
+fastify.get('/analytics', async (request, reply) => {
+  const configuredToken = process.env.ANALYTICS_TOKEN;
+  if (configuredToken) {
+    const token = (request.query as { token?: string }).token;
+    if (token !== configuredToken) {
+      return reply.code(401).send({ ok: false, error: 'Unauthorized.' });
+    }
+  }
+
+  return { ok: true, data: analytics.snapshot() };
+});
 
 const contentTypes: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -706,7 +859,7 @@ const io: TypedIo = new Server(fastify.server, {
   }
 });
 
-const manager = new GameRoomManager(io, words);
+const manager = new GameRoomManager(io, words, analytics);
 
 function detachSocketFromCurrentRoom(socket: TypedSocket): void {
   const previousRoomId = manager.findRoomIdForSocket(socket.id);
@@ -739,6 +892,7 @@ function detachSocketFromCurrentRoom(socket: TypedSocket): void {
 }
 
 io.on('connection', (socket) => {
+  analytics.recordConnect(socket.id);
   fastify.log.info({ socketId: socket.id }, 'socket connected');
 
   socket.on('createRoom', (payload, ack) => {
@@ -833,6 +987,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
+    analytics.recordDisconnect(socket.id);
     fastify.log.info({ socketId: socket.id }, 'socket disconnected');
     const roomId = manager.findRoomIdForSocket(socket.id);
     const removal = manager.removePlayer(socket.id);
