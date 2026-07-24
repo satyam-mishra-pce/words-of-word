@@ -6,6 +6,8 @@ export const RoomIdSchema = z.string().trim().min(3).max(16);
 export const GameModeSchema = z.enum([
   'classic',
   'arcade',
+  'precision',
+  'teams',
   'fastestNWords',
   'battleRoyale',
   'typist',
@@ -61,6 +63,11 @@ export const SubmitWordPayloadSchema = z.object({
   word: z.string().trim().min(1).max(40)
 });
 
+export const UpdateTeamPayloadSchema = z.object({
+  roomId: RoomIdSchema,
+  teamId: z.enum(['red', 'blue'])
+});
+
 export const RestartGamePayloadSchema = z.object({
   roomId: RoomIdSchema,
   autoStart: z.boolean().default(true)
@@ -74,6 +81,7 @@ export type CheckRoomPayload = z.infer<typeof CheckRoomPayloadSchema>;
 export type JoinRoomPayload = z.infer<typeof JoinRoomPayloadSchema>;
 export type StartGamePayload = z.infer<typeof StartGamePayloadSchema>;
 export type SubmitWordPayload = z.infer<typeof SubmitWordPayloadSchema>;
+export type UpdateTeamPayload = z.infer<typeof UpdateTeamPayloadSchema>;
 export type RestartGamePayload = z.infer<typeof RestartGamePayloadSchema>;
 
 export type RoomPhase = 'lobby' | 'round' | 'betweenRounds' | 'gameOver';
@@ -84,6 +92,7 @@ export interface Player {
   score: number;
   isHost: boolean;
   isEliminated?: boolean;
+  teamId?: 'red' | 'blue';
 }
 
 export interface RoomStatus {
@@ -91,6 +100,13 @@ export interface RoomStatus {
   maxPlayers: number;
   currentPlayers: number;
   message: string;
+}
+
+export interface TeamScore {
+  teamId: 'red' | 'blue';
+  teamName: string;
+  score: number;
+  players: string[];
 }
 
 export interface RoomSnapshot {
@@ -105,6 +121,7 @@ export interface RoomSnapshot {
   currentRound: number;
   totalRounds: number;
   acceptedWords: Record<string, string[]>;
+  teamScores: TeamScore[];
   waitingSeconds: number;
 }
 
@@ -245,6 +262,7 @@ export interface ClientToServerEvents {
   createRoom: (payload: CreateRoomPayload, ack?: Ack<CreateRoomResult>) => void;
   checkRoom: (payload: CheckRoomPayload, ack?: Ack<CheckRoomResult>) => void;
   joinRoom: (payload: JoinRoomPayload, ack?: Ack<JoinRoomResult>) => void;
+  updateTeam: (payload: UpdateTeamPayload, ack?: Ack<EmptyResult>) => void;
   startGame: (payload: StartGamePayload, ack?: Ack<EmptyResult>) => void;
   submitWord: (payload: SubmitWordPayload, ack?: Ack<EmptyResult>) => void;
   restartGame: (payload: RestartGamePayload, ack?: Ack<EmptyResult>) => void;

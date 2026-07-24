@@ -63,18 +63,21 @@ export default function RoomPage(): JSX.Element {
   const canSubmit = snapshot?.phase === 'round' && Boolean(currentPlayer) && !currentPlayer?.isEliminated;
   const isUrgent = Boolean(snapshot?.phase === 'round' && snapshot.timeLeft <= 10);
   const isArcadeMode = snapshot?.settings.gameMode === 'arcade';
+  const isPrecisionMode = snapshot?.settings.gameMode === 'precision';
+  const isTeamsMode = snapshot?.settings.gameMode === 'teams';
+  const isLengthBonusMode = isArcadeMode || isPrecisionMode;
   const isTypistMode = snapshot?.settings.gameMode === 'typist';
   const isFastestNMode = snapshot?.settings.gameMode === 'fastestNWords';
 
   function wordPoints(word: string): number {
-    return 3 + (isArcadeMode ? word.length : 0);
+    return 3 + (isLengthBonusMode ? word.length : 0);
   }
 
   function renderWordBadge(word: string, style?: CSSProperties): JSX.Element {
     return (
       <Badge key={word} variant="word" className="scored-word-badge" style={style} title={`${wordPoints(word)} points`}>
         <span>{word}</span>
-        {isArcadeMode ? (
+        {isLengthBonusMode ? (
           <span className="word-score-formula" aria-label={`3 plus ${word.length} equals ${wordPoints(word)} points`}>
             <strong>3+{word.length}</strong>
             <span>= {wordPoints(word)}</span>
@@ -158,7 +161,18 @@ export default function RoomPage(): JSX.Element {
       setNotice(p.message);
     });
     socket.on('scoresUpdated', (p) => {
-      setSnapshot((s) => (s?.phase === 'round' ? s : p.snapshot));
+      setSnapshot((s) => {
+        if (!s || s.phase !== 'round') return p.snapshot;
+        const scoreByPlayer = new Map(p.scores);
+        return {
+          ...s,
+          players: s.players.map((player) => ({
+            ...player,
+            score: scoreByPlayer.get(player.id) ?? player.score,
+          })),
+          teamScores: p.snapshot.teamScores,
+        };
+      });
     });
     socket.on('roundEnded', (p) => {
       setSnapshot(p.snapshot);
@@ -277,6 +291,13 @@ export default function RoomPage(): JSX.Element {
     });
   }
 
+  function chooseTeam(teamId: 'red' | 'blue'): void {
+    socket.emit('updateTeam', { roomId, teamId }, (r) => {
+      if (!r.ok) setError(r.error);
+      else setError('');
+    });
+  }
+
   /* ── error / loading states ── */
   if (!roomId) {
     return (
@@ -364,7 +385,7 @@ export default function RoomPage(): JSX.Element {
                 <div className="player-row__text">
                   <div className="player-row__name">{player.name}</div>
                   <span className="player-row__tag">
-                    {player.isEliminated ? 'Out' : player.isHost ? '★ Host' : player.id === currentPlayerId ? 'You' : 'Player'}
+                    {player.isEliminated ? 'Out' : `${player.isHost ? '★ Host' : player.id === currentPlayerId ? 'You' : 'Player'}${isTeamsMode && player.teamId ? ` · ${player.teamId === 'red' ? 'Red' : 'Blue'}` : ''}`}
                   </span>
                 </div>
               </div>
@@ -372,6 +393,28 @@ export default function RoomPage(): JSX.Element {
             </div>
           ))}
         </div>
+
+        {isTeamsMode && snapshot.teamScores.length > 0 && (
+          <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
+            <p className="eyebrow" style={{ marginBottom: 0 }}>Team scores</p>
+            {snapshot.teamScores.map((team) => (
+              <div key={team.teamId} className="player-row" style={{ borderColor: team.teamId === 'red' ? 'rgba(255,90,90,0.35)' : 'rgba(90,160,255,0.35)' }}>
+                <div className="player-row__text">
+                  <div className="player-row__name">{team.teamName}</div>
+                  <span className="player-row__tag">{team.players.length} player{team.players.length !== 1 ? 's' : ''}</span>
+                </div>
+                <span className="player-row__score">{team.score}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {isTeamsMode && (snapshot.phase === 'lobby' || snapshot.phase === 'gameOver') && !needsRejoin && (
+          <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <Button variant={currentPlayer?.teamId === 'red' ? 'primary' : 'secondary'} size="sm" onClick={() => chooseTeam('red')}>Red Team</Button>
+            <Button variant={currentPlayer?.teamId === 'blue' ? 'primary' : 'secondary'} size="sm" onClick={() => chooseTeam('blue')}>Blue Team</Button>
+          </div>
+        )}
 
         <div className="room-status">{snapshot.status.message}</div>
 
@@ -611,7 +654,7 @@ export default function RoomPage(): JSX.Element {
         </h2>
         <Separator />
         <ul>
-          <li>{isArcadeMode ? <>Score Attack scores <strong>3 + word length</strong>.</> : snapshot.settings.gameMode === 'fastestNWords' ? <>Word Sprint: first to <strong>{snapshot.settings.fastestWordTarget} words</strong> ends the round and gets a highlighted <strong>10 point bonus</strong>.</> : snapshot.settings.gameMode === 'battleRoyale' ? <>Knockout: lowest scoring <strong>{snapshot.settings.eliminationsPerRound}</strong> player(s) are eliminated each round.</> : snapshot.settings.gameMode === 'typist' ? <>Blind Type hides your input until you submit.</> : snapshot.settings.gameMode === 'oneWordForAll' ? <>Claim Mode: once any player finds a word, nobody else can use it. If it is taken, you will be told clearly.</> : <>Each accepted word scores <strong>3 points</strong>.</>}</li>
+          <li>{isTeamsMode ? <>Teams: choose Red or Blue in the lobby. Individual points add into the cumulative team score.</> : isPrecisionMode ? <>Precision scores <strong>3 + word length</strong>, rejects cost <strong>-2</strong>, duplicates cost <strong>-1</strong>.</> : isArcadeMode ? <>Score Attack scores <strong>3 + word length</strong>.</> : snapshot.settings.gameMode === 'fastestNWords' ? <>Word Sprint: first to <strong>{snapshot.settings.fastestWordTarget} words</strong> ends the round and gets a highlighted <strong>10 point bonus</strong>.</> : snapshot.settings.gameMode === 'battleRoyale' ? <>Knockout: lowest scoring <strong>{snapshot.settings.eliminationsPerRound}</strong> player(s) are eliminated each round.</> : snapshot.settings.gameMode === 'typist' ? <>Blind Type hides your input until you submit.</> : snapshot.settings.gameMode === 'oneWordForAll' ? <>Claim Mode: once any player finds a word, nobody else can use it. If it is taken, you will be told clearly.</> : <>Each accepted word scores <strong>3 points</strong>.</>}</li>
           <li>Letters must come from the source word.</li>
           <li>No reusing the same word in a round.</li>
           <li>The host controls start and restart.</li>
@@ -631,7 +674,7 @@ export default function RoomPage(): JSX.Element {
         </h1>
         <ul style={{ paddingLeft: 14, lineHeight: 2.1, color: 'var(--sub)', fontSize: '0.88rem', marginBottom: 20 }}>
           <li>Find words hidden inside the big word.</li>
-          <li>{isArcadeMode ? <>Score Attack scores <strong style={{ color: 'var(--text)' }}>3 + word length</strong>.</> : snapshot.settings.gameMode === 'fastestNWords' ? <>Word Sprint: first to <strong style={{ color: 'var(--text)' }}>{snapshot.settings.fastestWordTarget} words</strong> ends the round and gets a highlighted <strong style={{ color: 'var(--text)' }}>10 point bonus</strong>.</> : snapshot.settings.gameMode === 'battleRoyale' ? <>Knockout: lowest scoring <strong style={{ color: 'var(--text)' }}>{snapshot.settings.eliminationsPerRound}</strong> player(s) are eliminated each round.</> : snapshot.settings.gameMode === 'typist' ? <>Blind Type hides your input until you submit.</> : snapshot.settings.gameMode === 'oneWordForAll' ? <>Claim Mode: once any player finds a word, nobody else can use it. If it is taken, you will be told clearly.</> : <>Each accepted word scores <strong style={{ color: 'var(--text)' }}>3 points</strong>.</>}</li>
+          <li>{isTeamsMode ? <>Teams: choose Red or Blue in the lobby. Individual points add into the cumulative team score.</> : isPrecisionMode ? <>Precision scores <strong style={{ color: 'var(--text)' }}>3 + word length</strong>, rejects cost <strong style={{ color: 'var(--text)' }}>-2</strong>, duplicates cost <strong style={{ color: 'var(--text)' }}>-1</strong>.</> : isArcadeMode ? <>Score Attack scores <strong style={{ color: 'var(--text)' }}>3 + word length</strong>.</> : snapshot.settings.gameMode === 'fastestNWords' ? <>Word Sprint: first to <strong style={{ color: 'var(--text)' }}>{snapshot.settings.fastestWordTarget} words</strong> ends the round and gets a highlighted <strong style={{ color: 'var(--text)' }}>10 point bonus</strong>.</> : snapshot.settings.gameMode === 'battleRoyale' ? <>Knockout: lowest scoring <strong style={{ color: 'var(--text)' }}>{snapshot.settings.eliminationsPerRound}</strong> player(s) are eliminated each round.</> : snapshot.settings.gameMode === 'typist' ? <>Blind Type hides your input until you submit.</> : snapshot.settings.gameMode === 'oneWordForAll' ? <>Claim Mode: once any player finds a word, nobody else can use it. If it is taken, you will be told clearly.</> : <>Each accepted word scores <strong style={{ color: 'var(--text)' }}>3 points</strong>.</>}</li>
           <li>Letters must come from the source word.</li>
           <li>No reusing the same word in a round.</li>
           <li>The host controls start and restart.</li>

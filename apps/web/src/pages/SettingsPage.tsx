@@ -20,6 +20,8 @@ const DEFAULT_SETTINGS: GameSettings = {
 const GAME_MODE_INFO: Array<{ value: GameSettings['gameMode']; label: string; description: string }> = [
   { value: 'classic', label: 'Classic', description: 'Standard rules: every accepted word gives 3 points.' },
   { value: 'arcade', label: 'Score Attack', description: 'Reward bigger finds: every word gives 3 points plus bonus points equal to word length.' },
+  { value: 'precision', label: 'Precision', description: 'Accepted words score 3 plus word length, rejected words lose 2 points, and duplicates lose 1 point.' },
+  { value: 'teams', label: 'Teams', description: 'Players pick Red or Blue before the game. Team totals and individual scores are both shown.' },
   { value: 'fastestNWords', label: 'Word Sprint', description: 'First player to reach the target word count ends the round and earns a 10 point bonus.' },
   { value: 'battleRoyale', label: 'Knockout', description: 'Lowest scoring players are eliminated after each round until a winner emerges.' },
   { value: 'typist', label: 'Blind Type', description: 'Your typed word stays hidden until you submit it.' },
@@ -109,6 +111,8 @@ export default function SettingsPage(): JSX.Element {
             >
               <option value="classic">Classic</option>
               <option value="arcade">Score Attack</option>
+              <option value="precision">Precision</option>
+              <option value="teams">Teams</option>
               <option value="fastestNWords">Word Sprint</option>
               <option value="battleRoyale">Knockout</option>
               <option value="typist">Blind Type</option>

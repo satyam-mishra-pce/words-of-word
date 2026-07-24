@@ -7,6 +7,8 @@ export interface WordSubmissionEvaluation {
 }
 
 export const POINTS_PER_WORD = 3;
+export const REJECTED_WORD_PENALTY = -2;
+export const DUPLICATE_WORD_PENALTY = -1;
 
 export function normalizeWord(word: string): string {
   return word.trim().toLowerCase();
@@ -112,7 +114,7 @@ export function evaluateSubmission(
 }
 
 export function scoreWord(word: string, gameMode: GameMode = 'classic'): number {
-  if (gameMode === 'arcade') {
+  if (gameMode === 'arcade' || gameMode === 'precision') {
     return POINTS_PER_WORD + normalizeWord(word).length;
   }
 

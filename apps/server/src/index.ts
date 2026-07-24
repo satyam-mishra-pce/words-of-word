@@ -27,16 +27,20 @@ import {
   RoundResultPlayer,
   RoundStartedPayload,
   ServerAck,
+  ScoresUpdatedPayload,
   ServerToClientEvents,
   StartGamePayloadSchema,
   SubmitWordPayloadSchema,
+  UpdateTeamPayloadSchema,
   WordAcceptedPayload,
   WordRejectedPayload
 } from '@wow/shared';
 import {
   chooseSourceWord,
   createValidWords,
+  DUPLICATE_WORD_PENALTY,
   evaluateSubmission,
+  REJECTED_WORD_PENALTY,
   scoreWord
 } from '@wow/game-engine';
 
@@ -44,6 +48,7 @@ const PORT = Number(process.env.PORT ?? 4000);
 const WEB_DIST_DIR = fileURLToPath(new URL('../../web/dist', import.meta.url));
 const WAIT_BETWEEN_ROUNDS_SECONDS = 10;
 const FASTEST_N_BONUS = 10;
+const TEAM_NAMES: Record<'red' | 'blue', string> = { red: 'Red Team', blue: 'Blue Team' };
 const EMPTY_ROOM_TTL_MS = 10 * 60 * 1000;
 const CATEGORY_WORDS: Record<string, string[]> = {
   genz: ['aesthetic', 'maincharacter', 'delulu', 'bussin', 'cringe', 'glowup', 'stan', 'vibing', 'rizzler', 'brainrot'],
@@ -78,6 +83,7 @@ interface InternalRoom {
   currentRound: number;
   validWords: Set<string>;
   acceptedWords: Map<string, Set<string>>;
+  roundPenalties: Map<string, number>;
   tickTimer: NodeJS.Timeout | undefined;
   nextRoundTimer: NodeJS.Timeout | undefined;
   emptyCleanupTimer: NodeJS.Timeout | undefined;
@@ -259,6 +265,25 @@ class GameRoomManager {
     return undefined;
   }
 
+  private validateTeams(room: InternalRoom): string | undefined {
+    if (room.settings.gameMode !== 'teams') {
+      return undefined;
+    }
+
+    const teamsWithPlayers = new Set(room.players.map((player) => player.teamId));
+    if (!teamsWithPlayers.has('red') || !teamsWithPlayers.has('blue')) {
+      return 'Team mode needs at least one player on Red Team and one player on Blue Team.';
+    }
+
+    return undefined;
+  }
+
+  private defaultTeamId(room: InternalRoom): 'red' | 'blue' {
+    const redCount = room.players.filter((player) => player.teamId === 'red').length;
+    const blueCount = room.players.filter((player) => player.teamId === 'blue').length;
+    return redCount <= blueCount ? 'red' : 'blue';
+  }
+
   public findRoomIdForSocket(socketId: string): string | undefined {
     return this.socketToRoom.get(socketId);
   }
@@ -278,7 +303,8 @@ class GameRoomManager {
       id: socketId,
       name: username,
       score: 0,
-      isHost: true
+      isHost: true,
+      ...(settings.gameMode === 'teams' ? { teamId: 'red' as const } : {})
     };
 
     const room: InternalRoom = {
@@ -292,6 +318,7 @@ class GameRoomManager {
       currentRound: 0,
       validWords: new Set<string>(),
       acceptedWords: new Map([[socketId, new Set<string>()]]),
+      roundPenalties: new Map([[socketId, 0]]),
       tickTimer: undefined,
       nextRoundTimer: undefined,
       emptyCleanupTimer: undefined,
@@ -342,7 +369,8 @@ class GameRoomManager {
       id: socketId,
       name: username,
       score: 0,
-      isHost: isFirstPlayerBack
+      isHost: isFirstPlayerBack,
+      ...(room.settings.gameMode === 'teams' ? { teamId: this.defaultTeamId(room) } : {})
     };
 
     if (isFirstPlayerBack) {
@@ -351,10 +379,35 @@ class GameRoomManager {
 
     room.players.push(player);
     room.acceptedWords.set(socketId, new Set<string>());
+    room.roundPenalties.set(socketId, 0);
     this.socketToRoom.set(socketId, roomId);
     this.analytics.recordRoomJoined(socketId, username, roomId);
 
     return { ok: true, data: { snapshot: this.toSnapshot(room), player } };
+  }
+
+  public updateTeam(socketId: string, roomId: string, teamId: 'red' | 'blue'): ManagerResult<EmptyResult> {
+    const room = this.rooms.get(roomId);
+    if (!room) {
+      return { ok: false, error: 'Room not found.' };
+    }
+
+    if (room.settings.gameMode !== 'teams') {
+      return { ok: false, error: 'Teams are only available in Team mode.' };
+    }
+
+    if (room.phase !== 'lobby' && room.phase !== 'gameOver') {
+      return { ok: false, error: 'Teams are locked once the game starts.' };
+    }
+
+    const player = room.players.find((candidate) => candidate.id === socketId);
+    if (!player) {
+      return { ok: false, error: 'Player not found in this room.' };
+    }
+
+    player.teamId = teamId;
+    this.io.to(room.id).emit('roomSnapshot', { snapshot: this.toSnapshot(room) });
+    return { ok: true, data: { ok: true } };
   }
 
   public removePlayer(socketId: string): ManagerResult<{ roomId: string; snapshot: RoomSnapshot | undefined; hostChanged: boolean }> {
@@ -373,6 +426,7 @@ class GameRoomManager {
     const wasHost = room.hostId === socketId;
     room.players = room.players.filter((player) => player.id !== socketId);
     room.acceptedWords.delete(socketId);
+    room.roundPenalties.delete(socketId);
 
     if (room.players.length === 0) {
       this.clearTickTimer(room);
@@ -387,6 +441,7 @@ class GameRoomManager {
       room.waitingSeconds = 0;
       room.validWords.clear();
       room.acceptedWords.clear();
+      room.roundPenalties.clear();
       room.emptyCleanupTimer = setTimeout(() => {
         this.clearTimers(room);
         this.rooms.delete(roomId);
@@ -427,6 +482,11 @@ class GameRoomManager {
 
     if (room.phase === 'round' || room.phase === 'betweenRounds') {
       return { ok: false, error: 'A game is already in progress.' };
+    }
+
+    const teamsError = this.validateTeams(room);
+    if (teamsError) {
+      return { ok: false, error: teamsError };
     }
 
     const battleRoyaleError = this.validateBattleRoyale(room.settings, room.players.length);
@@ -473,18 +533,22 @@ class GameRoomManager {
 
     const evaluation = evaluateSubmission(submittedWord, room.validWords, playerWords);
     if (!evaluation.isValid) {
+      const penalty = this.applyPrecisionPenalty(room, player, playerWords.has(evaluation.normalizedWord) ? DUPLICATE_WORD_PENALTY : REJECTED_WORD_PENALTY);
       this.io.to(socketId).emit('wordRejected', {
         word: submittedWord,
-        message: evaluation.message
+        message: penalty < 0 ? `${evaluation.message} (${penalty} pts)` : evaluation.message
       } satisfies WordRejectedPayload);
+      this.emitScoresUpdated(room);
       return { ok: true, data: { ok: true } };
     }
 
     if (room.settings.gameMode === 'oneWordForAll' && this.wordWasTakenByAnotherPlayer(room, socketId, evaluation.normalizedWord)) {
+      const penalty = this.applyPrecisionPenalty(room, player, DUPLICATE_WORD_PENALTY);
       this.io.to(socketId).emit('wordRejected', {
         word: submittedWord,
-        message: 'That word was already made by someone else.'
+        message: penalty < 0 ? `That word was already made by someone else. (${penalty} pts)` : 'That word was already made by someone else.'
       } satisfies WordRejectedPayload);
+      this.emitScoresUpdated(room);
       return { ok: true, data: { ok: true } };
     }
 
@@ -499,6 +563,7 @@ class GameRoomManager {
       message: evaluation.message,
       score: player.score
     } satisfies WordAcceptedPayload);
+    this.emitScoresUpdated(room);
 
     if (room.settings.gameMode === 'fastestNWords' && playerWords.size >= room.settings.fastestWordTarget) {
       player.score += FASTEST_N_BONUS;
@@ -562,6 +627,7 @@ class GameRoomManager {
     room.validWords = createValidWords(room.currentWord, this.dictionary);
     room.waitingSeconds = 0;
     room.acceptedWords = this.emptyAcceptedWords(room);
+    room.roundPenalties = this.emptyRoundPenalties(room);
 
     this.io.to(room.id).emit('roundStarted', {
       currentWord: room.currentWord,
@@ -669,6 +735,7 @@ class GameRoomManager {
       isEliminated: false
     }));
     room.acceptedWords = this.emptyAcceptedWords(room);
+    room.roundPenalties = this.emptyRoundPenalties(room);
   }
 
   private emptyAcceptedWords(room: InternalRoom): Map<string, Set<string>> {
@@ -677,6 +744,27 @@ class GameRoomManager {
       acceptedWords.set(player.id, new Set<string>());
     }
     return acceptedWords;
+  }
+
+  private emptyRoundPenalties(room: InternalRoom): Map<string, number> {
+    return new Map(room.players.map((player) => [player.id, 0]));
+  }
+
+  private applyPrecisionPenalty(room: InternalRoom, player: Player, penalty: number): number {
+    if (room.settings.gameMode !== 'precision') {
+      return 0;
+    }
+
+    player.score += penalty;
+    room.roundPenalties.set(player.id, (room.roundPenalties.get(player.id) ?? 0) + penalty);
+    return penalty;
+  }
+
+  private emitScoresUpdated(room: InternalRoom): void {
+    this.io.to(room.id).emit('scoresUpdated', {
+      scores: this.scoreEntries(room),
+      snapshot: this.toSnapshot(room)
+    } satisfies ScoresUpdatedPayload);
   }
 
   private wordWasTakenByAnotherPlayer(room: InternalRoom, playerId: string, word: string): boolean {
@@ -735,8 +823,25 @@ class GameRoomManager {
       currentRound: room.currentRound,
       totalRounds: room.settings.rounds,
       acceptedWords: this.acceptedWordsRecord(room),
+      teamScores: this.teamScores(room),
       waitingSeconds: room.waitingSeconds
     };
+  }
+
+  private teamScores(room: InternalRoom): RoomSnapshot['teamScores'] {
+    if (room.settings.gameMode !== 'teams') {
+      return [];
+    }
+
+    return (['red', 'blue'] as const).map((teamId) => {
+      const players = room.players.filter((player) => player.teamId === teamId);
+      return {
+        teamId,
+        teamName: TEAM_NAMES[teamId],
+        score: players.reduce((total, player) => total + player.score, 0),
+        players: players.map((player) => player.id)
+      };
+    });
   }
 
   private roundResults(room: InternalRoom, playerWords: Record<string, string[]>): RoundResultPlayer[] {
@@ -747,10 +852,14 @@ class GameRoomManager {
         ? FASTEST_N_BONUS
         : 0;
 
+      const precisionPenalty = room.settings.gameMode === 'precision'
+        ? room.roundPenalties.get(player.id) ?? 0
+        : 0;
+
       return {
         playerId: player.id,
         playerName: player.name,
-        score: wordScore + fastestBonus,
+        score: wordScore + fastestBonus + precisionPenalty,
         words
       };
     });
@@ -951,6 +1060,17 @@ io.on('connection', (socket) => {
     } satisfies PlayerJoinedPayload);
     socket.emit('roomSnapshot', { snapshot: result.data.snapshot });
     reply(ack, { ok: true, data: { snapshot: result.data.snapshot } });
+  });
+
+  socket.on('updateTeam', (payload, ack) => {
+    const parsed = UpdateTeamPayloadSchema.safeParse(payload);
+    if (!parsed.success) {
+      reply(ack, { ok: false, error: validationMessage(parsed.error.message) });
+      return;
+    }
+
+    const result = manager.updateTeam(socket.id, parsed.data.roomId, parsed.data.teamId);
+    reply(ack, result);
   });
 
   socket.on('startGame', (payload, ack) => {

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Alert, Button } from '../components/ui';
 
 const FLOAT_CHARS = ['W', 'O', 'R', 'D', 'S', '?'];
-const GAME_URL = 'https://words-of-word.onrender.com/';
+const GAME_URL = '/';
 
 const socialLinks = [
   { label: 'LinkedIn', href: 'https://www.linkedin.com/in/harshit-sharma-55ab311a5' },
@@ -24,6 +24,8 @@ const waysToPlay = [
 const gameModes = [
   { title: 'Classic', video: '/media/mode-classic.mp4', poster: '/media/classic-preview.png', copy: 'Standard Words of Word rules: every accepted word gives a clean 3 points.' },
   { title: 'Score Attack', video: '/media/mode-score-attack.mp4', poster: '/media/arcade-preview.png', copy: 'Every word gives base points plus a length bonus, so bigger discoveries matter more.' },
+  { title: 'Precision', video: '/media/mode-score-attack.mp4', poster: '/media/arcade-preview.png', copy: 'Accepted words score 3 plus word length, but bad guesses lose points. Accuracy matters.' },
+  { title: 'Teams', video: '/media/mode-classic.mp4', poster: '/media/classic-preview.png', copy: 'Join Red or Blue before the match, then chase a cumulative team score while individual scores remain visible.' },
   { title: 'Word Sprint', video: '/media/mode-word-sprint.mp4', poster: '/media/word-sprint-preview.png', copy: 'First player to hit the target word count ends the round and earns a bonus.' },
   { title: 'Knockout', video: '/media/mode-knockout.mp4', poster: '/media/knockout-preview.png', copy: 'Lowest scoring players are eliminated round by round until a final winner emerges.' },
   { title: 'Blind Type', video: '/media/mode-blind-type.mp4', poster: '/media/blind-type-preview.png', copy: 'Your typed word stays hidden until submission, making accuracy and memory more intense.' },
