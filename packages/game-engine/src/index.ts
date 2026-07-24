@@ -7,8 +7,7 @@ export interface WordSubmissionEvaluation {
 }
 
 export const POINTS_PER_WORD = 3;
-export const REJECTED_WORD_PENALTY = -2;
-export const DUPLICATE_WORD_PENALTY = -1;
+export const DUPLICATE_WORD_PENALTY = -3;
 
 export function normalizeWord(word: string): string {
   return word.trim().toLowerCase();

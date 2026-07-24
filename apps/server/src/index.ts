@@ -40,7 +40,6 @@ import {
   createValidWords,
   DUPLICATE_WORD_PENALTY,
   evaluateSubmission,
-  REJECTED_WORD_PENALTY,
   scoreWord
 } from '@wow/game-engine';
 
@@ -533,7 +532,7 @@ class GameRoomManager {
 
     const evaluation = evaluateSubmission(submittedWord, room.validWords, playerWords);
     if (!evaluation.isValid) {
-      const penalty = this.applyPrecisionPenalty(room, player, playerWords.has(evaluation.normalizedWord) ? DUPLICATE_WORD_PENALTY : REJECTED_WORD_PENALTY);
+      const penalty = this.applyPrecisionPenalty(room, player, playerWords.has(evaluation.normalizedWord) ? DUPLICATE_WORD_PENALTY : -scoreWord(evaluation.normalizedWord, 'precision'));
       this.io.to(socketId).emit('wordRejected', {
         word: submittedWord,
         message: penalty < 0 ? `${evaluation.message} (${penalty} pts)` : evaluation.message
