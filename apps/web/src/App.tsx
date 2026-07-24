@@ -1,6 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import DailyWordPage from './pages/DailyWordPage';
-import GameHomePage from './pages/GameHomePage';
 import HomePage from './pages/HomePage';
 import JoinPage from './pages/JoinPage';
 import RoomPage from './pages/RoomPage';
@@ -12,8 +11,7 @@ export default function App(): JSX.Element {
     <>
       <ThemeToggle />
       <Routes>
-        <Route path="/" element={<GameHomePage />} />
-        <Route path="/about" element={<HomePage />} />
+        <Route path="/" element={<HomePage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/daily" element={<DailyWordPage />} />
         <Route path="/join" element={<JoinPage />} />
