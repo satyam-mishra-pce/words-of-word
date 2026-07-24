@@ -6,3 +6,7 @@ build
 .DS_Store
 .turbo
 coverage
+.vercel
+.pi-run
+pics and videos
+apps/web/public/.DS_Store

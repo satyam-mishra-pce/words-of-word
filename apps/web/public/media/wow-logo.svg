@@ -1,0 +1,8 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="256" height="256" fill="#111111"/>
+  <rect x="12.5" y="12.5" width="231" height="231" rx="28" fill="#111111" stroke="#e2b714" stroke-opacity="0.11"/>
+  <text x="128" y="51" text-anchor="middle" font-family="JetBrains Mono, Menlo, monospace" font-size="9" font-weight="500" letter-spacing="2" fill="#646669">word battle</text>
+  <text x="128" y="135" text-anchor="middle" font-family="JetBrains Mono, Menlo, monospace" font-size="54" font-weight="900" letter-spacing="-3" fill="#e2b714" stroke="#e2b714" stroke-width="1.2">W.o.W</text>
+  <rect x="81" y="151" width="94" height="4" rx="2" fill="#e2b714"/>
+  <text x="128" y="187" text-anchor="middle" font-family="JetBrains Mono, Menlo, monospace" font-size="17" font-weight="500" letter-spacing="-1" fill="#d1d0c5">words of word</text>
+</svg>

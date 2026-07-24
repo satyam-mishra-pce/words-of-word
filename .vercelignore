@@ -1,0 +1,12 @@
+node_modules
+**/node_modules
+pics and videos
+.pi-run
+.git
+apps/**/dist
+apps/**/.turbo
+packages/**/dist
+packages/**/.turbo
+.DS_Store
+*.log
+*.pid
