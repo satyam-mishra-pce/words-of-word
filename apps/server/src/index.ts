@@ -19,6 +19,7 @@ import {
   HostChangedPayload,
   JoinRoomPayloadSchema,
   Player,
+  PlayerBustedPayload,
   PlayerJoinedPayload,
   PlayerLeftPayload,
   RestartGamePayloadSchema,
@@ -31,6 +32,8 @@ import {
   ServerToClientEvents,
   StartGamePayloadSchema,
   SubmitWordPayloadSchema,
+  UpdateBetPayloadSchema,
+  UpdateSettingsPayloadSchema,
   UpdateTeamPayloadSchema,
   WordAcceptedPayload,
   WordRejectedPayload
@@ -40,13 +43,19 @@ import {
   createValidWords,
   DUPLICATE_WORD_PENALTY,
   evaluateSubmission,
+  POINTS_PER_WORD,
   scoreWord
 } from '@wow/game-engine';
 
 const PORT = Number(process.env.PORT ?? 4000);
 const WEB_DIST_DIR = fileURLToPath(new URL('../../web/dist', import.meta.url));
 const WAIT_BETWEEN_ROUNDS_SECONDS = 10;
+const BETTING_SECONDS = 15;
 const FASTEST_N_BONUS = 10;
+const BETTING_BASE_POINTS = 10;
+const BETTING_EXTRA_WORD_POINTS = 3;
+const COMMON_RARE_WORD_POINTS = 5;
+const COMMON_RARE_WORD_MIN_LENGTH = 5;
 const TEAM_NAMES: Record<'red' | 'blue', string> = { red: 'Red Team', blue: 'Blue Team' };
 const EMPTY_ROOM_TTL_MS = 10 * 60 * 1000;
 const CATEGORY_WORDS: Record<string, string[]> = {
@@ -83,6 +92,11 @@ interface InternalRoom {
   validWords: Set<string>;
   acceptedWords: Map<string, Set<string>>;
   roundPenalties: Map<string, number>;
+  negativeWords: Map<string, Array<{ word: string; penalty: number }>>;
+  bustWords: Map<string, string>;
+  bustedPlayers: Set<string>;
+  currentBets: Map<string, number>;
+  bettingWordCounts: Map<string, number[]>;
   tickTimer: NodeJS.Timeout | undefined;
   nextRoundTimer: NodeJS.Timeout | undefined;
   emptyCleanupTimer: NodeJS.Timeout | undefined;
@@ -318,6 +332,11 @@ class GameRoomManager {
       validWords: new Set<string>(),
       acceptedWords: new Map([[socketId, new Set<string>()]]),
       roundPenalties: new Map([[socketId, 0]]),
+      negativeWords: new Map([[socketId, []]]),
+      bustWords: new Map<string, string>(),
+      bustedPlayers: new Set<string>(),
+      currentBets: new Map<string, number>(),
+      bettingWordCounts: new Map([[socketId, []]]),
       tickTimer: undefined,
       nextRoundTimer: undefined,
       emptyCleanupTimer: undefined,
@@ -354,8 +373,8 @@ class GameRoomManager {
       return { ok: false, error: 'Room is full.' };
     }
 
-    if (room.phase !== 'lobby') {
-      return { ok: false, error: 'This game has already started.' };
+    if (room.phase === 'gameOver') {
+      return { ok: false, error: 'This game has ended.' };
     }
 
     if (room.emptyCleanupTimer) {
@@ -377,8 +396,15 @@ class GameRoomManager {
     }
 
     room.players.push(player);
-    room.acceptedWords.set(socketId, new Set<string>());
-    room.roundPenalties.set(socketId, 0);
+    // Players who join during an active round are added to the room immediately,
+    // but they start participating from the next round. Not adding them to
+    // acceptedWords marks them as a non-participant for the current round.
+    if (room.phase !== 'round') {
+      room.acceptedWords.set(socketId, new Set<string>());
+      room.roundPenalties.set(socketId, 0);
+      room.negativeWords.set(socketId, []);
+    }
+    room.bettingWordCounts.set(socketId, []);
     this.socketToRoom.set(socketId, roomId);
     this.analytics.recordRoomJoined(socketId, username, roomId);
 
@@ -395,7 +421,7 @@ class GameRoomManager {
       return { ok: false, error: 'Teams are only available in Team mode.' };
     }
 
-    if (room.phase !== 'lobby' && room.phase !== 'gameOver') {
+    if (room.phase !== 'lobby') {
       return { ok: false, error: 'Teams are locked once the game starts.' };
     }
 
@@ -406,6 +432,90 @@ class GameRoomManager {
 
     player.teamId = teamId;
     this.io.to(room.id).emit('roomSnapshot', { snapshot: this.toSnapshot(room) });
+    return { ok: true, data: { ok: true } };
+  }
+
+  public updateSettings(socketId: string, roomId: string, settings: GameSettings): ManagerResult<EmptyResult> {
+    const room = this.rooms.get(roomId);
+    if (!room) {
+      return { ok: false, error: 'Room not found.' };
+    }
+
+    if (room.hostId !== socketId) {
+      return { ok: false, error: 'Only the host can change settings.' };
+    }
+
+    if (room.phase !== 'lobby' && room.phase !== 'gameOver') {
+      return { ok: false, error: 'Settings can only be changed before a game or after it ends.' };
+    }
+
+    if (settings.maxPlayers < room.players.length) {
+      return { ok: false, error: `Max players cannot be lower than the ${room.players.length} players already in the room.` };
+    }
+
+    const battleRoyaleError = this.validateBattleRoyale(settings, room.players.length);
+    if (battleRoyaleError) {
+      return { ok: false, error: battleRoyaleError };
+    }
+
+    room.settings = settings;
+    room.phase = 'lobby';
+    room.timeLeft = settings.timePerRound;
+    room.currentRound = 0;
+    room.currentWord = '';
+    room.validWords = new Set<string>();
+    room.waitingSeconds = 0;
+    room.players = room.players.map((player, index) => {
+      const { teamId: _teamId, ...rest } = player;
+      return {
+        ...rest,
+        score: 0,
+        isEliminated: false,
+        isHost: player.id === room.hostId,
+        ...(settings.gameMode === 'teams'
+          ? { teamId: player.teamId ?? (index % 2 === 0 ? 'red' as const : 'blue' as const) }
+          : {})
+      };
+    });
+    this.resetScores(room);
+
+    this.io.to(room.id).emit('roomSnapshot', { snapshot: this.toSnapshot(room) });
+    this.io.to(room.id).emit('notice', { message: 'Settings updated by the host.' });
+    return { ok: true, data: { ok: true } };
+  }
+
+  public updateBet(socketId: string, roomId: string, bet: number): ManagerResult<EmptyResult> {
+    const room = this.rooms.get(roomId);
+    if (!room) {
+      return { ok: false, error: 'Room not found.' };
+    }
+
+    if (room.settings.gameMode !== 'betting') {
+      return { ok: false, error: 'Bets are only available in Betting mode.' };
+    }
+
+    if (room.phase !== 'betting') {
+      return { ok: false, error: 'Betting is not open right now.' };
+    }
+
+    const player = room.players.find((candidate) => candidate.id === socketId);
+    if (!player || player.isEliminated) {
+      return { ok: false, error: 'Player not found in this room.' };
+    }
+
+    const minimumBet = this.minimumBetFor(room, socketId);
+    if (bet < minimumBet) {
+      return { ok: false, error: `Your minimum bet is ${minimumBet} word${minimumBet !== 1 ? 's' : ''}.` };
+    }
+
+    room.currentBets.set(socketId, bet);
+    this.io.to(room.id).emit('roomSnapshot', { snapshot: this.toSnapshot(room) });
+
+    if (this.allActivePlayersBet(room)) {
+      this.io.to(room.id).emit('notice', { message: 'All bets are locked. Revealing the word!' });
+      setTimeout(() => this.startRound(room), 500);
+    }
+
     return { ok: true, data: { ok: true } };
   }
 
@@ -426,6 +536,9 @@ class GameRoomManager {
     room.players = room.players.filter((player) => player.id !== socketId);
     room.acceptedWords.delete(socketId);
     room.roundPenalties.delete(socketId);
+    room.negativeWords.delete(socketId);
+    room.bustWords.delete(socketId);
+    room.bustedPlayers.delete(socketId);
 
     if (room.players.length === 0) {
       this.clearTickTimer(room);
@@ -441,6 +554,9 @@ class GameRoomManager {
       room.validWords.clear();
       room.acceptedWords.clear();
       room.roundPenalties.clear();
+      room.negativeWords.clear();
+      room.bustWords.clear();
+      room.bustedPlayers.clear();
       room.emptyCleanupTimer = setTimeout(() => {
         this.clearTimers(room);
         this.rooms.delete(roomId);
@@ -495,7 +611,11 @@ class GameRoomManager {
 
     this.resetScores(room);
     this.analytics.recordGameStarted(room);
-    this.startRound(room);
+    if (room.settings.gameMode === 'betting') {
+      this.startBetting(room);
+    } else {
+      this.startRound(room);
+    }
 
     return { ok: true, data: { ok: true } };
   }
@@ -527,39 +647,69 @@ class GameRoomManager {
       return { ok: true, data: { ok: true } };
     }
 
-    const playerWords = room.acceptedWords.get(socketId) ?? new Set<string>();
-    room.acceptedWords.set(socketId, playerWords);
+    if (room.settings.gameMode === 'busted' && room.bustedPlayers.has(socketId)) {
+      this.io.to(socketId).emit('wordRejected', {
+        word: submittedWord,
+        message: 'You are busted for this round.'
+      } satisfies WordRejectedPayload);
+      return { ok: true, data: { ok: true } };
+    }
+
+    const playerWords = room.acceptedWords.get(socketId);
+    if (!playerWords) {
+      this.io.to(socketId).emit('wordRejected', {
+        word: submittedWord,
+        message: 'You joined during this round and will play from the next round.'
+      } satisfies WordRejectedPayload);
+      return { ok: true, data: { ok: true } };
+    }
 
     const evaluation = evaluateSubmission(submittedWord, room.validWords, playerWords);
     if (!evaluation.isValid) {
-      const penalty = this.applyPrecisionPenalty(room, player, playerWords.has(evaluation.normalizedWord) ? DUPLICATE_WORD_PENALTY : -scoreWord(evaluation.normalizedWord, 'precision'));
+      const penalty = this.applyPrecisionPenalty(room, player, evaluation.normalizedWord || submittedWord, playerWords.has(evaluation.normalizedWord) ? DUPLICATE_WORD_PENALTY : -scoreWord(evaluation.normalizedWord, 'precision'));
       this.io.to(socketId).emit('wordRejected', {
         word: submittedWord,
-        message: penalty < 0 ? `${evaluation.message} (${penalty} pts)` : evaluation.message
+        message: penalty < 0 ? `${evaluation.message} (${penalty} pts)` : evaluation.message,
+        ...(penalty < 0 ? { penalty } : {})
       } satisfies WordRejectedPayload);
       this.emitScoresUpdated(room);
       return { ok: true, data: { ok: true } };
     }
 
     if (room.settings.gameMode === 'oneWordForAll' && this.wordWasTakenByAnotherPlayer(room, socketId, evaluation.normalizedWord)) {
-      const penalty = this.applyPrecisionPenalty(room, player, DUPLICATE_WORD_PENALTY);
+      const penalty = this.applyPrecisionPenalty(room, player, evaluation.normalizedWord, DUPLICATE_WORD_PENALTY);
       this.io.to(socketId).emit('wordRejected', {
         word: submittedWord,
-        message: penalty < 0 ? `That word was already made by someone else. (${penalty} pts)` : 'That word was already made by someone else.'
+        message: penalty < 0 ? `That word was already made by someone else. (${penalty} pts)` : 'That word was already made by someone else.',
+        ...(penalty < 0 ? { penalty } : {})
       } satisfies WordRejectedPayload);
       this.emitScoresUpdated(room);
       return { ok: true, data: { ok: true } };
     }
 
+    if (room.settings.gameMode === 'busted') {
+      if (!room.bustWords.has(socketId)) {
+        room.bustWords.set(socketId, evaluation.normalizedWord);
+      } else if (this.wordBustsPlayer(room, socketId, evaluation.normalizedWord)) {
+        this.bustPlayer(room, player, evaluation.normalizedWord);
+        return { ok: true, data: { ok: true } };
+      }
+    }
+
     playerWords.add(evaluation.normalizedWord);
-    player.score += scoreWord(evaluation.normalizedWord, room.settings.gameMode);
+    const acceptedMessage = room.settings.gameMode === 'commonWord'
+      ? this.applyCommonWordScore(room, player, evaluation.normalizedWord)
+      : evaluation.message;
+    if (room.settings.gameMode !== 'betting' && room.settings.gameMode !== 'commonWord') {
+      player.score += scoreWord(evaluation.normalizedWord, room.settings.gameMode);
+    }
     this.analytics.recordWordAccepted(room, socketId);
 
     this.io.to(socketId).emit('wordAccepted', {
       playerId: socketId,
       word: evaluation.normalizedWord,
       words: Array.from(playerWords).sort(),
-      message: evaluation.message,
+      message: acceptedMessage,
       score: player.score
     } satisfies WordAcceptedPayload);
     this.emitScoresUpdated(room);
@@ -583,6 +733,20 @@ class GameRoomManager {
       return { ok: false, error: 'Only the host can restart the game.' };
     }
 
+    if (autoStart) {
+      if (room.players.length < 2) {
+        return { ok: false, error: 'At least two players are required.' };
+      }
+      const teamsError = this.validateTeams(room);
+      if (teamsError) {
+        return { ok: false, error: teamsError };
+      }
+      const battleRoyaleError = this.validateBattleRoyale(room.settings, room.players.length);
+      if (battleRoyaleError) {
+        return { ok: false, error: battleRoyaleError };
+      }
+    }
+
     this.clearTimers(room);
     this.resetScores(room);
     room.phase = 'lobby';
@@ -598,10 +762,92 @@ class GameRoomManager {
     } satisfies GameRestartedPayload);
 
     if (autoStart && room.players.length >= 2) {
-      setTimeout(() => this.startRound(room), 500);
+      setTimeout(() => {
+        if (room.settings.gameMode === 'betting') {
+          this.startBetting(room);
+        } else {
+          this.startRound(room);
+        }
+      }, 500);
     }
 
     return { ok: true, data: { ok: true } };
+  }
+
+  private recentAverageWordsFor(room: InternalRoom, playerId: string): number {
+    const counts = room.bettingWordCounts.get(playerId) ?? [];
+    if (counts.length === 0) {
+      return 0;
+    }
+
+    const recentCounts = counts.slice(-2);
+    return recentCounts.reduce((total, count) => total + count, 0) / recentCounts.length;
+  }
+
+  private minimumBetFor(room: InternalRoom, playerId: string): number {
+    const average = this.recentAverageWordsFor(room, playerId);
+    if (average <= 0) {
+      return 3;
+    }
+
+    return Math.max(3, Math.floor(average) + 1);
+  }
+
+  private allActivePlayersBet(room: InternalRoom): boolean {
+    return this.activePlayers(room).every((player) => room.currentBets.has(player.id));
+  }
+
+  private automaticBetFor(room: InternalRoom, playerId: string): number {
+    return this.minimumBetFor(room, playerId);
+  }
+
+  private lockMissingBets(room: InternalRoom): void {
+    for (const player of this.activePlayers(room)) {
+      if (!room.currentBets.has(player.id)) {
+        room.currentBets.set(player.id, this.automaticBetFor(room, player.id));
+      }
+    }
+  }
+
+  private startBetting(room: InternalRoom): void {
+    this.clearTimers(room);
+
+    if (room.currentRound >= room.settings.rounds) {
+      this.finishGame(room);
+      return;
+    }
+
+    room.phase = 'betting';
+    room.currentWord = '';
+    room.timeLeft = BETTING_SECONDS;
+    room.validWords = new Set<string>();
+    room.waitingSeconds = 0;
+    room.currentBets = new Map<string, number>();
+    room.acceptedWords = this.emptyAcceptedWords(room);
+    room.roundPenalties = this.emptyRoundPenalties(room);
+    room.negativeWords = this.emptyNegativeWords(room);
+    room.bustWords = new Map<string, string>();
+    room.bustedPlayers = new Set<string>();
+
+    this.io.to(room.id).emit('roomSnapshot', { snapshot: this.toSnapshot(room) });
+    this.io.to(room.id).emit('notice', { message: `Place your bet for round ${room.currentRound + 1}. You have ${BETTING_SECONDS} seconds.` });
+
+    room.tickTimer = setInterval(() => {
+      if (room.phase !== 'betting') {
+        this.clearTickTimer(room);
+        return;
+      }
+
+      room.timeLeft -= 1;
+      this.io.to(room.id).emit('timeUpdate', { timeLeft: room.timeLeft });
+
+      if (room.timeLeft <= 0) {
+        this.lockMissingBets(room);
+        this.io.to(room.id).emit('roomSnapshot', { snapshot: this.toSnapshot(room) });
+        this.io.to(room.id).emit('notice', { message: 'Time up. Missing bets were locked automatically.' });
+        setTimeout(() => this.startRound(room), 500);
+      }
+    }, 1000);
   }
 
   private startRound(room: InternalRoom): void {
@@ -627,6 +873,9 @@ class GameRoomManager {
     room.waitingSeconds = 0;
     room.acceptedWords = this.emptyAcceptedWords(room);
     room.roundPenalties = this.emptyRoundPenalties(room);
+    room.negativeWords = this.emptyNegativeWords(room);
+    room.bustWords = new Map<string, string>();
+    room.bustedPlayers = new Set<string>();
 
     this.io.to(room.id).emit('roundStarted', {
       currentWord: room.currentWord,
@@ -655,6 +904,9 @@ class GameRoomManager {
     this.clearTickTimer(room);
 
     const playerWords = this.acceptedWordsRecord(room);
+    if (room.settings.gameMode === 'betting') {
+      this.applyBettingScores(room, playerWords);
+    }
     const results = this.roundResults(room, playerWords);
 
     if (room.settings.gameMode === 'battleRoyale') {
@@ -690,7 +942,11 @@ class GameRoomManager {
 
     room.nextRoundTimer = setTimeout(() => {
       room.waitingSeconds = 0;
-      this.startRound(room);
+      if (room.settings.gameMode === 'betting') {
+        this.startBetting(room);
+      } else {
+        this.startRound(room);
+      }
     }, WAIT_BETWEEN_ROUNDS_SECONDS * 1000);
   }
 
@@ -735,6 +991,11 @@ class GameRoomManager {
     }));
     room.acceptedWords = this.emptyAcceptedWords(room);
     room.roundPenalties = this.emptyRoundPenalties(room);
+    room.negativeWords = this.emptyNegativeWords(room);
+    room.bustWords = new Map<string, string>();
+    room.bustedPlayers = new Set<string>();
+    room.currentBets = new Map<string, number>();
+    room.bettingWordCounts = new Map(room.players.map((player) => [player.id, []]));
   }
 
   private emptyAcceptedWords(room: InternalRoom): Map<string, Set<string>> {
@@ -749,13 +1010,19 @@ class GameRoomManager {
     return new Map(room.players.map((player) => [player.id, 0]));
   }
 
-  private applyPrecisionPenalty(room: InternalRoom, player: Player, penalty: number): number {
+  private emptyNegativeWords(room: InternalRoom): Map<string, Array<{ word: string; penalty: number }>> {
+    return new Map(room.players.map((player) => [player.id, []]));
+  }
+
+  private applyPrecisionPenalty(room: InternalRoom, player: Player, word: string, penalty: number): number {
     if (room.settings.gameMode !== 'precision') {
       return 0;
     }
 
+    const normalizedWord = word.trim().toLowerCase() || word;
     player.score += penalty;
     room.roundPenalties.set(player.id, (room.roundPenalties.get(player.id) ?? 0) + penalty);
+    room.negativeWords.set(player.id, [...(room.negativeWords.get(player.id) ?? []), { word: normalizedWord, penalty }]);
     return penalty;
   }
 
@@ -775,8 +1042,69 @@ class GameRoomManager {
     return false;
   }
 
+  private applyCommonWordScore(room: InternalRoom, player: Player, word: string): string {
+    const matchingPlayers = room.players.filter((candidate) => candidate.id !== player.id && (room.acceptedWords.get(candidate.id) ?? new Set<string>()).has(word));
+    const uniquePoints = this.commonUniquePoints(word);
+
+    if (matchingPlayers.length === 0) {
+      player.score += uniquePoints;
+      return uniquePoints === COMMON_RARE_WORD_POINTS ? 'Rare unique word! +5 points' : 'Unique word! +3 points';
+    }
+
+    player.score += DUPLICATE_WORD_PENALTY;
+    room.negativeWords.set(player.id, [...(room.negativeWords.get(player.id) ?? []), { word, penalty: DUPLICATE_WORD_PENALTY }]);
+
+    for (const matchingPlayer of matchingPlayers) {
+      const negativeWords = room.negativeWords.get(matchingPlayer.id) ?? [];
+      if (!negativeWords.some((entry) => entry.word === word)) {
+        matchingPlayer.score -= uniquePoints - DUPLICATE_WORD_PENALTY;
+        room.negativeWords.set(matchingPlayer.id, [...negativeWords, { word, penalty: DUPLICATE_WORD_PENALTY }]);
+      }
+    }
+
+    const names = matchingPlayers.map((matchingPlayer) => matchingPlayer.name).join(', ');
+    this.io.to(room.id).emit('notice', { message: `Common word: "${word}" matched with ${names}. Everyone using it gets -3.` });
+    return 'Common word! -3 points';
+  }
+
+  private commonUniquePoints(word: string): number {
+    return word.length >= COMMON_RARE_WORD_MIN_LENGTH ? COMMON_RARE_WORD_POINTS : POINTS_PER_WORD;
+  }
+
+  private wordBustsPlayer(room: InternalRoom, playerId: string, word: string): boolean {
+    const playerBustWord = room.bustWords.get(playerId);
+    if (playerBustWord === word) {
+      return false;
+    }
+
+    for (const [ownerId, bustWord] of room.bustWords.entries()) {
+      if (ownerId !== playerId && bustWord === word) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private bustPlayer(room: InternalRoom, player: Player, word: string): void {
+    const playerWords = room.acceptedWords.get(player.id) ?? new Set<string>();
+    const roundScore = Array.from(playerWords).reduce((total, acceptedWord) => total + scoreWord(acceptedWord, room.settings.gameMode), 0);
+    player.score -= roundScore;
+    room.bustedPlayers.add(player.id);
+
+    const message = `💣 BOOM! ${player.name} is busted for typing "${word}".`;
+    this.io.to(room.id).emit('playerBusted', {
+      playerId: player.id,
+      playerName: player.name,
+      word,
+      message,
+      snapshot: this.toSnapshot(room)
+    } satisfies PlayerBustedPayload);
+    this.emitScoresUpdated(room);
+  }
+
   private eliminateLowestScorers(room: InternalRoom): void {
-    const activePlayers = this.activePlayers(room);
+    const activePlayers = this.activePlayers(room).filter((player) => room.acceptedWords.has(player.id));
     const eliminationCount = Math.min(room.settings.eliminationsPerRound, Math.max(0, activePlayers.length - 1));
     if (eliminationCount <= 0) {
       return;
@@ -823,7 +1151,12 @@ class GameRoomManager {
       totalRounds: room.settings.rounds,
       acceptedWords: this.acceptedWordsRecord(room),
       teamScores: this.teamScores(room),
-      waitingSeconds: room.waitingSeconds
+      bettingBets: Object.fromEntries(room.currentBets),
+      bettingAverages: Object.fromEntries(room.players.map((player) => [player.id, this.recentAverageWordsFor(room, player.id)])),
+      minimumBets: Object.fromEntries(room.players.map((player) => [player.id, this.minimumBetFor(room, player.id)])),
+      waitingSeconds: room.waitingSeconds,
+      bustWords: Object.fromEntries(room.bustWords),
+      bustedPlayers: Object.fromEntries(room.players.map((player) => [player.id, room.bustedPlayers.has(player.id)]))
     };
   }
 
@@ -843,10 +1176,49 @@ class GameRoomManager {
     });
   }
 
+  private applyBettingScores(room: InternalRoom, playerWords: Record<string, string[]>): void {
+    for (const player of room.players) {
+      if (!room.acceptedWords.has(player.id)) {
+        continue;
+      }
+      const bet = room.currentBets.get(player.id) ?? this.minimumBetFor(room, player.id);
+      const actualWords = playerWords[player.id]?.length ?? 0;
+      const extraWords = Math.max(0, actualWords - bet);
+      const roundScore = actualWords >= bet
+        ? bet * BETTING_BASE_POINTS + extraWords * BETTING_EXTRA_WORD_POINTS
+        : -(bet * BETTING_BASE_POINTS);
+
+      player.score += roundScore;
+      const history = room.bettingWordCounts.get(player.id) ?? [];
+      history.push(actualWords);
+      room.bettingWordCounts.set(player.id, history);
+    }
+  }
+
   private roundResults(room: InternalRoom, playerWords: Record<string, string[]>): RoundResultPlayer[] {
+    const commonWordCounts = new Map<string, number>();
+    if (room.settings.gameMode === 'commonWord') {
+      for (const words of Object.values(playerWords)) {
+        for (const word of words) {
+          commonWordCounts.set(word, (commonWordCounts.get(word) ?? 0) + 1);
+        }
+      }
+    }
+
     return room.players.map((player) => {
       const words = playerWords[player.id] ?? [];
-      const wordScore = words.reduce((total, word) => total + scoreWord(word, room.settings.gameMode), 0);
+      const participatedThisRound = room.acceptedWords.has(player.id);
+      const bet = room.currentBets.get(player.id) ?? this.minimumBetFor(room, player.id);
+      const wordScore = room.settings.gameMode === 'betting' && !participatedThisRound
+        ? 0
+        : room.settings.gameMode === 'betting'
+        ? words.length >= bet
+          ? bet * BETTING_BASE_POINTS + Math.max(0, words.length - bet) * BETTING_EXTRA_WORD_POINTS
+          : -(bet * BETTING_BASE_POINTS)
+        : room.settings.gameMode === 'commonWord'
+          ? words.reduce((total, word) => total + ((commonWordCounts.get(word) ?? 0) > 1 ? DUPLICATE_WORD_PENALTY : this.commonUniquePoints(word)), 0)
+          : words.reduce((total, word) => total + scoreWord(word, room.settings.gameMode), 0);
+      const bustedScoreOverride = room.settings.gameMode === 'busted' && room.bustedPlayers.has(player.id);
       const fastestBonus = room.settings.gameMode === 'fastestNWords' && words.length >= room.settings.fastestWordTarget
         ? FASTEST_N_BONUS
         : 0;
@@ -854,12 +1226,18 @@ class GameRoomManager {
       const precisionPenalty = room.settings.gameMode === 'precision'
         ? room.roundPenalties.get(player.id) ?? 0
         : 0;
+      const showNegativeWords = room.settings.gameMode === 'precision' || room.settings.gameMode === 'commonWord';
 
       return {
         playerId: player.id,
         playerName: player.name,
-        score: wordScore + fastestBonus + precisionPenalty,
-        words
+        score: bustedScoreOverride ? 0 : wordScore + fastestBonus + precisionPenalty,
+        words,
+        negativeWords: showNegativeWords ? room.negativeWords.get(player.id) ?? [] : [],
+        ...(room.settings.gameMode === 'betting' ? {
+          bettingBet: bet,
+          bettingHit: words.length >= bet
+        } : {})
       };
     });
   }
@@ -1069,6 +1447,28 @@ io.on('connection', (socket) => {
     }
 
     const result = manager.updateTeam(socket.id, parsed.data.roomId, parsed.data.teamId);
+    reply(ack, result);
+  });
+
+  socket.on('updateBet', (payload, ack) => {
+    const parsed = UpdateBetPayloadSchema.safeParse(payload);
+    if (!parsed.success) {
+      reply(ack, { ok: false, error: validationMessage(parsed.error.message) });
+      return;
+    }
+
+    const result = manager.updateBet(socket.id, parsed.data.roomId, parsed.data.bet);
+    reply(ack, result);
+  });
+
+  socket.on('updateSettings', (payload, ack) => {
+    const parsed = UpdateSettingsPayloadSchema.safeParse(payload);
+    if (!parsed.success) {
+      reply(ack, { ok: false, error: validationMessage(parsed.error.message) });
+      return;
+    }
+
+    const result = manager.updateSettings(socket.id, parsed.data.roomId, parsed.data.settings);
     reply(ack, result);
   });
 

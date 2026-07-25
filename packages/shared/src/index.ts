@@ -8,11 +8,15 @@ export const GameModeSchema = z.enum([
   'arcade',
   'precision',
   'teams',
+  'betting',
   'fastestNWords',
   'battleRoyale',
   'typist',
   'category',
-  'oneWordForAll'
+  'oneWordForAll',
+  'busted',
+  'commonWord',
+  'intuition'
 ]);
 
 export const WordCategorySchema = z.enum([
@@ -68,9 +72,19 @@ export const UpdateTeamPayloadSchema = z.object({
   teamId: z.enum(['red', 'blue'])
 });
 
+export const UpdateBetPayloadSchema = z.object({
+  roomId: RoomIdSchema,
+  bet: z.number().int().min(1).max(50)
+});
+
 export const RestartGamePayloadSchema = z.object({
   roomId: RoomIdSchema,
   autoStart: z.boolean().default(true)
+});
+
+export const UpdateSettingsPayloadSchema = z.object({
+  roomId: RoomIdSchema,
+  settings: GameSettingsSchema
 });
 
 export type GameMode = z.infer<typeof GameModeSchema>;
@@ -82,9 +96,11 @@ export type JoinRoomPayload = z.infer<typeof JoinRoomPayloadSchema>;
 export type StartGamePayload = z.infer<typeof StartGamePayloadSchema>;
 export type SubmitWordPayload = z.infer<typeof SubmitWordPayloadSchema>;
 export type UpdateTeamPayload = z.infer<typeof UpdateTeamPayloadSchema>;
+export type UpdateBetPayload = z.infer<typeof UpdateBetPayloadSchema>;
 export type RestartGamePayload = z.infer<typeof RestartGamePayloadSchema>;
+export type UpdateSettingsPayload = z.infer<typeof UpdateSettingsPayloadSchema>;
 
-export type RoomPhase = 'lobby' | 'round' | 'betweenRounds' | 'gameOver';
+export type RoomPhase = 'lobby' | 'betting' | 'round' | 'betweenRounds' | 'gameOver';
 
 export interface Player {
   id: string;
@@ -122,7 +138,17 @@ export interface RoomSnapshot {
   totalRounds: number;
   acceptedWords: Record<string, string[]>;
   teamScores: TeamScore[];
+  bettingBets: Record<string, number>;
+  bettingAverages: Record<string, number>;
+  minimumBets: Record<string, number>;
   waitingSeconds: number;
+  bustWords: Record<string, string>;
+  bustedPlayers: Record<string, boolean>;
+}
+
+export interface NegativeMarkedWord {
+  word: string;
+  penalty: number;
 }
 
 export interface RoundResultPlayer {
@@ -130,6 +156,9 @@ export interface RoundResultPlayer {
   playerName: string;
   score: number;
   words: string[];
+  negativeWords: NegativeMarkedWord[];
+  bettingBet?: number;
+  bettingHit?: boolean;
 }
 
 export interface FinalScore {
@@ -205,6 +234,7 @@ export interface WordAcceptedPayload {
 export interface WordRejectedPayload {
   word: string;
   message: string;
+  penalty?: number;
 }
 
 export interface ScoresUpdatedPayload {
@@ -242,6 +272,14 @@ export interface NoticePayload {
   message: string;
 }
 
+export interface PlayerBustedPayload {
+  playerId: string;
+  playerName: string;
+  word: string;
+  message: string;
+  snapshot: RoomSnapshot;
+}
+
 export interface ServerToClientEvents {
   roomSnapshot: (payload: RoomSnapshotPayload) => void;
   playerJoined: (payload: PlayerJoinedPayload) => void;
@@ -255,6 +293,7 @@ export interface ServerToClientEvents {
   roundEnded: (payload: RoundEndedPayload) => void;
   gameOver: (payload: GameOverPayload) => void;
   gameRestarted: (payload: GameRestartedPayload) => void;
+  playerBusted: (payload: PlayerBustedPayload) => void;
   notice: (payload: NoticePayload) => void;
 }
 
@@ -263,6 +302,8 @@ export interface ClientToServerEvents {
   checkRoom: (payload: CheckRoomPayload, ack?: Ack<CheckRoomResult>) => void;
   joinRoom: (payload: JoinRoomPayload, ack?: Ack<JoinRoomResult>) => void;
   updateTeam: (payload: UpdateTeamPayload, ack?: Ack<EmptyResult>) => void;
+  updateBet: (payload: UpdateBetPayload, ack?: Ack<EmptyResult>) => void;
+  updateSettings: (payload: UpdateSettingsPayload, ack?: Ack<EmptyResult>) => void;
   startGame: (payload: StartGamePayload, ack?: Ack<EmptyResult>) => void;
   submitWord: (payload: SubmitWordPayload, ack?: Ack<EmptyResult>) => void;
   restartGame: (payload: RestartGamePayload, ack?: Ack<EmptyResult>) => void;

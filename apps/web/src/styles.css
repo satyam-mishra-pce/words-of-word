@@ -777,6 +777,16 @@ p { margin-top: 0; }
   text-transform: lowercase;
 }
 .game-header__dot { color: var(--sub-2); flex-shrink: 0; }
+.game-header__mode {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--text);
+  background: var(--main-10);
+  border: 1px solid rgba(226, 183, 20, 0.25);
+  border-radius: 999px;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
 .game-header__count {
   font-size: 0.70rem;
   color: var(--sub);
@@ -906,6 +916,34 @@ p { margin-top: 0; }
   font-size: clamp(1.2rem,3.5vw,1.6rem);
   color: var(--sub-2);
   letter-spacing: 0.08em;
+}
+.current-word-text--intuition {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: clamp(4px,1vw,10px);
+  letter-spacing: 0;
+}
+.intuition-letter {
+  display: inline-grid;
+  place-items: center;
+  min-width: 0.9em;
+  transition: color 220ms ease, transform 220ms ease, opacity 220ms ease;
+}
+.intuition-letter.unlocked {
+  color: var(--main);
+  transform: translateY(0);
+}
+.intuition-letter.locked {
+  color: var(--sub-2);
+  opacity: 0.55;
+}
+.intuition-unlock-hint {
+  display: block;
+  margin-top: 16px;
+  color: var(--sub);
+  font-size: 0.76rem;
+  letter-spacing: 0.02em;
 }
 
 @keyframes word-entrance {
@@ -1108,6 +1146,23 @@ p { margin-top: 0; }
 }
 .rank-1 .standing-rank { color: var(--main); }
 .standing-name { font-weight: 400; font-size: 0.92rem; color: var(--text); }
+.standing-title {
+  margin-top: 3px;
+  font-size: 0.74rem;
+  color: var(--main);
+  font-weight: 600;
+}
+.standing-title-meaning {
+  margin-top: 2px;
+  font-size: 0.70rem;
+  color: var(--sub);
+  line-height: 1.35;
+}
+.player-awards {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--sub-2);
+}
 .standing-score {
   font: 600 1.0rem 'JetBrains Mono', monospace;
   color: var(--main);
@@ -2095,4 +2150,93 @@ p { margin-top: 0; }
   .play-panel,
   .press-panel,
   .creator-panel { margin-top: 54px; }
+}
+
+/* Busted mode blast */
+.bust-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  background: radial-gradient(circle at center, rgba(226,183,20,0.18), rgba(202,71,84,0.10) 28%, rgba(17,17,17,0) 62%);
+  animation: bust-screen-shake 0.62s linear both;
+}
+
+.bust-overlay.self {
+  background: radial-gradient(circle at center, rgba(202,71,84,0.28), rgba(226,183,20,0.12) 30%, rgba(17,17,17,0) 66%);
+}
+
+.bomb-blast {
+  position: absolute;
+  font-size: clamp(5rem, 18vw, 13rem);
+  filter: drop-shadow(0 0 42px rgba(226,183,20,0.55));
+  animation: bomb-pop 0.9s var(--ease-bounce) both;
+}
+
+.blast-ring {
+  position: absolute;
+  width: 26vmin;
+  aspect-ratio: 1;
+  border-radius: 999px;
+  border: 3px solid rgba(226,183,20,0.8);
+  box-shadow: 0 0 50px rgba(202,71,84,0.45), inset 0 0 30px rgba(226,183,20,0.25);
+  animation: blast-ring 1.15s ease-out both;
+}
+
+.bust-card {
+  margin-top: min(36vh, 270px);
+  padding: 18px 22px;
+  border: 1px solid rgba(226,183,20,0.45);
+  border-radius: var(--r-lg);
+  background: rgba(17,17,17,0.92);
+  text-align: center;
+  box-shadow: 0 20px 80px rgba(0,0,0,0.55);
+  animation: bust-card-in 0.34s 0.28s var(--ease-out) both;
+}
+
+.bust-title {
+  color: var(--main);
+  font-weight: 800;
+  font-size: clamp(1.6rem, 5vw, 3rem);
+  letter-spacing: -0.04em;
+}
+
+.bust-message {
+  color: var(--text);
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+.bust-word {
+  color: var(--sub);
+  font-size: 0.82rem;
+  margin-top: 6px;
+}
+
+@keyframes bomb-pop {
+  0% { transform: scale(0.25) rotate(-12deg); opacity: 0; }
+  35% { transform: scale(1.25) rotate(8deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0deg); opacity: 0; }
+}
+
+@keyframes blast-ring {
+  0% { transform: scale(0.25); opacity: 0; }
+  18% { opacity: 1; }
+  100% { transform: scale(4.2); opacity: 0; }
+}
+
+@keyframes bust-card-in {
+  from { transform: translateY(18px) scale(0.96); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+@keyframes bust-screen-shake {
+  0%, 100% { transform: translate(0, 0); }
+  15% { transform: translate(-5px, 3px); }
+  30% { transform: translate(4px, -4px); }
+  45% { transform: translate(-3px, -2px); }
+  60% { transform: translate(5px, 2px); }
+  75% { transform: translate(-2px, 4px); }
 }

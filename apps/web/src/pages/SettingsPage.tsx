@@ -22,11 +22,15 @@ const GAME_MODE_INFO: Array<{ value: GameSettings['gameMode']; label: string; de
   { value: 'arcade', label: 'Score Attack', description: 'Reward bigger finds: every word gives 3 points plus bonus points equal to word length.' },
   { value: 'precision', label: 'Precision', description: 'Accepted words score 3 plus word length, wrong words lose 3 plus word length, and duplicates lose 3 points.' },
   { value: 'teams', label: 'Teams', description: 'Players pick Red or Blue before the game. Team totals and individual scores are both shown.' },
+  { value: 'betting', label: 'Betting', description: 'Before each round, bet how many words you will make. Hit it for big points, miss it and lose the stake.' },
   { value: 'fastestNWords', label: 'Word Sprint', description: 'First player to reach the target word count ends the round and earns a 10 point bonus.' },
   { value: 'battleRoyale', label: 'Knockout', description: 'Lowest scoring players are eliminated after each round until a winner emerges.' },
   { value: 'typist', label: 'Blind Type', description: 'Your typed word stays hidden until you submit it.' },
   { value: 'category', label: 'Theme Challenge', description: 'Source words come from the selected theme or your custom list.' },
-  { value: 'oneWordForAll', label: 'Claim Mode', description: 'Once any player claims a word, no one else can use it.' }
+  { value: 'oneWordForAll', label: 'Claim Mode', description: 'Once any player claims a word, no one else can use it.' },
+  { value: 'busted', label: 'Busted Mode', description: 'Each player’s first word becomes their bust word. Type another player’s bust word and your round score explodes to 0. Matching first words are safe.' },
+  { value: 'commonWord', label: 'Common Word', description: 'Unique words score +3, rare unique words with 5+ letters score +5. If two or more players make the same word, everyone who used it gets -3 for that word.' },
+  { value: 'intuition', label: 'Intuition Mode', description: 'The source word starts hidden and unlocks one random letter at a time over the round. You can guess words from the hidden letters before they appear.' }
 ];
 
 export default function SettingsPage(): JSX.Element {
@@ -61,7 +65,18 @@ export default function SettingsPage(): JSX.Element {
 
     setIsCreating(true);
     setError('');
+
+    let settled = false;
+    const timeout = window.setTimeout(() => {
+      settled = true;
+      setIsCreating(false);
+      setError('Could not reach the game server. Make sure the local server is running on port 4000, then try again.');
+    }, 8000);
+
     socket.emit('createRoom', { username, settings }, (response) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
       setIsCreating(false);
       if (!response.ok) { setError(response.error); return; }
       navigate(`/room/${response.data.roomId}`);
@@ -113,11 +128,15 @@ export default function SettingsPage(): JSX.Element {
               <option value="arcade">Score Attack</option>
               <option value="precision">Precision</option>
               <option value="teams">Teams</option>
+              <option value="betting">Betting</option>
               <option value="fastestNWords">Word Sprint</option>
               <option value="battleRoyale">Knockout</option>
               <option value="typist">Blind Type</option>
               <option value="category">Theme Challenge</option>
               <option value="oneWordForAll">Claim Mode</option>
+              <option value="busted">Busted Mode</option>
+              <option value="commonWord">Common Word</option>
+              <option value="intuition">Intuition Mode</option>
             </Select>
           </div>
 

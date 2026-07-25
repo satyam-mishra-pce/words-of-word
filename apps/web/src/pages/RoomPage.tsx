@@ -1,6 +1,6 @@
 import { CSSProperties, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { FinalScore, RoomSnapshot, RoundResultPlayer } from '@wow/shared';
+import { FinalScore, GameSettings, RoomSnapshot, RoundResultPlayer, TeamScore } from '@wow/shared';
 import socket from '../services/socket';
 import { loadUsername } from '../services/session';
 import {
@@ -10,19 +10,56 @@ import {
   Button,
   Dialog,
   Input,
+  Label,
+  Select,
   Separator,
   Spinner,
+  Textarea,
   TimerRing,
   Tooltip,
 } from '../components/ui';
 
 const RANK_ICONS: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉' };
 
+const GAME_MODE_OPTIONS: Array<{ value: GameSettings['gameMode']; label: string }> = [
+  { value: 'classic', label: 'Classic' },
+  { value: 'arcade', label: 'Score Attack' },
+  { value: 'precision', label: 'Precision' },
+  { value: 'teams', label: 'Teams' },
+  { value: 'betting', label: 'Betting' },
+  { value: 'fastestNWords', label: 'Word Sprint' },
+  { value: 'battleRoyale', label: 'Knockout' },
+  { value: 'typist', label: 'Blind Type' },
+  { value: 'category', label: 'Theme Challenge' },
+  { value: 'oneWordForAll', label: 'Claim Mode' },
+  { value: 'busted', label: 'Busted Mode' },
+  { value: 'commonWord', label: 'Common Word' },
+  { value: 'intuition', label: 'Intuition Mode' },
+];
+
+const PLAYER_FINAL_TITLES = [
+  { title: '🧙 Word Wizard', meaning: 'Made big brain words with impressive length.' },
+  { title: '🔤 Alphabet Assassin', meaning: 'Kept attacking with words that started the same way.' },
+  { title: '🛡️ Vowel Viking', meaning: 'Raided the round with lots of vowel-starting words.' },
+  { title: '🤠 Consonant Cowboy', meaning: 'Wrangled mostly consonant-starting words.' },
+  { title: '🎒 5th Grader With Wi‑Fi', meaning: 'Survived on tiny, suspiciously efficient words.' },
+  { title: '🌪️ Typo Tornado', meaning: 'Created a chaotic mix that refused to fit one pattern.' },
+  { title: '👺 Dictionary Goblin', meaning: 'Found weird words with rare letters like j, q, x, or z.' },
+  { title: '🎯 Syllable Sniper', meaning: 'Mostly hit clean medium-length words.' },
+  { title: '⌨️ Keyboard Gremlin', meaning: 'Mashed around with double letters or barely landed words.' },
+  { title: '🍲 Alphabet Soup Chef', meaning: 'Mixed words from many different starting letters.' },
+];
+
 interface RoundEntry {
   round: number;
   word: string;
   results: RoundResultPlayer[];
   validWordCount: number;
+}
+
+interface NegativeMarkedWord {
+  word: string;
+  penalty: number;
 }
 
 export default function RoomPage(): JSX.Element {
@@ -38,12 +75,18 @@ export default function RoomPage(): JSX.Element {
   const [showCopied, setShowCopied] = useState(false);
   const [roundResults, setRoundResults] = useState<RoundResultPlayer[] | undefined>();
   const [finalScores, setFinalScores] = useState<FinalScore[]>([]);
+  const [finalTeamScores, setFinalTeamScores] = useState<TeamScore[]>([]);
   const [showRoundHistory, setShowRoundHistory] = useState(false);
   const [showHowToPlay, setShowHowToPlay] = useState(false);
   const [waitingSeconds, setWaitingSeconds] = useState(0);
   const [validWordCount, setValidWordCount] = useState(0);
   const [roundHistory, setRoundHistory] = useState<RoundEntry[]>([]);
+  const [negativeMarkedWords, setNegativeMarkedWords] = useState<NegativeMarkedWord[]>([]);
   const [isWordInputFocused, setIsWordInputFocused] = useState(false);
+  const [betInput, setBetInput] = useState('');
+  const [bustFlash, setBustFlash] = useState<{ playerId: string; playerName: string; word: string; message: string } | undefined>();
+  const [showSettingsDialog, setShowSettingsDialog] = useState(false);
+  const [draftSettings, setDraftSettings] = useState<GameSettings | undefined>();
 
   // Keep a ref to the word input so we can restore focus after submit
   const inputRef = useRef<HTMLInputElement>(null);
@@ -60,17 +103,75 @@ export default function RoomPage(): JSX.Element {
   const canStart = isHost && snapshot &&
     (snapshot.phase === 'lobby' || snapshot.phase === 'gameOver') &&
     snapshot.players.length >= 2;
-  const canSubmit = snapshot?.phase === 'round' && Boolean(currentPlayer) && !currentPlayer?.isEliminated;
+  const isCurrentPlayerBusted = Boolean(currentPlayerId && snapshot?.bustedPlayers[currentPlayerId]);
+  const canSubmit = snapshot?.phase === 'round' && Boolean(currentPlayer) && !currentPlayer?.isEliminated && !isCurrentPlayerBusted;
   const isUrgent = Boolean(snapshot?.phase === 'round' && snapshot.timeLeft <= 10);
   const isArcadeMode = snapshot?.settings.gameMode === 'arcade';
   const isPrecisionMode = snapshot?.settings.gameMode === 'precision';
+  const isCommonWordMode = snapshot?.settings.gameMode === 'commonWord';
+  const showsNegativeWords = isPrecisionMode || isCommonWordMode;
   const isTeamsMode = snapshot?.settings.gameMode === 'teams';
   const isLengthBonusMode = isArcadeMode || isPrecisionMode;
   const isTypistMode = snapshot?.settings.gameMode === 'typist';
   const isFastestNMode = snapshot?.settings.gameMode === 'fastestNWords';
+  const isBettingMode = snapshot?.settings.gameMode === 'betting';
+  const isBustedMode = snapshot?.settings.gameMode === 'busted';
+  const isIntuitionMode = snapshot?.settings.gameMode === 'intuition';
+  const currentBet = currentPlayerId && snapshot ? snapshot.bettingBets[currentPlayerId] : undefined;
+  const minimumBet = currentPlayerId && snapshot ? snapshot.minimumBets[currentPlayerId] ?? 3 : 3;
+  const finalTeamStandings = useMemo(() => {
+    const teams = finalTeamScores.length > 0
+      ? finalTeamScores
+      : snapshot?.phase === 'gameOver'
+        ? snapshot.teamScores
+        : [];
+
+    return [...teams]
+      .sort((left, right) => right.score - left.score)
+      .map((team, index) => ({ ...team, rank: index + 1 }));
+  }, [finalTeamScores, snapshot]);
 
   function wordPoints(word: string): number {
+    if (isCommonWordMode) {
+      return word.length >= 5 ? 5 : 3;
+    }
     return 3 + (isLengthBonusMode ? word.length : 0);
+  }
+
+  function finalPlayerAward(player: FinalScore): { title: string; meaning: string } {
+    const fallback = PLAYER_FINAL_TITLES[5] ?? { title: '🌪️ Typo Tornado', meaning: 'Created a chaotic mix that refused to fit one pattern.' };
+    const awardAt = (index: number): { title: string; meaning: string } => PLAYER_FINAL_TITLES[index] ?? fallback;
+    const words = roundHistory.flatMap((entry) => entry.results.find((result) => result.playerId === player.playerId)?.words ?? []);
+
+    if (words.length === 0) {
+      return awardAt(8);
+    }
+
+    const startingLetters = words.map((word) => word[0]?.toLowerCase()).filter(Boolean);
+    const uniqueStartingLetters = new Set(startingLetters).size;
+    const mostCommonStartingLetterCount = Math.max(
+      ...Array.from(new Set(startingLetters)).map((letter) => startingLetters.filter((candidate) => candidate === letter).length)
+    );
+    const averageLength = words.reduce((total, word) => total + word.length, 0) / words.length;
+    const rareLetterWords = words.filter((word) => /[jqxz]/i.test(word)).length;
+    const longWords = words.filter((word) => word.length >= 7).length;
+    const mediumWords = words.filter((word) => word.length >= 4 && word.length <= 6).length;
+    const shortWords = words.filter((word) => word.length <= 3).length;
+    const vowelStarters = words.filter((word) => /^[aeiou]/i.test(word)).length;
+    const consonantStarters = words.filter((word) => /^[bcdfghjklmnpqrstvwxyz]/i.test(word)).length;
+    const doubleLetterWords = words.filter((word) => /(.)\1/i.test(word)).length;
+
+    if (rareLetterWords / words.length >= 0.25) return awardAt(6);
+    if (averageLength >= 7 || longWords / words.length >= 0.35) return awardAt(0);
+    if (uniqueStartingLetters >= 5 || uniqueStartingLetters / words.length >= 0.65) return awardAt(9);
+    if (vowelStarters / words.length >= 0.45) return awardAt(2);
+    if (consonantStarters / words.length >= 0.8) return awardAt(3);
+    if (shortWords / words.length >= 0.5) return awardAt(4);
+    if (doubleLetterWords / words.length >= 0.3) return awardAt(8);
+    if (mediumWords / words.length >= 0.7) return awardAt(7);
+    if (mostCommonStartingLetterCount / words.length >= 0.4) return awardAt(1);
+
+    return fallback;
   }
 
   function renderWordBadge(word: string, style?: CSSProperties): JSX.Element {
@@ -82,9 +183,65 @@ export default function RoomPage(): JSX.Element {
             <strong>3+{word.length}</strong>
             <span>= {wordPoints(word)}</span>
           </span>
+        ) : isCommonWordMode && word.length >= 5 ? (
+          <span className="word-score-formula">+5</span>
         ) : (
           <span className="word-score-formula">+3</span>
         )}
+      </Badge>
+    );
+  }
+
+  function intuitionUnlockOrder(word: string): number[] {
+    let seed = Array.from(word).reduce((hash, letter) => ((hash << 5) - hash + letter.charCodeAt(0)) | 0, 0) || 1;
+    const order = Array.from({ length: word.length }, (_, index) => index);
+
+    for (let index = order.length - 1; index > 0; index -= 1) {
+      seed = (seed * 1664525 + 1013904223) | 0;
+      const swapIndex = Math.abs(seed) % (index + 1);
+      const currentIndex = order[index] as number;
+      order[index] = order[swapIndex] as number;
+      order[swapIndex] = currentIndex;
+    }
+
+    return order;
+  }
+
+  function renderIntuitionWord(word: string): JSX.Element {
+    const shouldUnlock = isIntuitionMode && snapshot?.phase === 'round';
+    const totalTime = Math.max(1, snapshot?.settings.timePerRound ?? 1);
+    const elapsed = Math.max(0, totalTime - (snapshot?.timeLeft ?? totalTime));
+    const revealedLetters = shouldUnlock ? Math.min(word.length, Math.floor((elapsed * word.length) / totalTime)) : word.length;
+    const unlockedIndexes = shouldUnlock
+      ? new Set(intuitionUnlockOrder(word).slice(0, revealedLetters))
+      : new Set(Array.from({ length: word.length }, (_, index) => index));
+
+    return (
+      <span
+        key={word}
+        className={`current-word-text${shouldUnlock ? ' current-word-text--intuition' : ''}`}
+        aria-label={shouldUnlock ? `${revealedLetters} of ${word.length} letters unlocked randomly` : word}
+      >
+        {Array.from(word).map((letter, index) => (
+          <span key={`${letter}-${index}`} className={unlockedIndexes.has(index) ? 'intuition-letter unlocked' : 'intuition-letter locked'}>
+            {unlockedIndexes.has(index) ? letter : '•'}
+          </span>
+        ))}
+      </span>
+    );
+  }
+
+  function renderNegativeWordBadge(entry: NegativeMarkedWord, index: number): JSX.Element {
+    return (
+      <Badge
+        key={`${entry.word}-${index}`}
+        variant="word"
+        className="scored-word-badge"
+        style={{ borderColor: 'rgba(255, 90, 90, 0.45)', color: 'var(--error)', background: 'rgba(255, 90, 90, 0.08)' }}
+        title={`${entry.penalty} points`}
+      >
+        <span>{entry.word}</span>
+        <span className="word-score-formula"><strong>{entry.penalty}</strong></span>
       </Badge>
     );
   }
@@ -102,6 +259,12 @@ export default function RoomPage(): JSX.Element {
     const t = window.setTimeout(() => setInputFeedback(null), 600);
     return () => window.clearTimeout(t);
   }, [inputFeedback]);
+
+  useEffect(() => {
+    if (!bustFlash) return;
+    const t = window.setTimeout(() => setBustFlash(undefined), 2600);
+    return () => window.clearTimeout(t);
+  }, [bustFlash]);
 
   /* ── socket setup ── */
   useEffect(() => {
@@ -140,6 +303,9 @@ export default function RoomPage(): JSX.Element {
       setNotice(`Round ${p.currentRound} started.`);
       setWaitingSeconds(0);
       setValidWordCount(0);
+      setNegativeMarkedWords([]);
+      setBetInput('');
+      setBustFlash(undefined);
       // Restore keyboard focus when a new round begins
       requestAnimationFrame(() => inputRef.current?.focus());
     });
@@ -148,6 +314,13 @@ export default function RoomPage(): JSX.Element {
     });
     socket.on('wordAccepted', (p) => {
       setInputFeedback('success');
+      if (p.message) setNotice(p.message);
+      if (p.message.includes('-3')) {
+        setNegativeMarkedWords((current) => [
+          ...current,
+          { word: p.word.trim().toLowerCase() || p.word, penalty: -3 },
+        ]);
+      }
       setSnapshot((s) => {
         if (!s) return s;
         return {
@@ -159,6 +332,12 @@ export default function RoomPage(): JSX.Element {
     socket.on('wordRejected', (p) => {
       setInputFeedback('error');
       setNotice(p.message);
+      if (p.penalty && p.penalty < 0) {
+        setNegativeMarkedWords((current) => [
+          ...current,
+          { word: p.word.trim().toLowerCase() || p.word, penalty: p.penalty as number },
+        ]);
+      }
     });
     socket.on('scoresUpdated', (p) => {
       setSnapshot((s) => {
@@ -170,7 +349,11 @@ export default function RoomPage(): JSX.Element {
             ...player,
             score: scoreByPlayer.get(player.id) ?? player.score,
           })),
+          acceptedWords: p.snapshot.acceptedWords,
           teamScores: p.snapshot.teamScores,
+          bettingBets: p.snapshot.bettingBets,
+          bettingAverages: p.snapshot.bettingAverages,
+          minimumBets: p.snapshot.minimumBets,
         };
       });
     });
@@ -194,6 +377,7 @@ export default function RoomPage(): JSX.Element {
     socket.on('gameOver', (p) => {
       setSnapshot(p.snapshot);
       setFinalScores(p.finalScores);
+      setFinalTeamScores(p.snapshot.teamScores);
       setRoundResults(p.results);
       setWaitingSeconds(0);
       if (p.results && p.currentRound) {
@@ -219,14 +403,22 @@ export default function RoomPage(): JSX.Element {
       }
       setNotice('Game over!');
     });
+    socket.on('playerBusted', (p) => {
+      setSnapshot(p.snapshot);
+      setInputFeedback(p.playerId === socket.id ? 'error' : null);
+      setNotice(p.message);
+      setBustFlash({ playerId: p.playerId, playerName: p.playerName, word: p.word, message: p.message });
+    });
     socket.on('gameRestarted', (p) => {
       setSnapshot(p.snapshot);
       setRoundResults(undefined);
       setFinalScores([]);
+      setFinalTeamScores([]);
       setShowRoundHistory(false);
       setRoundHistory([]);
       setWaitingSeconds(0);
       setValidWordCount(0);
+      setNegativeMarkedWords([]);
       setNotice(p.autoStart ? 'New round incoming.' : 'Reset to lobby.');
     });
     socket.on('notice', (p) => setNotice(p.message));
@@ -244,6 +436,7 @@ export default function RoomPage(): JSX.Element {
       socket.off('roundEnded');
       socket.off('gameOver');
       socket.off('gameRestarted');
+      socket.off('playerBusted');
       socket.off('notice');
     };
   }, []);
@@ -285,9 +478,48 @@ export default function RoomPage(): JSX.Element {
     requestAnimationFrame(() => inputRef.current?.focus());
   }
 
+  function submitBet(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    const bet = Number(betInput);
+    if (!Number.isInteger(bet)) return;
+    socket.emit('updateBet', { roomId, bet }, (r) => {
+      if (!r.ok) setError(r.error);
+      else setError('');
+    });
+  }
+
   function restartGame(): void {
     socket.emit('restartGame', { roomId, autoStart: true }, (r) => {
       if (!r.ok) setError(r.error);
+    });
+  }
+
+  function openSettingsDialog(): void {
+    setDraftSettings(snapshot?.settings);
+    setShowSettingsDialog(true);
+  }
+
+  function setDraft<K extends keyof GameSettings>(key: K, value: GameSettings[K]): void {
+    setDraftSettings((prev) => prev ? { ...prev, [key]: value } : prev);
+  }
+
+  function saveSettings(autoStart: boolean): void {
+    if (!draftSettings) return;
+    const playerCount = snapshot?.players.length ?? 0;
+    if (draftSettings.maxPlayers < playerCount) {
+      setError(`Max players cannot be lower than the ${playerCount} players already in the room.`);
+      return;
+    }
+    if (draftSettings.gameMode === 'battleRoyale' && draftSettings.eliminationsPerRound * draftSettings.rounds >= playerCount) {
+      setError('Knockout would finish before all rounds are played. Lower eliminations, lower rounds, or increase players.');
+      return;
+    }
+
+    socket.emit('updateSettings', { roomId, settings: draftSettings }, (r) => {
+      if (!r.ok) { setError(r.error); return; }
+      setError('');
+      setShowSettingsDialog(false);
+      if (autoStart) restartGame();
     });
   }
 
@@ -339,16 +571,30 @@ export default function RoomPage(): JSX.Element {
   }
 
   const needsRejoin = !currentPlayer;
+  const currentModeLabel = GAME_MODE_OPTIONS.find((mode) => mode.value === snapshot.settings.gameMode)?.label ?? snapshot.settings.gameMode;
 
   /* ── main game view ── */
   return (
     <main className={`game-shell ${isWordInputFocused ? 'is-typing' : ''}`}>
+      {bustFlash && (
+        <div className={`bust-overlay ${bustFlash.playerId === currentPlayerId ? 'self' : ''}`} role="status" aria-live="assertive">
+          <div className="bomb-blast" aria-hidden="true">💣</div>
+          <div className="blast-ring" aria-hidden="true" />
+          <div className="bust-card">
+            <div className="bust-title">BOOOOM!</div>
+            <div className="bust-message">{bustFlash.playerName} is BUSTED</div>
+            <div className="bust-word">typed “{bustFlash.word}” · round score 0</div>
+          </div>
+        </div>
+      )}
 
       {/* ── HEADER ── */}
       <header className="game-header">
         <div className="game-header__left">
           <span className="game-header__label">room</span>
           <span className="game-header__roomid">{snapshot.roomId.toLowerCase()}</span>
+          <span className="game-header__dot">·</span>
+          <span className="game-header__mode" aria-label={`Current mode: ${currentModeLabel}`}>{currentModeLabel}</span>
           <span className="game-header__dot">·</span>
           <span className="game-header__count">
             {snapshot.players.length} player{snapshot.players.length !== 1 ? 's' : ''}
@@ -385,7 +631,7 @@ export default function RoomPage(): JSX.Element {
                 <div className="player-row__text">
                   <div className="player-row__name">{player.name}</div>
                   <span className="player-row__tag">
-                    {player.isEliminated ? 'Out' : `${player.isHost ? '★ Host' : player.id === currentPlayerId ? 'You' : 'Player'}${isTeamsMode && player.teamId ? ` · ${player.teamId === 'red' ? 'Red' : 'Blue'}` : ''}`}
+                    {snapshot.bustedPlayers[player.id] ? '💣 Busted' : player.isEliminated ? 'Out' : `${player.isHost ? '★ Host' : player.id === currentPlayerId ? 'You' : 'Player'}${isTeamsMode && player.teamId ? ` · ${player.teamId === 'red' ? 'Red' : 'Blue'}` : ''}`}
                   </span>
                 </div>
               </div>
@@ -409,7 +655,26 @@ export default function RoomPage(): JSX.Element {
           </div>
         )}
 
-        {isTeamsMode && (snapshot.phase === 'lobby' || snapshot.phase === 'gameOver') && !needsRejoin && (
+        {isBettingMode && snapshot.phase !== 'lobby' && snapshot.phase !== 'gameOver' && (
+          <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
+            <p className="eyebrow" style={{ marginBottom: 0 }}>Bets</p>
+            {snapshot.players.map((player) => {
+              const bet = snapshot.bettingBets[player.id];
+              const words = snapshot.acceptedWords[player.id]?.length ?? 0;
+              return (
+                <div key={player.id} className="player-row">
+                  <div className="player-row__text">
+                    <div className="player-row__name">{player.name}</div>
+                    <span className="player-row__tag">{bet ? `${words} / ${bet} words` : 'Choosing bet'}</span>
+                  </div>
+                  <span className="player-row__score">{bet ? (words >= bet ? '✅' : '🎲') : '—'}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {isTeamsMode && snapshot.phase === 'lobby' && !needsRejoin && (
           <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             <Button variant={currentPlayer?.teamId === 'red' ? 'primary' : 'secondary'} size="sm" onClick={() => chooseTeam('red')}>Red Team</Button>
             <Button variant={currentPlayer?.teamId === 'blue' ? 'primary' : 'secondary'} size="sm" onClick={() => chooseTeam('blue')}>Blue Team</Button>
@@ -450,9 +715,16 @@ export default function RoomPage(): JSX.Element {
               </div>
             )}
             {canStart && (
-              <Button variant="primary" size="lg" fullWidth onClick={snapshot.phase === 'gameOver' ? restartGame : startGame}>
-                {snapshot.phase === 'gameOver' ? 'Play Again' : 'Start Game'}
-              </Button>
+              <>
+                <Button variant="primary" size="lg" fullWidth onClick={snapshot.phase === 'gameOver' ? restartGame : startGame}>
+                  {snapshot.phase === 'gameOver' ? 'Play Again' : 'Start Game'}
+                </Button>
+                {snapshot.phase === 'gameOver' && (
+                  <Button variant="secondary" size="sm" fullWidth onClick={openSettingsDialog}>
+                    Change Settings
+                  </Button>
+                )}
+              </>
             )}
             {!isHost && snapshot.phase === 'lobby' && snapshot.players.length >= 2 && !needsRejoin && (
               <p className="muted centered" style={{ fontSize: '0.82rem', marginBottom: 0 }}>
@@ -476,16 +748,41 @@ export default function RoomPage(): JSX.Element {
           <div className="game-over-panel">
             <div>
               <p className="eyebrow">Game over</p>
-              <h2 style={{ fontSize: 'clamp(1.6rem,4vw,2.2rem)', lineHeight: 1, marginBottom: finalScores.length > 0 ? 4 : 0 }}>
+              <h2 style={{ fontSize: 'clamp(1.6rem,4vw,2.2rem)', lineHeight: 1, marginBottom: (isTeamsMode ? finalTeamStandings.length : finalScores.length) > 0 ? 4 : 0 }}>
                 Final Standings
               </h2>
-              {finalScores.length > 0 && (
+              {(isTeamsMode ? finalTeamStandings.length : finalScores.length) > 0 && (
                 <p className="muted" style={{ fontSize: '0.82rem', marginBottom: 16 }}>
-                  {finalScores[0]?.playerName ?? 'Someone'} takes the crown.
+                  {isTeamsMode ? `${finalTeamStandings[0]?.teamName ?? 'A team'} takes the crown.` : `${finalScores[0]?.playerName ?? 'Someone'} takes the crown.`}
                 </p>
               )}
             </div>
-            {finalScores.length > 0 ? (
+            {isTeamsMode ? (
+              finalTeamStandings.length > 0 ? (
+                <div className="standings-list">
+                  {finalTeamStandings.map((team) => (
+                    <div key={team.teamId} className={`standing-row rank-${team.rank}`}>
+                      <span className="standing-rank">{RANK_ICONS[team.rank] ?? `#${team.rank}`}</span>
+                      <div>
+                        <div className="standing-name">
+                          {team.teamName}
+                          {currentPlayer?.teamId === team.teamId && (
+                            <Badge variant="ink" style={{ marginLeft: 8, fontSize: '0.72rem', padding: '3px 8px' }}>Your team</Badge>
+                          )}
+                        </div>
+                        <div className="muted" style={{ fontSize: '0.76rem' }}>{team.players.length} player{team.players.length !== 1 ? 's' : ''}</div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div className="standing-score">{team.score}</div>
+                        <div className="standing-pts">pts</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="muted">Waiting for team scores…</p>
+              )
+            ) : finalScores.length > 0 ? (
               <div className="standings-list">
                 {finalScores.map((player) => (
                   <div key={player.playerId} className={`standing-row rank-${player.rank}`}>
@@ -497,6 +794,8 @@ export default function RoomPage(): JSX.Element {
                           <Badge variant="ink" style={{ marginLeft: 8, fontSize: '0.72rem', padding: '3px 8px' }}>You</Badge>
                         )}
                       </div>
+                      <div className="standing-title">{finalPlayerAward(player).title}</div>
+                      <div className="standing-title-meaning">{finalPlayerAward(player).meaning}</div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
                       <div className="standing-score">{player.score}</div>
@@ -508,6 +807,27 @@ export default function RoomPage(): JSX.Element {
             ) : (
               <p className="muted">Waiting for scores…</p>
             )}
+            {isTeamsMode && finalScores.length > 0 && (
+              <div className="player-awards">
+                <p className="eyebrow" style={{ marginBottom: 8 }}>Player titles</p>
+                <div className="standings-list">
+                  {finalScores.map((player) => (
+                    <div key={player.playerId} className="standing-row">
+                      <span className="standing-rank">🏷️</span>
+                      <div>
+                        <div className="standing-name">{player.playerName}</div>
+                        <div className="standing-title">{finalPlayerAward(player).title}</div>
+                        <div className="standing-title-meaning">{finalPlayerAward(player).meaning}</div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div className="standing-score">{player.score}</div>
+                        <div className="standing-pts">pts</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {roundHistory.length > 0 && (
               <Button variant="ghost" fullWidth onClick={() => setShowRoundHistory(true)}>
                 See all words by round →
@@ -516,6 +836,59 @@ export default function RoomPage(): JSX.Element {
           </div>
         ) : (
           <>
+            {isBettingMode && snapshot.phase === 'betting' && (
+              <div className="game-over-panel">
+                <div>
+                  <p className="eyebrow">Betting open</p>
+                  <h2 style={{ fontSize: 'clamp(1.6rem,4vw,2.2rem)', lineHeight: 1, marginBottom: 8 }}>
+                    Round {snapshot.currentRound + 1}: predict your words
+                  </h2>
+                  <p className="muted" style={{ fontSize: '0.82rem', marginBottom: 16 }}>
+                    {snapshot.timeLeft}s left. Recent average: {(snapshot.bettingAverages[currentPlayerId ?? ''] ?? 0).toFixed(1)} words. Minimum bet: {minimumBet}.
+                  </p>
+                </div>
+
+                {!needsRejoin && (
+                  <form className="word-form" onSubmit={submitBet}>
+                    <Input
+                      type="number"
+                      min={minimumBet}
+                      max={50}
+                      value={betInput}
+                      onChange={(e) => setBetInput(e.currentTarget.value)}
+                      placeholder={currentBet ? `Locked: ${currentBet} words` : `Bet at least ${minimumBet}`}
+                      disabled={Boolean(currentBet)}
+                    />
+                    <Button variant="primary" type="submit" disabled={Boolean(currentBet) || Number(betInput) < minimumBet}>
+                      {currentBet ? 'Bet Locked' : 'Lock Bet'}
+                    </Button>
+                  </form>
+                )}
+
+                <div className="standings-list">
+                  {snapshot.players.map((player) => {
+                    const bet = snapshot.bettingBets[player.id];
+                    const average = snapshot.bettingAverages[player.id] ?? 0;
+                    return (
+                      <div key={player.id} className={`standing-row ${player.id === currentPlayerId ? 'self' : ''}`}>
+                        <span className="standing-rank">🎲</span>
+                        <div>
+                          <div className="standing-name">{player.name}{player.id === currentPlayerId ? ' (You)' : ''}</div>
+                          <div className="muted" style={{ fontSize: '0.76rem' }}>avg {average.toFixed(1)} · min {snapshot.minimumBets[player.id] ?? 3}</div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div className="standing-score">{bet ?? '—'}</div>
+                          <div className="standing-pts">{bet ? 'words' : 'choosing'}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {snapshot.phase !== 'betting' && (
+              <>
             {/* Round progress strip */}
             <div className="round-strip">
               <span>Round {Math.max(snapshot.currentRound, 1)} / {snapshot.totalRounds}</span>
@@ -537,9 +910,14 @@ export default function RoomPage(): JSX.Element {
             <div className="current-word-card">
               <span className="current-word-label">Current Word</span>
               {snapshot.currentWord
-                ? <span key={snapshot.currentWord} className="current-word-text">{snapshot.currentWord}</span>
+                ? renderIntuitionWord(snapshot.currentWord)
                 : <span className="current-word-waiting">Waiting to start…</span>
               }
+              {isIntuitionMode && snapshot.phase === 'round' && snapshot.currentWord && (
+                <span className="intuition-unlock-hint">
+                  Unlocking randomly: one letter every {(snapshot.settings.timePerRound / snapshot.currentWord.length).toFixed(1)}s
+                </span>
+              )}
             </div>
 
             {/* Timer */}
@@ -576,7 +954,7 @@ export default function RoomPage(): JSX.Element {
                   onChange={(e) => setInputWord(e.currentTarget.value)}
                   onFocus={() => setIsWordInputFocused(true)}
                   onBlur={() => setIsWordInputFocused(false)}
-                  placeholder={canSubmit ? (isTypistMode ? 'Blind Type: hidden word' : 'Type a word and press Enter') : 'Rejoin to submit words'}
+                  placeholder={isCurrentPlayerBusted ? 'You are busted this round 💣' : canSubmit ? (isTypistMode ? 'Blind Type: hidden word' : 'Type a word and press Enter') : 'Rejoin to submit words'}
                   disabled={!canSubmit}
                   hasError={inputFeedback === 'error'}
                   hasSuccess={inputFeedback === 'success'}
@@ -608,6 +986,22 @@ export default function RoomPage(): JSX.Element {
                   ? myWords.map((word) => renderWordBadge(word))
                   : <em>No words yet.</em>}
               </div>
+              {isBustedMode && snapshot.bustWords[currentPlayerId ?? ''] && (
+                <p className="muted" style={{ fontSize: '0.78rem', marginTop: 10, marginBottom: 0 }}>
+                  Your bust word: <strong style={{ color: 'var(--main)' }}>{snapshot.bustWords[currentPlayerId ?? '']}</strong>. Matching first words are safe.
+                </p>
+              )}
+              {showsNegativeWords && negativeMarkedWords.length > 0 && (
+                <>
+                  <div className="words-header" style={{ marginTop: 14 }}>
+                    <h3>Negative Marking</h3>
+                    <span className="words-count">{negativeMarkedWords.reduce((total, entry) => total + entry.penalty, 0)} pts</span>
+                  </div>
+                  <div className="word-chip-list">
+                    {negativeMarkedWords.map((entry, index) => renderNegativeWordBadge(entry, index))}
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Round results */}
@@ -630,6 +1024,11 @@ export default function RoomPage(): JSX.Element {
                         {isFastestNMode && result.words.length >= snapshot.settings.fastestWordTarget && (
                           <Badge variant="gold" style={{ marginRight: 8 }}>+10 winner bonus</Badge>
                         )}
+                        {isBettingMode && result.bettingBet !== undefined && (
+                          <Badge variant={result.bettingHit ? 'gold' : 'ink'} style={{ marginRight: 8 }}>
+                            bet {result.bettingBet} · {result.words.length}/{result.bettingBet} {result.bettingHit ? 'hit' : 'miss'}
+                          </Badge>
+                        )}
                         {result.score} pts
                       </span>
                     </div>
@@ -638,9 +1037,22 @@ export default function RoomPage(): JSX.Element {
                         ? result.words.map((w) => renderWordBadge(w, { fontSize: '0.76rem', padding: '4px 9px' }))
                         : <em>No words found.</em>}
                     </div>
+                    {showsNegativeWords && result.negativeWords.length > 0 && (
+                      <>
+                        <div className="words-header" style={{ marginTop: 10 }}>
+                          <h3>Negative words</h3>
+                          <span className="words-count">{result.negativeWords.reduce((total, entry) => total + entry.penalty, 0)} pts</span>
+                        </div>
+                        <div className="word-chip-list">
+                          {result.negativeWords.map((entry, index) => renderNegativeWordBadge(entry, index))}
+                        </div>
+                      </>
+                    )}
                   </article>
                 ))}
               </div>
+            )}
+              </>
             )}
           </>
         )}
@@ -654,7 +1066,7 @@ export default function RoomPage(): JSX.Element {
         </h2>
         <Separator />
         <ul>
-          <li>{isTeamsMode ? <>Teams: choose Red or Blue in the lobby. Individual points add into the cumulative team score.</> : isPrecisionMode ? <>Precision scores <strong>3 + word length</strong>, wrong words cost <strong>-(3 + word length)</strong>, duplicates cost <strong>-3</strong>.</> : isArcadeMode ? <>Score Attack scores <strong>3 + word length</strong>.</> : snapshot.settings.gameMode === 'fastestNWords' ? <>Word Sprint: first to <strong>{snapshot.settings.fastestWordTarget} words</strong> ends the round and gets a highlighted <strong>10 point bonus</strong>.</> : snapshot.settings.gameMode === 'battleRoyale' ? <>Knockout: lowest scoring <strong>{snapshot.settings.eliminationsPerRound}</strong> player(s) are eliminated each round.</> : snapshot.settings.gameMode === 'typist' ? <>Blind Type hides your input until you submit.</> : snapshot.settings.gameMode === 'oneWordForAll' ? <>Claim Mode: once any player finds a word, nobody else can use it. If it is taken, you will be told clearly.</> : <>Each accepted word scores <strong>3 points</strong>.</>}</li>
+          <li>{isTeamsMode ? <>Teams: choose Red or Blue in the lobby. Individual points add into the cumulative team score.</> : isPrecisionMode ? <>Precision scores <strong>3 + word length</strong>, wrong words cost <strong>-(3 + word length)</strong>, duplicates cost <strong>-3</strong>.</> : isArcadeMode ? <>Score Attack scores <strong>3 + word length</strong>.</> : isBettingMode ? <>Betting: lock a word-count bet before the word appears. Hit it for <strong>bet × 10</strong>, extra words give <strong>3</strong>, miss it and lose <strong>bet × 10</strong>.</> : isBustedMode ? <>Busted: your first accepted word becomes your bust word. Type someone else’s bust word and your round score becomes <strong>0</strong>. Same first words are safe.</> : isCommonWordMode ? <>Common Word: unique words score <strong>+3</strong>, rare unique words with <strong>5+ letters</strong> score <strong>+5</strong>. If another player also makes that word, every player who used it gets <strong>-3</strong> for it.</> : isIntuitionMode ? <>Intuition Mode unlocks the source word letter by letter over the round. You can still guess hidden words early.</> : snapshot.settings.gameMode === 'fastestNWords' ? <>Word Sprint: first to <strong>{snapshot.settings.fastestWordTarget} words</strong> ends the round and gets a highlighted <strong>10 point bonus</strong>.</> : snapshot.settings.gameMode === 'battleRoyale' ? <>Knockout: lowest scoring <strong>{snapshot.settings.eliminationsPerRound}</strong> player(s) are eliminated each round.</> : snapshot.settings.gameMode === 'typist' ? <>Blind Type hides your input until you submit.</> : snapshot.settings.gameMode === 'oneWordForAll' ? <>Claim Mode: once any player finds a word, nobody else can use it. If it is taken, you will be told clearly.</> : <>Each accepted word scores <strong>3 points</strong>.</>}</li>
           <li>Letters must come from the source word.</li>
           <li>No reusing the same word in a round.</li>
           <li>The host controls start and restart.</li>
@@ -674,13 +1086,106 @@ export default function RoomPage(): JSX.Element {
         </h1>
         <ul style={{ paddingLeft: 14, lineHeight: 2.1, color: 'var(--sub)', fontSize: '0.88rem', marginBottom: 20 }}>
           <li>Find words hidden inside the big word.</li>
-          <li>{isTeamsMode ? <>Teams: choose Red or Blue in the lobby. Individual points add into the cumulative team score.</> : isPrecisionMode ? <>Precision scores <strong style={{ color: 'var(--text)' }}>3 + word length</strong>, wrong words cost <strong style={{ color: 'var(--text)' }}>-(3 + word length)</strong>, duplicates cost <strong style={{ color: 'var(--text)' }}>-3</strong>.</> : isArcadeMode ? <>Score Attack scores <strong style={{ color: 'var(--text)' }}>3 + word length</strong>.</> : snapshot.settings.gameMode === 'fastestNWords' ? <>Word Sprint: first to <strong style={{ color: 'var(--text)' }}>{snapshot.settings.fastestWordTarget} words</strong> ends the round and gets a highlighted <strong style={{ color: 'var(--text)' }}>10 point bonus</strong>.</> : snapshot.settings.gameMode === 'battleRoyale' ? <>Knockout: lowest scoring <strong style={{ color: 'var(--text)' }}>{snapshot.settings.eliminationsPerRound}</strong> player(s) are eliminated each round.</> : snapshot.settings.gameMode === 'typist' ? <>Blind Type hides your input until you submit.</> : snapshot.settings.gameMode === 'oneWordForAll' ? <>Claim Mode: once any player finds a word, nobody else can use it. If it is taken, you will be told clearly.</> : <>Each accepted word scores <strong style={{ color: 'var(--text)' }}>3 points</strong>.</>}</li>
+          <li>{isTeamsMode ? <>Teams: choose Red or Blue in the lobby. Individual points add into the cumulative team score.</> : isPrecisionMode ? <>Precision scores <strong style={{ color: 'var(--text)' }}>3 + word length</strong>, wrong words cost <strong style={{ color: 'var(--text)' }}>-(3 + word length)</strong>, duplicates cost <strong style={{ color: 'var(--text)' }}>-3</strong>.</> : isArcadeMode ? <>Score Attack scores <strong style={{ color: 'var(--text)' }}>3 + word length</strong>.</> : isBettingMode ? <>Betting: lock a word-count bet before the word appears. Hit it for <strong style={{ color: 'var(--text)' }}>bet × 10</strong>, extra words give <strong style={{ color: 'var(--text)' }}>3</strong>, miss it and lose <strong style={{ color: 'var(--text)' }}>bet × 10</strong>.</> : isBustedMode ? <>Busted: your first word is your bust word. Type someone else’s bust word and your round score becomes <strong style={{ color: 'var(--text)' }}>0</strong>. Matching first words are safe.</> : isCommonWordMode ? <>Common Word: unique words score <strong style={{ color: 'var(--text)' }}>+3</strong>, rare unique words with <strong style={{ color: 'var(--text)' }}>5+ letters</strong> score <strong style={{ color: 'var(--text)' }}>+5</strong>. Shared words score <strong style={{ color: 'var(--text)' }}>-3</strong> for everyone who used them.</> : isIntuitionMode ? <>Intuition Mode reveals the source word evenly over time. Guess from hidden letters whenever your gut says go.</> : snapshot.settings.gameMode === 'fastestNWords' ? <>Word Sprint: first to <strong style={{ color: 'var(--text)' }}>{snapshot.settings.fastestWordTarget} words</strong> ends the round and gets a highlighted <strong style={{ color: 'var(--text)' }}>10 point bonus</strong>.</> : snapshot.settings.gameMode === 'battleRoyale' ? <>Knockout: lowest scoring <strong style={{ color: 'var(--text)' }}>{snapshot.settings.eliminationsPerRound}</strong> player(s) are eliminated each round.</> : snapshot.settings.gameMode === 'typist' ? <>Blind Type hides your input until you submit.</> : snapshot.settings.gameMode === 'oneWordForAll' ? <>Claim Mode: once any player finds a word, nobody else can use it. If it is taken, you will be told clearly.</> : <>Each accepted word scores <strong style={{ color: 'var(--text)' }}>3 points</strong>.</>}</li>
           <li>Letters must come from the source word.</li>
           <li>No reusing the same word in a round.</li>
           <li>The host controls start and restart.</li>
           <li>Rooms close when everyone leaves.</li>
         </ul>
         <Button variant="secondary" fullWidth onClick={() => setShowHowToPlay(false)}>Got it</Button>
+      </Dialog>
+
+      {/* ── SETTINGS MODAL ── */}
+      <Dialog open={showSettingsDialog} onClose={() => setShowSettingsDialog(false)} size="lg">
+        <p className="eyebrow">same room, new rules</p>
+        <h1 style={{ fontSize: 'clamp(1.8rem,5vw,3rem)', lineHeight: 0.9, marginBottom: 12 }}>Change Settings</h1>
+        <p className="muted" style={{ marginBottom: 18 }}>Everyone stays seated. Saving resets scores and returns the room to the lobby.</p>
+
+        {draftSettings && (
+          <div className="settings-grid">
+            <div className="setting-group">
+              <Label htmlFor="room-game-mode">Game mode</Label>
+              <Select id="room-game-mode" value={draftSettings.gameMode} onChange={(e) => setDraft('gameMode', e.currentTarget.value as GameSettings['gameMode'])}>
+                {GAME_MODE_OPTIONS.map((mode) => <option key={mode.value} value={mode.value}>{mode.label}</option>)}
+              </Select>
+            </div>
+
+            {draftSettings.gameMode === 'fastestNWords' && (
+              <div className="setting-group">
+                <Label htmlFor="room-fastest-target">Words to win</Label>
+                <Select id="room-fastest-target" value={draftSettings.fastestWordTarget} onChange={(e) => setDraft('fastestWordTarget', Number(e.currentTarget.value))}>
+                  {[3, 4, 5, 6, 7, 8, 9, 10].map((n) => <option key={n} value={n}>First {n} words</option>)}
+                </Select>
+              </div>
+            )}
+
+            {draftSettings.gameMode === 'battleRoyale' && (
+              <div className="setting-group">
+                <Label htmlFor="room-eliminations">Eliminations per round</Label>
+                <Select id="room-eliminations" value={draftSettings.eliminationsPerRound} onChange={(e) => setDraft('eliminationsPerRound', Number(e.currentTarget.value))}>
+                  {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n} player{n !== 1 ? 's' : ''}</option>)}
+                </Select>
+              </div>
+            )}
+
+            {draftSettings.gameMode === 'category' && (
+              <>
+                <div className="setting-group">
+                  <Label htmlFor="room-word-category">Source word category</Label>
+                  <Select id="room-word-category" value={draftSettings.wordCategory} onChange={(e) => setDraft('wordCategory', e.currentTarget.value as GameSettings['wordCategory'])}>
+                    <option value="general">General dictionary</option>
+                    <option value="genz">Gen Z</option>
+                    <option value="sports">Sports</option>
+                    <option value="food">Food</option>
+                    <option value="slangs">Slangs</option>
+                    <option value="custom">Custom word list</option>
+                    <option value="vehicles">Vehicle names</option>
+                    <option value="technology">Technology</option>
+                    <option value="finance">Finances</option>
+                    <option value="medical">Medical</option>
+                  </Select>
+                </div>
+                {draftSettings.wordCategory === 'custom' && (
+                  <div className="setting-group">
+                    <Label htmlFor="room-custom-words">Custom source words</Label>
+                    <Textarea id="room-custom-words" value={draftSettings.customWordList} onChange={(e) => setDraft('customWordList', e.currentTarget.value)} placeholder="Comma or line separated source words" rows={4} />
+                  </div>
+                )}
+              </>
+            )}
+
+            <div className="setting-group">
+              <Label htmlFor="room-max-players">Max players</Label>
+              <Select id="room-max-players" value={draftSettings.maxPlayers} onChange={(e) => setDraft('maxPlayers', Number(e.currentTarget.value))}>
+                {[2, 3, 4, 5, 6, 8, 10, 15, 20, 30, 40, 50].map((n) => <option key={n} value={n}>{n} players</option>)}
+              </Select>
+            </div>
+            <div className="setting-group">
+              <Label htmlFor="room-time-per-round">Time per round</Label>
+              <Select id="room-time-per-round" value={draftSettings.timePerRound} onChange={(e) => setDraft('timePerRound', Number(e.currentTarget.value))}>
+                {[5, 20, 30, 40, 50, 60, 90, 120].map((s) => <option key={s} value={s}>{s} seconds</option>)}
+              </Select>
+            </div>
+            <div className="setting-group">
+              <Label htmlFor="room-word-length">Source word length</Label>
+              <Select id="room-word-length" value={draftSettings.minWordLength} onChange={(e) => setDraft('minWordLength', Number(e.currentTarget.value))}>
+                {[7, 8, 9, 10, 11, 12, 13].map((n) => <option key={n} value={n}>{n}+ letters</option>)}
+              </Select>
+            </div>
+            <div className="setting-group">
+              <Label htmlFor="room-rounds">Number of rounds</Label>
+              <Select id="room-rounds" value={draftSettings.rounds} onChange={(e) => setDraft('rounds', Number(e.currentTarget.value))}>
+                {[1, 2, 3, 4, 5, 6, 8, 10].map((n) => <option key={n} value={n}>{n} round{n !== 1 ? 's' : ''}</option>)}
+              </Select>
+            </div>
+          </div>
+        )}
+
+        <div className="button-row">
+          <Button variant="secondary" onClick={() => setShowSettingsDialog(false)}>Cancel</Button>
+          <Button variant="secondary" onClick={() => saveSettings(false)}>Save to Lobby</Button>
+          <Button variant="primary" onClick={() => saveSettings(true)}>Save & Restart</Button>
+        </div>
       </Dialog>
 
       {/* ── ROUND HISTORY MODAL ── */}
@@ -710,6 +1215,11 @@ export default function RoomPage(): JSX.Element {
                       {isFastestNMode && result.words.length >= snapshot.settings.fastestWordTarget && (
                         <Badge variant="gold" style={{ marginRight: 8 }}>+10 winner bonus</Badge>
                       )}
+                      {isBettingMode && result.bettingBet !== undefined && (
+                        <Badge variant={result.bettingHit ? 'gold' : 'ink'} style={{ marginRight: 8 }}>
+                          bet {result.bettingBet} · {result.words.length}/{result.bettingBet} {result.bettingHit ? 'hit' : 'miss'}
+                        </Badge>
+                      )}
                       {result.score} pts
                     </span>
                   </div>
@@ -718,6 +1228,17 @@ export default function RoomPage(): JSX.Element {
                       ? result.words.map((w) => renderWordBadge(w, { fontSize: '0.76rem', padding: '4px 9px' }))
                       : <em style={{ fontSize: '0.82rem', color: 'var(--sub)' }}>No words found.</em>}
                   </div>
+                  {showsNegativeWords && result.negativeWords.length > 0 && (
+                    <>
+                      <div className="words-header" style={{ marginTop: 10 }}>
+                        <h3>Negative words</h3>
+                        <span className="words-count">{result.negativeWords.reduce((total, entry) => total + entry.penalty, 0)} pts</span>
+                      </div>
+                      <div className="word-chip-list" style={{ marginTop: 6 }}>
+                        {result.negativeWords.map((entry, index) => renderNegativeWordBadge(entry, index))}
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
