@@ -92,6 +92,7 @@ export default function RoomPage(): JSX.Element {
   const inputRef = useRef<HTMLInputElement>(null);
   // Track the source word at round-end time for history labelling
   const currentWordRef = useRef('');
+  const previousPhaseRef = useRef<RoomSnapshot['phase'] | undefined>();
 
   const currentPlayerId = socket.id;
   const currentPlayer = useMemo(
@@ -103,6 +104,7 @@ export default function RoomPage(): JSX.Element {
   const canStart = isHost && snapshot &&
     (snapshot.phase === 'lobby' || snapshot.phase === 'gameOver') &&
     snapshot.players.length >= 2;
+  const canStopToLobby = isHost && snapshot && ['round', 'betweenRounds', 'betting'].includes(snapshot.phase);
   const isCurrentPlayerBusted = Boolean(currentPlayerId && snapshot?.bustedPlayers[currentPlayerId]);
   const canSubmit = snapshot?.phase === 'round' && Boolean(currentPlayer) && !currentPlayer?.isEliminated && !isCurrentPlayerBusted;
   const isUrgent = Boolean(snapshot?.phase === 'round' && snapshot.timeLeft <= 10);
@@ -126,9 +128,19 @@ export default function RoomPage(): JSX.Element {
         ? snapshot.teamScores
         : [];
 
+    let previousScore: number | undefined;
+    let currentRank = 0;
+
     return [...teams]
       .sort((left, right) => right.score - left.score)
-      .map((team, index) => ({ ...team, rank: index + 1 }));
+      .map((team) => {
+        if (previousScore === undefined || team.score !== previousScore) {
+          currentRank += 1;
+          previousScore = team.score;
+        }
+
+        return { ...team, rank: currentRank };
+      });
   }, [finalTeamScores, snapshot]);
 
   function wordPoints(word: string): number {
@@ -276,6 +288,7 @@ export default function RoomPage(): JSX.Element {
         return;
       }
       setSnapshot(response.data.snapshot);
+      previousPhaseRef.current = response.data.snapshot.phase;
       currentWordRef.current = response.data.snapshot.currentWord;
       setWaitingSeconds(response.data.snapshot.waitingSeconds);
     });
@@ -283,6 +296,12 @@ export default function RoomPage(): JSX.Element {
 
   useEffect(() => {
     const onSnapshot = (payload: { snapshot: RoomSnapshot }): void => {
+      const previousPhase = previousPhaseRef.current;
+      const isNewBettingGame = payload.snapshot.phase === 'betting' && payload.snapshot.currentRound === 0 && previousPhase !== 'betting';
+      if (isNewBettingGame) {
+        resetClientGameState();
+      }
+      previousPhaseRef.current = payload.snapshot.phase;
       setSnapshot(payload.snapshot);
       currentWordRef.current = payload.snapshot.currentWord;
       setWaitingSeconds(payload.snapshot.waitingSeconds);
@@ -296,6 +315,10 @@ export default function RoomPage(): JSX.Element {
       setNotice(p.hostId === socket.id ? 'You are now the host.' : 'Host changed.');
     });
     socket.on('roundStarted', (p) => {
+      if (p.currentRound === 1) {
+        resetClientGameState();
+      }
+      previousPhaseRef.current = p.snapshot.phase;
       setSnapshot(p.snapshot);
       currentWordRef.current = p.currentWord;
       setRoundResults(undefined);
@@ -358,6 +381,7 @@ export default function RoomPage(): JSX.Element {
       });
     });
     socket.on('roundEnded', (p) => {
+      previousPhaseRef.current = p.snapshot.phase;
       setSnapshot(p.snapshot);
       setRoundResults(p.results);
       setWaitingSeconds(p.nextRoundStartsIn);
@@ -375,6 +399,7 @@ export default function RoomPage(): JSX.Element {
       ]);
     });
     socket.on('gameOver', (p) => {
+      previousPhaseRef.current = p.snapshot.phase;
       setSnapshot(p.snapshot);
       setFinalScores(p.finalScores);
       setFinalTeamScores(p.snapshot.teamScores);
@@ -410,15 +435,9 @@ export default function RoomPage(): JSX.Element {
       setBustFlash({ playerId: p.playerId, playerName: p.playerName, word: p.word, message: p.message });
     });
     socket.on('gameRestarted', (p) => {
+      previousPhaseRef.current = p.snapshot.phase;
       setSnapshot(p.snapshot);
-      setRoundResults(undefined);
-      setFinalScores([]);
-      setFinalTeamScores([]);
-      setShowRoundHistory(false);
-      setRoundHistory([]);
-      setWaitingSeconds(0);
-      setValidWordCount(0);
-      setNegativeMarkedWords([]);
+      resetClientGameState();
       setNotice(p.autoStart ? 'New round incoming.' : 'Reset to lobby.');
     });
     socket.on('notice', (p) => setNotice(p.message));
@@ -494,6 +513,13 @@ export default function RoomPage(): JSX.Element {
     });
   }
 
+  function stopToLobby(): void {
+    socket.emit('restartGame', { roomId, autoStart: false }, (r) => {
+      if (!r.ok) setError(r.error);
+      else setError('');
+    });
+  }
+
   function openSettingsDialog(): void {
     setDraftSettings(snapshot?.settings);
     setShowSettingsDialog(true);
@@ -521,6 +547,20 @@ export default function RoomPage(): JSX.Element {
       setShowSettingsDialog(false);
       if (autoStart) restartGame();
     });
+  }
+
+  function resetClientGameState(): void {
+    setRoundResults(undefined);
+    setFinalScores([]);
+    setFinalTeamScores([]);
+    setShowRoundHistory(false);
+    setRoundHistory([]);
+    setWaitingSeconds(0);
+    setValidWordCount(0);
+    setNegativeMarkedWords([]);
+    setInputWord('');
+    setBetInput('');
+    setBustFlash(undefined);
   }
 
   function chooseTeam(teamId: 'red' | 'blue'): void {
@@ -610,6 +650,11 @@ export default function RoomPage(): JSX.Element {
               )}
             </Button>
           </Tooltip>
+          {canStopToLobby && (
+            <Button variant="mini" size="sm" onClick={stopToLobby} aria-label="Stop game and return to lobby">
+              Stop
+            </Button>
+          )}
           <Button variant="mini" size="sm" onClick={() => setShowHowToPlay(true)} aria-label="How to play">
             ?
           </Button>
@@ -719,11 +764,9 @@ export default function RoomPage(): JSX.Element {
                 <Button variant="primary" size="lg" fullWidth onClick={snapshot.phase === 'gameOver' ? restartGame : startGame}>
                   {snapshot.phase === 'gameOver' ? 'Play Again' : 'Start Game'}
                 </Button>
-                {snapshot.phase === 'gameOver' && (
-                  <Button variant="secondary" size="sm" fullWidth onClick={openSettingsDialog}>
-                    Change Settings
-                  </Button>
-                )}
+                <Button variant="secondary" size="sm" fullWidth onClick={openSettingsDialog}>
+                  Change Settings
+                </Button>
               </>
             )}
             {!isHost && snapshot.phase === 'lobby' && snapshot.players.length >= 2 && !needsRejoin && (

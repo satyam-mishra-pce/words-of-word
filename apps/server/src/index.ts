@@ -513,7 +513,11 @@ class GameRoomManager {
 
     if (this.allActivePlayersBet(room)) {
       this.io.to(room.id).emit('notice', { message: 'All bets are locked. Revealing the word!' });
-      setTimeout(() => this.startRound(room), 500);
+      setTimeout(() => {
+        if (room.phase === 'betting') {
+          this.startRound(room);
+        }
+      }, 500);
     }
 
     return { ok: true, data: { ok: true } };
@@ -595,7 +599,7 @@ class GameRoomManager {
       return { ok: false, error: 'At least two players are required.' };
     }
 
-    if (room.phase === 'round' || room.phase === 'betweenRounds') {
+    if (room.phase === 'round' || room.phase === 'betweenRounds' || room.phase === 'betting') {
       return { ok: false, error: 'A game is already in progress.' };
     }
 
@@ -610,6 +614,11 @@ class GameRoomManager {
     }
 
     this.resetScores(room);
+    room.currentRound = 0;
+    room.currentWord = '';
+    room.timeLeft = room.settings.timePerRound;
+    room.validWords = new Set<string>();
+    room.waitingSeconds = 0;
     this.analytics.recordGameStarted(room);
     if (room.settings.gameMode === 'betting') {
       this.startBetting(room);
@@ -780,8 +789,7 @@ class GameRoomManager {
       return 0;
     }
 
-    const recentCounts = counts.slice(-2);
-    return recentCounts.reduce((total, count) => total + count, 0) / recentCounts.length;
+    return counts.reduce((total, count) => total + count, 0) / counts.length;
   }
 
   private minimumBetFor(room: InternalRoom, playerId: string): number {
@@ -845,7 +853,11 @@ class GameRoomManager {
         this.lockMissingBets(room);
         this.io.to(room.id).emit('roomSnapshot', { snapshot: this.toSnapshot(room) });
         this.io.to(room.id).emit('notice', { message: 'Time up. Missing bets were locked automatically.' });
-        setTimeout(() => this.startRound(room), 500);
+        setTimeout(() => {
+          if (room.phase === 'betting') {
+            this.startRound(room);
+          }
+        }, 500);
       }
     }, 1000);
   }
@@ -901,6 +913,10 @@ class GameRoomManager {
   }
 
   private finishRound(room: InternalRoom): void {
+    if (room.phase !== 'round') {
+      return;
+    }
+
     this.clearTickTimer(room);
 
     const playerWords = this.acceptedWordsRecord(room);
@@ -956,14 +972,24 @@ class GameRoomManager {
     room.waitingSeconds = 0;
 
     const playerWords = finalRound?.playerWords ?? this.acceptedWordsRecord(room);
+    let previousScore: number | undefined;
+    let currentRank = 0;
+
     const finalScores = [...room.players]
       .sort((left, right) => right.score - left.score)
-      .map((player, index) => ({
-        playerId: player.id,
-        playerName: player.name,
-        score: player.score,
-        rank: index + 1
-      }));
+      .map((player) => {
+        if (previousScore === undefined || player.score !== previousScore) {
+          currentRank += 1;
+          previousScore = player.score;
+        }
+
+        return {
+          playerId: player.id,
+          playerName: player.name,
+          score: player.score,
+          rank: currentRank
+        };
+      });
 
     this.analytics.recordGameFinished(room, finalScores, playerWords);
 
