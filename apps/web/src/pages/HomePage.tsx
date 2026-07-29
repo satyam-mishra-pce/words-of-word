@@ -24,6 +24,10 @@ export default function HomePage(): JSX.Element {
     if (requireUsername()) navigate('/settings');
   }
 
+  function onlineRoom(): void {
+    if (requireUsername()) navigate('/online');
+  }
+
   function joinRoom(): void {
     if (requireUsername()) navigate('/join');
   }
@@ -34,7 +38,7 @@ export default function HomePage(): JSX.Element {
 
   function submit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
-    createRoom();
+    onlineRoom();
   }
 
   return (
@@ -69,13 +73,16 @@ export default function HomePage(): JSX.Element {
           {error && <Alert variant="error">{error}</Alert>}
 
           <div className="button-stack" style={{ marginTop: 4 }}>
-            <Button variant="primary" size="lg" fullWidth type="button" onClick={createRoom}>
-              Create New Room
+            <Button variant="primary" size="lg" fullWidth type="button" onClick={onlineRoom}>
+              Online Multiplayer
+            </Button>
+            <Button variant="secondary" size="lg" fullWidth type="button" onClick={createRoom}>
+              Create Private Room
             </Button>
             <Button variant="secondary" size="lg" fullWidth type="button" onClick={joinRoom}>
-              Join Existing Game
+              Join Private Room
             </Button>
-            <Button variant="ghost" size="lg" fullWidth type="button" onClick={dailyWord}>
+            <Button className="daily-word-cta" variant="ghost" size="lg" fullWidth type="button" onClick={dailyWord}>
               Daily Word
             </Button>
           </div>

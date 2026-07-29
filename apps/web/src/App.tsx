@@ -4,6 +4,7 @@ import HomePage from './pages/HomePage';
 import JoinPage from './pages/JoinPage';
 import RoomPage from './pages/RoomPage';
 import SettingsPage from './pages/SettingsPage';
+import OnlinePage from './pages/OnlinePage';
 import { ThemeToggle } from './components/ThemeToggle';
 
 export default function App(): JSX.Element {
@@ -13,6 +14,7 @@ export default function App(): JSX.Element {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/online" element={<OnlinePage />} />
         <Route path="/daily" element={<DailyWordPage />} />
         <Route path="/join" element={<JoinPage />} />
         <Route path="/join/:roomId" element={<JoinPage />} />

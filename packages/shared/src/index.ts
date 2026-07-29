@@ -16,7 +16,10 @@ export const GameModeSchema = z.enum([
   'oneWordForAll',
   'busted',
   'commonWord',
-  'intuition'
+  'intuition',
+  'lightning',
+  'bingo',
+  'mix'
 ]);
 
 export const WordCategorySchema = z.enum([
@@ -32,6 +35,18 @@ export const WordCategorySchema = z.enum([
   'medical'
 ]);
 
+export const MixScoringModeSchema = z.enum(['classic', 'arcade']);
+
+export const MixModifiersSchema = z.object({
+  teams: z.boolean().default(false),
+  wordSprint: z.boolean().default(false),
+  blind: z.boolean().default(false),
+  claim: z.boolean().default(false),
+  busted: z.boolean().default(false),
+  intuition: z.boolean().default(false),
+  lightning: z.boolean().default(false)
+});
+
 export const GameSettingsSchema = z.object({
   minWordLength: z.number().int().min(4).max(18),
   timePerRound: z.number().int().min(5).max(300),
@@ -41,12 +56,15 @@ export const GameSettingsSchema = z.object({
   fastestWordTarget: z.number().int().min(3).max(10).default(5),
   eliminationsPerRound: z.number().int().min(1).max(10).default(1),
   wordCategory: WordCategorySchema.default('general'),
-  customWordList: z.string().max(2000).default('')
+  customWordList: z.string().max(2000).default(''),
+  mixScoringMode: MixScoringModeSchema.default('classic'),
+  mixModifiers: MixModifiersSchema.default({})
 });
 
 export const CreateRoomPayloadSchema = z.object({
   username: UsernameSchema,
-  settings: GameSettingsSchema
+  settings: GameSettingsSchema,
+  isPublic: z.boolean().default(false)
 });
 
 export const CheckRoomPayloadSchema = z.object({
@@ -55,6 +73,10 @@ export const CheckRoomPayloadSchema = z.object({
 
 export const JoinRoomPayloadSchema = z.object({
   roomId: RoomIdSchema,
+  username: UsernameSchema
+});
+
+export const QuickJoinRoomPayloadSchema = z.object({
   username: UsernameSchema
 });
 
@@ -88,11 +110,14 @@ export const UpdateSettingsPayloadSchema = z.object({
 });
 
 export type GameMode = z.infer<typeof GameModeSchema>;
+export type MixScoringMode = z.infer<typeof MixScoringModeSchema>;
+export type MixModifiers = z.infer<typeof MixModifiersSchema>;
 export type WordCategory = z.infer<typeof WordCategorySchema>;
 export type GameSettings = z.infer<typeof GameSettingsSchema>;
 export type CreateRoomPayload = z.infer<typeof CreateRoomPayloadSchema>;
 export type CheckRoomPayload = z.infer<typeof CheckRoomPayloadSchema>;
 export type JoinRoomPayload = z.infer<typeof JoinRoomPayloadSchema>;
+export type QuickJoinRoomPayload = z.infer<typeof QuickJoinRoomPayloadSchema>;
 export type StartGamePayload = z.infer<typeof StartGamePayloadSchema>;
 export type SubmitWordPayload = z.infer<typeof SubmitWordPayloadSchema>;
 export type UpdateTeamPayload = z.infer<typeof UpdateTeamPayloadSchema>;
@@ -125,6 +150,11 @@ export interface TeamScore {
   players: string[];
 }
 
+export interface BingoTask {
+  id: string;
+  label: string;
+}
+
 export interface RoomSnapshot {
   roomId: string;
   players: Player[];
@@ -144,6 +174,8 @@ export interface RoomSnapshot {
   waitingSeconds: number;
   bustWords: Record<string, string>;
   bustedPlayers: Record<string, boolean>;
+  bingoTasks: BingoTask[];
+  bingoProgress: Record<string, string[]>;
 }
 
 export interface NegativeMarkedWord {
@@ -180,6 +212,29 @@ export interface CheckRoomResult {
 
 export interface JoinRoomResult {
   snapshot: RoomSnapshot;
+}
+
+export interface QuickJoinRoomResult {
+  roomId: string;
+  snapshot: RoomSnapshot;
+  created: boolean;
+}
+
+export interface OnlineRoomSummary {
+  roomId: string;
+  hostName: string;
+  gameMode: GameMode;
+  phase: RoomPhase;
+  currentPlayers: number;
+  maxPlayers: number;
+  currentRound: number;
+  rounds: number;
+  timePerRound: number;
+  minWordLength: number;
+}
+
+export interface ListOnlineRoomsResult {
+  rooms: OnlineRoomSummary[];
 }
 
 export interface EmptyResult {
@@ -301,6 +356,8 @@ export interface ClientToServerEvents {
   createRoom: (payload: CreateRoomPayload, ack?: Ack<CreateRoomResult>) => void;
   checkRoom: (payload: CheckRoomPayload, ack?: Ack<CheckRoomResult>) => void;
   joinRoom: (payload: JoinRoomPayload, ack?: Ack<JoinRoomResult>) => void;
+  quickJoinRoom: (payload: QuickJoinRoomPayload, ack?: Ack<QuickJoinRoomResult>) => void;
+  listOnlineRooms: (ack?: Ack<ListOnlineRoomsResult>) => void;
   updateTeam: (payload: UpdateTeamPayload, ack?: Ack<EmptyResult>) => void;
   updateBet: (payload: UpdateBetPayload, ack?: Ack<EmptyResult>) => void;
   updateSettings: (payload: UpdateSettingsPayload, ack?: Ack<EmptyResult>) => void;

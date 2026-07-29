@@ -35,6 +35,9 @@ const GAME_MODE_OPTIONS: Array<{ value: GameSettings['gameMode']; label: string 
   { value: 'busted', label: 'Busted Mode' },
   { value: 'commonWord', label: 'Common Word' },
   { value: 'intuition', label: 'Intuition Mode' },
+  { value: 'lightning', label: 'Lightning Mode' },
+  { value: 'bingo', label: 'Bingo Board' },
+  { value: 'mix', label: 'Mix Mode' },
 ];
 
 const PLAYER_FINAL_TITLES = [
@@ -108,17 +111,20 @@ export default function RoomPage(): JSX.Element {
   const isCurrentPlayerBusted = Boolean(currentPlayerId && snapshot?.bustedPlayers[currentPlayerId]);
   const canSubmit = snapshot?.phase === 'round' && Boolean(currentPlayer) && !currentPlayer?.isEliminated && !isCurrentPlayerBusted;
   const isUrgent = Boolean(snapshot?.phase === 'round' && snapshot.timeLeft <= 10);
-  const isArcadeMode = snapshot?.settings.gameMode === 'arcade';
+  const isMixMode = snapshot?.settings.gameMode === 'mix';
+  const isArcadeMode = snapshot?.settings.gameMode === 'arcade' || (isMixMode && snapshot?.settings.mixScoringMode === 'arcade');
   const isPrecisionMode = snapshot?.settings.gameMode === 'precision';
   const isCommonWordMode = snapshot?.settings.gameMode === 'commonWord';
   const showsNegativeWords = isPrecisionMode || isCommonWordMode;
-  const isTeamsMode = snapshot?.settings.gameMode === 'teams';
+  const isTeamsMode = snapshot?.settings.gameMode === 'teams' || Boolean(isMixMode && snapshot?.settings.mixModifiers.teams);
   const isLengthBonusMode = isArcadeMode || isPrecisionMode;
-  const isTypistMode = snapshot?.settings.gameMode === 'typist';
-  const isFastestNMode = snapshot?.settings.gameMode === 'fastestNWords';
+  const isTypistMode = snapshot?.settings.gameMode === 'typist' || Boolean(isMixMode && snapshot?.settings.mixModifiers.blind);
+  const isFastestNMode = snapshot?.settings.gameMode === 'fastestNWords' || Boolean(isMixMode && snapshot?.settings.mixModifiers.wordSprint);
   const isBettingMode = snapshot?.settings.gameMode === 'betting';
-  const isBustedMode = snapshot?.settings.gameMode === 'busted';
-  const isIntuitionMode = snapshot?.settings.gameMode === 'intuition';
+  const isBustedMode = snapshot?.settings.gameMode === 'busted' || Boolean(isMixMode && snapshot?.settings.mixModifiers.busted);
+  const isIntuitionMode = snapshot?.settings.gameMode === 'intuition' || Boolean(isMixMode && snapshot?.settings.mixModifiers.intuition);
+  const isLightningMode = snapshot?.settings.gameMode === 'lightning' || Boolean(isMixMode && snapshot?.settings.mixModifiers.lightning);
+  const isBingoMode = snapshot?.settings.gameMode === 'bingo';
   const currentBet = currentPlayerId && snapshot ? snapshot.bettingBets[currentPlayerId] : undefined;
   const minimumBet = currentPlayerId && snapshot ? snapshot.minimumBets[currentPlayerId] ?? 3 : 3;
   const finalTeamStandings = useMemo(() => {
@@ -144,6 +150,9 @@ export default function RoomPage(): JSX.Element {
   }, [finalTeamScores, snapshot]);
 
   function wordPoints(word: string): number {
+    if (isBingoMode) {
+      return 0;
+    }
     if (isCommonWordMode) {
       return word.length >= 5 ? 5 : 3;
     }
@@ -188,9 +197,9 @@ export default function RoomPage(): JSX.Element {
 
   function renderWordBadge(word: string, style?: CSSProperties): JSX.Element {
     return (
-      <Badge key={word} variant="word" className="scored-word-badge" style={style} title={`${wordPoints(word)} points`}>
+      <Badge key={word} variant="word" className="scored-word-badge" style={style} title={isBingoMode ? 'Bingo words only score when they complete a task' : `${wordPoints(word)} points`}>
         <span>{word}</span>
-        {isLengthBonusMode ? (
+        {isBingoMode ? null : isLengthBonusMode ? (
           <span className="word-score-formula" aria-label={`3 plus ${word.length} equals ${wordPoints(word)} points`}>
             <strong>3+{word.length}</strong>
             <span>= {wordPoints(word)}</span>
@@ -377,6 +386,8 @@ export default function RoomPage(): JSX.Element {
           bettingBets: p.snapshot.bettingBets,
           bettingAverages: p.snapshot.bettingAverages,
           minimumBets: p.snapshot.minimumBets,
+          bingoTasks: p.snapshot.bingoTasks,
+          bingoProgress: p.snapshot.bingoProgress,
         };
       });
     });
@@ -526,7 +537,22 @@ export default function RoomPage(): JSX.Element {
   }
 
   function setDraft<K extends keyof GameSettings>(key: K, value: GameSettings[K]): void {
-    setDraftSettings((prev) => prev ? { ...prev, [key]: value } : prev);
+    setDraftSettings((prev) => prev ? {
+      ...prev,
+      [key]: value,
+      ...(key === 'gameMode' && value === 'lightning' ? { timePerRound: 10 } : {})
+    } : prev);
+  }
+
+  function setDraftMixModifier(key: keyof GameSettings['mixModifiers'], value: boolean): void {
+    setDraftSettings((prev) => prev ? {
+      ...prev,
+      timePerRound: key === 'lightning' && value ? 10 : prev.timePerRound,
+      mixModifiers: {
+        ...prev.mixModifiers,
+        [key]: value
+      }
+    } : prev);
   }
 
   function saveSettings(autoStart: boolean): void {
@@ -612,6 +638,18 @@ export default function RoomPage(): JSX.Element {
 
   const needsRejoin = !currentPlayer;
   const currentModeLabel = GAME_MODE_OPTIONS.find((mode) => mode.value === snapshot.settings.gameMode)?.label ?? snapshot.settings.gameMode;
+  const mixModifierLabels = snapshot.settings.gameMode === 'mix'
+    ? [
+      snapshot.settings.mixModifiers.teams && 'Teams',
+      snapshot.settings.mixModifiers.wordSprint && `Word Sprint: ${snapshot.settings.mixModifiers.teams ? 'first team' : 'first player'} to ${snapshot.settings.fastestWordTarget}`,
+      snapshot.settings.mixModifiers.blind && 'Blind Type',
+      snapshot.settings.mixModifiers.claim && 'Claim: words are global',
+      snapshot.settings.mixModifiers.busted && 'Busted',
+      snapshot.settings.mixModifiers.intuition && 'Intuition reveal',
+      snapshot.settings.mixModifiers.lightning && 'Lightning: +1s per word'
+    ].filter((label): label is string => Boolean(label))
+    : [];
+  const mixScoringLabel = snapshot.settings.mixScoringMode === 'arcade' ? 'Score Attack' : 'Classic';
 
   /* ── main game view ── */
   return (
@@ -660,6 +698,23 @@ export default function RoomPage(): JSX.Element {
           </Button>
         </div>
       </header>
+
+      {snapshot.settings.gameMode === 'mix' && (
+        <section className="mix-config-banner" aria-label="Mix mode configuration">
+          <div>
+            <span className="mix-config-banner__kicker">Mix Mode active</span>
+            <strong>{mixScoringLabel} scoring</strong>
+          </div>
+          <div className="mix-config-banner__chips">
+            {mixModifierLabels.length > 0
+              ? mixModifierLabels.map((label) => <span key={label}>{label}</span>)
+              : <span>No modifiers</span>}
+          </div>
+          {(snapshot.settings.mixModifiers.claim || snapshot.settings.mixModifiers.busted) && (
+            <p>Priority: valid word → busted check → claim check → score.</p>
+          )}
+        </section>
+      )}
 
       {/* ── LEFT: Players ── */}
       <aside className="players-panel glass-panel">
@@ -968,9 +1023,32 @@ export default function RoomPage(): JSX.Element {
               <div className={`timer-section ${isUrgent ? 'urgent' : ''}`}>
                 <TimerRing
                   timeLeft={snapshot.timeLeft}
-                  totalTime={snapshot.settings.timePerRound}
+                  totalTime={isLightningMode ? Math.max(10, snapshot.timeLeft) : snapshot.settings.timePerRound}
                   size={96}
                 />
+              </div>
+            )}
+
+            {/* Bingo board */}
+            {isBingoMode && snapshot.bingoTasks.length > 0 && (
+              <div className="words-card" style={{ marginTop: 14 }}>
+                <div className="words-header">
+                  <h3>Bingo Board</h3>
+                  <Badge>{snapshot.bingoProgress[currentPlayerId ?? '']?.length ?? 0}/{snapshot.bingoTasks.length}</Badge>
+                </div>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {snapshot.bingoTasks.map((task) => {
+                    const done = Boolean(snapshot.bingoProgress[currentPlayerId ?? '']?.includes(task.id));
+                    return (
+                      <div key={task.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 12, background: done ? 'rgba(106,173,80,0.12)' : 'var(--main-10)', color: done ? 'var(--green)' : 'var(--text)' }}>
+                        <span aria-label={done ? 'completed' : 'not completed'} style={{ fontSize: '1.15rem', width: 22 }}>{done ? '✓' : '□'}</span>
+                        <strong>{task.label}</strong>
+                        <span style={{ marginLeft: 'auto' }}>+10</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="muted" style={{ marginTop: 10 }}>Complete all {snapshot.bingoTasks.length} for a +100 bonus. The source word itself does not count for bingo tasks. After bingo, every extra valid word scores +3.</p>
               </div>
             )}
 
@@ -1109,7 +1187,7 @@ export default function RoomPage(): JSX.Element {
         </h2>
         <Separator />
         <ul>
-          <li>{isTeamsMode ? <>Teams: choose Red or Blue in the lobby. Individual points add into the cumulative team score.</> : isPrecisionMode ? <>Precision scores <strong>3 + word length</strong>, wrong words cost <strong>-(3 + word length)</strong>, duplicates cost <strong>-3</strong>.</> : isArcadeMode ? <>Score Attack scores <strong>3 + word length</strong>.</> : isBettingMode ? <>Betting: lock a word-count bet before the word appears. Hit it for <strong>bet × 10</strong>, extra words give <strong>3</strong>, miss it and lose <strong>bet × 10</strong>.</> : isBustedMode ? <>Busted: your first accepted word becomes your bust word. Type someone else’s bust word and your round score becomes <strong>0</strong>. Same first words are safe.</> : isCommonWordMode ? <>Common Word: unique words score <strong>+3</strong>, rare unique words with <strong>5+ letters</strong> score <strong>+5</strong>. If another player also makes that word, every player who used it gets <strong>-3</strong> for it.</> : isIntuitionMode ? <>Intuition Mode unlocks the source word letter by letter over the round. You can still guess hidden words early.</> : snapshot.settings.gameMode === 'fastestNWords' ? <>Word Sprint: first to <strong>{snapshot.settings.fastestWordTarget} words</strong> ends the round and gets a highlighted <strong>10 point bonus</strong>.</> : snapshot.settings.gameMode === 'battleRoyale' ? <>Knockout: lowest scoring <strong>{snapshot.settings.eliminationsPerRound}</strong> player(s) are eliminated each round.</> : snapshot.settings.gameMode === 'typist' ? <>Blind Type hides your input until you submit.</> : snapshot.settings.gameMode === 'oneWordForAll' ? <>Claim Mode: once any player finds a word, nobody else can use it. If it is taken, you will be told clearly.</> : <>Each accepted word scores <strong>3 points</strong>.</>}</li>
+          <li>{isTeamsMode ? <>Teams: choose Red or Blue in the lobby. Individual points add into the cumulative team score.</> : isPrecisionMode ? <>Precision scores <strong>3 + word length</strong>, wrong words cost <strong>-(3 + word length)</strong>, duplicates cost <strong>-3</strong>.</> : isArcadeMode ? <>Score Attack scores <strong>3 + word length</strong>.</> : isBettingMode ? <>Betting: lock a word-count bet before the word appears. Hit it for <strong>bet × 10</strong>, extra words give <strong>3</strong>, miss it and lose <strong>bet × 10</strong>.</> : isBustedMode ? <>Busted: your first accepted word becomes your bust word. Type someone else’s bust word and your round score becomes <strong>0</strong>. Same first words are safe.</> : isCommonWordMode ? <>Common Word: unique words score <strong>+3</strong>, rare unique words with <strong>5+ letters</strong> score <strong>+5</strong>. If another player also makes that word, every player who used it gets <strong>-3</strong> for it.</> : isLightningMode ? <>Lightning Mode gives you <strong>10 seconds</strong>. Every valid word adds <strong>1 second</strong>; zero ends the round.</> : isBingoMode ? <>Bingo Board gives everyone the same <strong>7 Pictureka-style word hunt tasks</strong> from the source word. Each task is <strong>+10</strong>; finish all 7 for <strong>+100</strong>. The source word itself does not count for bingo tasks; then extra valid words score <strong>+3</strong>.</> : isIntuitionMode ? <>Intuition Mode unlocks the source word letter by letter over the round. You can still guess hidden words early.</> : snapshot.settings.gameMode === 'fastestNWords' ? <>Word Sprint: first to <strong>{snapshot.settings.fastestWordTarget} words</strong> ends the round and gets a highlighted <strong>10 point bonus</strong>.</> : snapshot.settings.gameMode === 'battleRoyale' ? <>Knockout: lowest scoring <strong>{snapshot.settings.eliminationsPerRound}</strong> player(s) are eliminated each round.</> : snapshot.settings.gameMode === 'typist' ? <>Blind Type hides your input until you submit.</> : snapshot.settings.gameMode === 'oneWordForAll' ? <>Claim Mode: once any player finds a word, nobody else can use it. If it is taken, you will be told clearly.</> : <>Each accepted word scores <strong>3 points</strong>.</>}</li>
           <li>Letters must come from the source word.</li>
           <li>No reusing the same word in a round.</li>
           <li>The host controls start and restart.</li>
@@ -1129,7 +1207,7 @@ export default function RoomPage(): JSX.Element {
         </h1>
         <ul style={{ paddingLeft: 14, lineHeight: 2.1, color: 'var(--sub)', fontSize: '0.88rem', marginBottom: 20 }}>
           <li>Find words hidden inside the big word.</li>
-          <li>{isTeamsMode ? <>Teams: choose Red or Blue in the lobby. Individual points add into the cumulative team score.</> : isPrecisionMode ? <>Precision scores <strong style={{ color: 'var(--text)' }}>3 + word length</strong>, wrong words cost <strong style={{ color: 'var(--text)' }}>-(3 + word length)</strong>, duplicates cost <strong style={{ color: 'var(--text)' }}>-3</strong>.</> : isArcadeMode ? <>Score Attack scores <strong style={{ color: 'var(--text)' }}>3 + word length</strong>.</> : isBettingMode ? <>Betting: lock a word-count bet before the word appears. Hit it for <strong style={{ color: 'var(--text)' }}>bet × 10</strong>, extra words give <strong style={{ color: 'var(--text)' }}>3</strong>, miss it and lose <strong style={{ color: 'var(--text)' }}>bet × 10</strong>.</> : isBustedMode ? <>Busted: your first word is your bust word. Type someone else’s bust word and your round score becomes <strong style={{ color: 'var(--text)' }}>0</strong>. Matching first words are safe.</> : isCommonWordMode ? <>Common Word: unique words score <strong style={{ color: 'var(--text)' }}>+3</strong>, rare unique words with <strong style={{ color: 'var(--text)' }}>5+ letters</strong> score <strong style={{ color: 'var(--text)' }}>+5</strong>. Shared words score <strong style={{ color: 'var(--text)' }}>-3</strong> for everyone who used them.</> : isIntuitionMode ? <>Intuition Mode reveals the source word evenly over time. Guess from hidden letters whenever your gut says go.</> : snapshot.settings.gameMode === 'fastestNWords' ? <>Word Sprint: first to <strong style={{ color: 'var(--text)' }}>{snapshot.settings.fastestWordTarget} words</strong> ends the round and gets a highlighted <strong style={{ color: 'var(--text)' }}>10 point bonus</strong>.</> : snapshot.settings.gameMode === 'battleRoyale' ? <>Knockout: lowest scoring <strong style={{ color: 'var(--text)' }}>{snapshot.settings.eliminationsPerRound}</strong> player(s) are eliminated each round.</> : snapshot.settings.gameMode === 'typist' ? <>Blind Type hides your input until you submit.</> : snapshot.settings.gameMode === 'oneWordForAll' ? <>Claim Mode: once any player finds a word, nobody else can use it. If it is taken, you will be told clearly.</> : <>Each accepted word scores <strong style={{ color: 'var(--text)' }}>3 points</strong>.</>}</li>
+          <li>{isTeamsMode ? <>Teams: choose Red or Blue in the lobby. Individual points add into the cumulative team score.</> : isPrecisionMode ? <>Precision scores <strong style={{ color: 'var(--text)' }}>3 + word length</strong>, wrong words cost <strong style={{ color: 'var(--text)' }}>-(3 + word length)</strong>, duplicates cost <strong style={{ color: 'var(--text)' }}>-3</strong>.</> : isArcadeMode ? <>Score Attack scores <strong style={{ color: 'var(--text)' }}>3 + word length</strong>.</> : isBettingMode ? <>Betting: lock a word-count bet before the word appears. Hit it for <strong style={{ color: 'var(--text)' }}>bet × 10</strong>, extra words give <strong style={{ color: 'var(--text)' }}>3</strong>, miss it and lose <strong style={{ color: 'var(--text)' }}>bet × 10</strong>.</> : isBustedMode ? <>Busted: your first word is your bust word. Type someone else’s bust word and your round score becomes <strong style={{ color: 'var(--text)' }}>0</strong>. Matching first words are safe.</> : isCommonWordMode ? <>Common Word: unique words score <strong style={{ color: 'var(--text)' }}>+3</strong>, rare unique words with <strong style={{ color: 'var(--text)' }}>5+ letters</strong> score <strong style={{ color: 'var(--text)' }}>+5</strong>. Shared words score <strong style={{ color: 'var(--text)' }}>-3</strong> for everyone who used them.</> : isLightningMode ? <>Lightning Mode starts at <strong style={{ color: 'var(--text)' }}>10 seconds</strong>. Every valid word adds <strong style={{ color: 'var(--text)' }}>1 second</strong>; hit zero and the round dies.</> : isBingoMode ? <>Bingo Board gives everyone the same <strong style={{ color: 'var(--text)' }}>7 Pictureka-style word hunt tasks</strong> generated from the source word. Tasks give <strong style={{ color: 'var(--text)' }}>+10</strong>; full board gives <strong style={{ color: 'var(--text)' }}>+100</strong>. The source word itself does not count for bingo tasks; after bingo, extra valid words give <strong style={{ color: 'var(--text)' }}>+3</strong>.</> : isIntuitionMode ? <>Intuition Mode reveals the source word evenly over time. Guess from hidden letters whenever your gut says go.</> : snapshot.settings.gameMode === 'fastestNWords' ? <>Word Sprint: first to <strong style={{ color: 'var(--text)' }}>{snapshot.settings.fastestWordTarget} words</strong> ends the round and gets a highlighted <strong style={{ color: 'var(--text)' }}>10 point bonus</strong>.</> : snapshot.settings.gameMode === 'battleRoyale' ? <>Knockout: lowest scoring <strong style={{ color: 'var(--text)' }}>{snapshot.settings.eliminationsPerRound}</strong> player(s) are eliminated each round.</> : snapshot.settings.gameMode === 'typist' ? <>Blind Type hides your input until you submit.</> : snapshot.settings.gameMode === 'oneWordForAll' ? <>Claim Mode: once any player finds a word, nobody else can use it. If it is taken, you will be told clearly.</> : <>Each accepted word scores <strong style={{ color: 'var(--text)' }}>3 points</strong>.</>}</li>
           <li>Letters must come from the source word.</li>
           <li>No reusing the same word in a round.</li>
           <li>The host controls start and restart.</li>
@@ -1153,7 +1231,38 @@ export default function RoomPage(): JSX.Element {
               </Select>
             </div>
 
-            {draftSettings.gameMode === 'fastestNWords' && (
+            {draftSettings.gameMode === 'mix' && (
+              <>
+                <div className="setting-group">
+                  <Label htmlFor="room-mix-scoring">Mix scoring</Label>
+                  <Select id="room-mix-scoring" value={draftSettings.mixScoringMode} onChange={(e) => setDraft('mixScoringMode', e.currentTarget.value as GameSettings['mixScoringMode'])}>
+                    <option value="classic">Classic</option>
+                    <option value="arcade">Score Attack</option>
+                  </Select>
+                </div>
+                <div className="setting-group" style={{ gridColumn: '1 / -1' }}>
+                  <Label>Mix modifiers</Label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
+                    {([
+                      ['teams', 'Teams'],
+                      ['wordSprint', 'Word Sprint'],
+                      ['blind', 'Blind'],
+                      ['claim', 'Claim'],
+                      ['busted', 'Busted'],
+                      ['intuition', 'Intuition'],
+                      ['lightning', 'Lightning']
+                    ] as const).map(([key, label]) => (
+                      <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text)' }}>
+                        <input type="checkbox" checked={draftSettings.mixModifiers[key]} onChange={(e) => setDraftMixModifier(key, e.currentTarget.checked)} />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {(draftSettings.gameMode === 'fastestNWords' || (draftSettings.gameMode === 'mix' && draftSettings.mixModifiers.wordSprint)) && (
               <div className="setting-group">
                 <Label htmlFor="room-fastest-target">Words to win</Label>
                 <Select id="room-fastest-target" value={draftSettings.fastestWordTarget} onChange={(e) => setDraft('fastestWordTarget', Number(e.currentTarget.value))}>
@@ -1205,8 +1314,8 @@ export default function RoomPage(): JSX.Element {
             </div>
             <div className="setting-group">
               <Label htmlFor="room-time-per-round">Time per round</Label>
-              <Select id="room-time-per-round" value={draftSettings.timePerRound} onChange={(e) => setDraft('timePerRound', Number(e.currentTarget.value))}>
-                {[5, 20, 30, 40, 50, 60, 90, 120].map((s) => <option key={s} value={s}>{s} seconds</option>)}
+              <Select id="room-time-per-round" value={(draftSettings.gameMode === 'lightning' || (draftSettings.gameMode === 'mix' && draftSettings.mixModifiers.lightning)) ? 10 : draftSettings.timePerRound} onChange={(e) => setDraft('timePerRound', Number(e.currentTarget.value))} disabled={draftSettings.gameMode === 'lightning' || (draftSettings.gameMode === 'mix' && draftSettings.mixModifiers.lightning)}>
+                {[5, 10, 20, 30, 40, 50, 60, 90, 120].map((s) => <option key={s} value={s}>{s} seconds</option>)}
               </Select>
             </div>
             <div className="setting-group">

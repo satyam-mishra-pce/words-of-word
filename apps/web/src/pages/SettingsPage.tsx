@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { GameSettings } from '@wow/shared';
 import socket from '../services/socket';
 import { loadUsername } from '../services/session';
@@ -14,7 +14,17 @@ const DEFAULT_SETTINGS: GameSettings = {
   fastestWordTarget: 5,
   eliminationsPerRound: 1,
   wordCategory: 'general',
-  customWordList: ''
+  customWordList: '',
+  mixScoringMode: 'classic',
+  mixModifiers: {
+    teams: false,
+    wordSprint: false,
+    blind: false,
+    claim: false,
+    busted: false,
+    intuition: false,
+    lightning: false
+  }
 };
 
 const GAME_MODE_INFO: Array<{ value: GameSettings['gameMode']; label: string; description: string }> = [
@@ -30,11 +40,16 @@ const GAME_MODE_INFO: Array<{ value: GameSettings['gameMode']; label: string; de
   { value: 'oneWordForAll', label: 'Claim Mode', description: 'Once any player claims a word, no one else can use it.' },
   { value: 'busted', label: 'Busted Mode', description: 'Each player’s first word becomes their bust word. Type another player’s bust word and your round score explodes to 0. Matching first words are safe.' },
   { value: 'commonWord', label: 'Common Word', description: 'Unique words score +3, rare unique words with 5+ letters score +5. If two or more players make the same word, everyone who used it gets -3 for that word.' },
-  { value: 'intuition', label: 'Intuition Mode', description: 'The source word starts hidden and unlocks one random letter at a time over the round. You can guess words from the hidden letters before they appear.' }
+  { value: 'intuition', label: 'Intuition Mode', description: 'The source word starts hidden and unlocks one random letter at a time over the round. You can guess words from the hidden letters before they appear.' },
+  { value: 'lightning', label: 'Lightning Mode', description: 'You start with 10 seconds. Every valid word adds 1 second. If it hits zero, the round is dead.' },
+  { value: 'bingo', label: 'Bingo Board', description: 'Everyone gets the same 7 hard tasks from a bigger pool: Pictureka-style word hunts plus rare letters, lengths, exact positions, edge letters, vowel traps, and pattern challenges. Every task is validated to be possible without using the source word itself. Each task gives 10 points; one word can complete multiple matching tasks. Complete all 7 for a 100 point bonus, then every extra valid word scores 3 points.' },
+  { value: 'mix', label: 'Mix Mode', description: 'Choose Classic or Score Attack scoring, then stack compatible modifiers: Teams, Word Sprint, Blind Type, Claim, Busted, Intuition, and Lightning.' }
 ];
 
 export default function SettingsPage(): JSX.Element {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const isOnlineRoom = searchParams.get('online') === '1';
   const username = loadUsername();
   const [settings, setSettings] = useState<GameSettings>(DEFAULT_SETTINGS);
   const [error, setError] = useState('');
@@ -43,6 +58,8 @@ export default function SettingsPage(): JSX.Element {
   const battleRoyaleWarning = settings.gameMode === 'battleRoyale' && settings.eliminationsPerRound * settings.rounds >= settings.maxPlayers
     ? 'Knockout would finish before all rounds are played. Lower eliminations, lower rounds, or increase max players.'
     : '';
+  const usesWordSprint = settings.gameMode === 'fastestNWords' || (settings.gameMode === 'mix' && settings.mixModifiers.wordSprint);
+  const usesLightning = settings.gameMode === 'lightning' || (settings.gameMode === 'mix' && settings.mixModifiers.lightning);
 
   if (!username) {
     return (
@@ -73,7 +90,7 @@ export default function SettingsPage(): JSX.Element {
       setError('Could not reach the game server. Make sure the local server is running on port 4000, then try again.');
     }, 8000);
 
-    socket.emit('createRoom', { username, settings }, (response) => {
+    socket.emit('createRoom', { username, settings, isPublic: isOnlineRoom }, (response) => {
       if (settled) return;
       settled = true;
       window.clearTimeout(timeout);
@@ -84,15 +101,30 @@ export default function SettingsPage(): JSX.Element {
   }
 
   function set<K extends keyof GameSettings>(key: K, value: GameSettings[K]): void {
-    setSettings((prev) => ({ ...prev, [key]: value }));
+    setSettings((prev) => ({
+      ...prev,
+      [key]: value,
+      ...(key === 'gameMode' && value === 'lightning' ? { timePerRound: 10 } : {})
+    }));
+  }
+
+  function setMixModifier(key: keyof GameSettings['mixModifiers'], value: boolean): void {
+    setSettings((prev) => ({
+      ...prev,
+      timePerRound: key === 'lightning' && value ? 10 : prev.timePerRound,
+      mixModifiers: {
+        ...prev.mixModifiers,
+        [key]: value
+      }
+    }));
   }
 
   return (
     <main className="page-shell">
       <section className="panel-card">
         <p className="eyebrow">configure the drop</p>
-        <h1>Game Settings</h1>
-        <p className="muted">Set the rules before the battle starts.</p>
+        <h1>{isOnlineRoom ? 'Create Online Room' : 'Game Settings'}</h1>
+        <p className="muted">{isOnlineRoom ? 'Create a public room with your own settings. Other online players can find and join it.' : 'Set the rules before the battle starts.'}</p>
 
         <div className="settings-grid">
           <div className="setting-group">
@@ -137,10 +169,53 @@ export default function SettingsPage(): JSX.Element {
               <option value="busted">Busted Mode</option>
               <option value="commonWord">Common Word</option>
               <option value="intuition">Intuition Mode</option>
+              <option value="lightning">Lightning Mode</option>
+              <option value="bingo">Bingo Board</option>
+              <option value="mix">Mix Mode</option>
             </Select>
           </div>
 
-          {settings.gameMode === 'fastestNWords' && (
+          {settings.gameMode === 'mix' && (
+            <>
+              <div className="setting-group">
+                <Label htmlFor="mix-scoring">Mix scoring</Label>
+                <Select
+                  id="mix-scoring"
+                  value={settings.mixScoringMode}
+                  onChange={(e) => set('mixScoringMode', e.currentTarget.value as GameSettings['mixScoringMode'])}
+                >
+                  <option value="classic">Classic</option>
+                  <option value="arcade">Score Attack</option>
+                </Select>
+              </div>
+
+              <div className="setting-group" style={{ gridColumn: '1 / -1' }}>
+                <Label>Mix modifiers</Label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
+                  {([
+                    ['teams', 'Teams'],
+                    ['wordSprint', 'Word Sprint'],
+                    ['blind', 'Blind'],
+                    ['claim', 'Claim'],
+                    ['busted', 'Busted'],
+                    ['intuition', 'Intuition'],
+                    ['lightning', 'Lightning']
+                  ] as const).map(([key, label]) => (
+                    <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text)' }}>
+                      <input
+                        type="checkbox"
+                        checked={settings.mixModifiers[key]}
+                        onChange={(e) => setMixModifier(key, e.currentTarget.checked)}
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+
+          {usesWordSprint && (
             <div className="setting-group">
               <Label htmlFor="fastest-target">Words to win</Label>
               <Select
@@ -224,10 +299,11 @@ export default function SettingsPage(): JSX.Element {
             <Label htmlFor="time-per-round">Time per round</Label>
             <Select
               id="time-per-round"
-              value={settings.timePerRound}
+              value={usesLightning ? 10 : settings.timePerRound}
               onChange={(e) => set('timePerRound', Number(e.currentTarget.value))}
+              disabled={usesLightning}
             >
-              {[5, 20, 30, 40, 50, 60, 90, 120].map((s) => (
+              {[5, 10, 20, 30, 40, 50, 60, 90, 120].map((s) => (
                 <option key={s} value={s}>{s} seconds</option>
               ))}
             </Select>
@@ -266,7 +342,7 @@ export default function SettingsPage(): JSX.Element {
         <div className="button-row">
           <Button variant="secondary" onClick={() => navigate('/')}>← Back</Button>
           <Button variant="primary" onClick={createRoom} isLoading={isCreating}>
-            {isCreating ? 'Creating…' : 'Create Room →'}
+            {isCreating ? 'Creating…' : isOnlineRoom ? 'Create Online Room →' : 'Create Room →'}
           </Button>
         </div>
       </section>
