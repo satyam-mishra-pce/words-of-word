@@ -8,7 +8,7 @@ import { Alert, Button, Input, Label } from '../components/ui';
 export default function JoinPage(): JSX.Element {
   const params = useParams();
   const navigate = useNavigate();
-  const [roomCode, setRoomCode] = useState(params.roomId ?? '');
+  const [roomCode, setRoomCode] = useState((params.roomId ?? '').toUpperCase());
   const [username, setUsername] = useState(loadUsername());
   const [roomSnapshot, setRoomSnapshot] = useState<RoomSnapshot | undefined>();
   const [error, setError] = useState('');
@@ -17,7 +17,7 @@ export default function JoinPage(): JSX.Element {
   useEffect(() => {
     if (!params.roomId) return;
 
-    socket.emit('checkRoom', { roomId: params.roomId }, (response) => {
+    socket.emit('checkRoom', { roomId: params.roomId.toUpperCase() }, (response) => {
       if (!response.ok) { setError(response.error); return; }
       if (!response.data.exists || !response.data.snapshot) {
         setRoomSnapshot(undefined);

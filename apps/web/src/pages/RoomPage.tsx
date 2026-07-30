@@ -68,7 +68,7 @@ interface NegativeMarkedWord {
 export default function RoomPage(): JSX.Element {
   const params = useParams();
   const navigate = useNavigate();
-  const roomId = params.roomId ?? '';
+  const roomId = (params.roomId ?? '').toUpperCase();
 
   const [snapshot, setSnapshot] = useState<RoomSnapshot | undefined>();
   const [inputWord, setInputWord] = useState('');

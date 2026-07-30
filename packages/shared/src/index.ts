@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export const UsernameSchema = z.string().trim().min(1).max(20);
-export const RoomIdSchema = z.string().trim().min(3).max(16);
+export const RoomIdSchema = z.string().trim().toUpperCase().min(3).max(16);
 
 export const GameModeSchema = z.enum([
   'classic',

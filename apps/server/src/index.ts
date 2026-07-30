@@ -634,7 +634,7 @@ class GameRoomManager {
   }
 
   public checkRoom(roomId: string): RoomSnapshot | undefined {
-    const room = this.rooms.get(roomId);
+    const room = this.rooms.get(roomId.toUpperCase());
     if (!room) {
       return undefined;
     }
@@ -667,6 +667,7 @@ class GameRoomManager {
   }
 
   public joinRoom(socketId: string, username: string, roomId: string): ManagerResult<{ snapshot: RoomSnapshot; player: Player }> {
+    roomId = roomId.toUpperCase();
     const room = this.rooms.get(roomId);
     if (!room) {
       return { ok: false, error: 'Room not found.' };
@@ -900,6 +901,7 @@ class GameRoomManager {
   }
 
   public startGame(socketId: string, roomId: string): ManagerResult<EmptyResult> {
+    roomId = roomId.toUpperCase();
     const room = this.rooms.get(roomId);
     if (!room) {
       return { ok: false, error: 'Room not found.' };
@@ -944,6 +946,7 @@ class GameRoomManager {
   }
 
   public submitWord(socketId: string, roomId: string, submittedWord: string): ManagerResult<EmptyResult> {
+    roomId = roomId.toUpperCase();
     const room = this.rooms.get(roomId);
     if (!room) {
       return { ok: false, error: 'Room not found.' };

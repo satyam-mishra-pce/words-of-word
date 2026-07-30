@@ -126,13 +126,13 @@ export default function OnlinePage(): JSX.Element {
             {rooms.map((room) => (
               <div key={room.roomId} className="room-preview" style={{ alignItems: 'stretch' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
-                  <div>
-                    <strong style={{ color: 'var(--main)', fontSize: '1.12rem' }}>{MODE_LABELS[room.gameMode]}</strong>
-                    <span style={{ fontSize: '0.78rem' }}>Host {room.hostName} · Room {room.roomId}</span>
-                    <span style={{ fontSize: '0.78rem' }}>
+                  <div className="online-room-details">
+                    <strong className="online-room-mode">{MODE_LABELS[room.gameMode]}</strong>
+                    <span>Host {room.hostName} · Room {room.roomId}</span>
+                    <span>
                       {PHASE_LABELS[room.phase]} · {room.currentPlayers}/{room.maxPlayers} players · Round {Math.min(room.currentRound + (room.phase === 'lobby' ? 1 : 0), room.rounds)}/{room.rounds}
                     </span>
-                    <span style={{ fontSize: '0.78rem' }}>
+                    <span>
                       {room.timePerRound}s · {room.minWordLength}+ letters · late joiners start with 0 score
                     </span>
                   </div>
