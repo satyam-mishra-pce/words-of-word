@@ -117,6 +117,7 @@ interface InternalRoom {
   phase: RoomSnapshot['phase'];
   currentWord: string;
   timeLeft: number;
+  lightningTimeLeft: Map<string, number>;
   currentRound: number;
   validWords: Set<string>;
   acceptedWords: Map<string, Set<string>>;
@@ -589,6 +590,7 @@ class GameRoomManager {
       phase: 'lobby',
       currentWord: '',
       timeLeft: this.roundSecondsFor(settings),
+      lightningTimeLeft: new Map<string, number>(),
       currentRound: 0,
       validWords: new Set<string>(),
       acceptedWords: new Map([[socketId, new Set<string>()]]),
@@ -771,6 +773,7 @@ class GameRoomManager {
     room.settings = settings;
     room.phase = 'lobby';
     room.timeLeft = this.roundSecondsFor(settings);
+    room.lightningTimeLeft.clear();
     room.currentRound = 0;
     room.currentWord = '';
     room.validWords = new Set<string>();
@@ -855,6 +858,7 @@ class GameRoomManager {
     room.bustedPlayers.delete(socketId);
     room.bingoProgress.delete(socketId);
     room.bingoCompletedBoards.delete(socketId);
+    room.lightningTimeLeft.delete(socketId);
 
     if (room.players.length === 0) {
       this.clearTickTimer(room);
@@ -866,6 +870,7 @@ class GameRoomManager {
       room.currentWord = '';
       room.currentRound = 0;
       room.timeLeft = this.roundSecondsFor(room.settings);
+      room.lightningTimeLeft.clear();
       room.waitingSeconds = 0;
       room.validWords.clear();
       room.acceptedWords.clear();
@@ -990,6 +995,14 @@ class GameRoomManager {
       return { ok: true, data: { ok: true } };
     }
 
+    if (this.usesLightning(room.settings) && (room.lightningTimeLeft.get(socketId) ?? 0) <= 0) {
+      this.io.to(socketId).emit('wordRejected', {
+        word: submittedWord,
+        message: 'Your lightning timer is out for this round.'
+      } satisfies WordRejectedPayload);
+      return { ok: true, data: { ok: true } };
+    }
+
     const evaluation = evaluateSubmission(submittedWord, room.validWords, playerWords);
     if (!evaluation.isValid) {
       const penalty = this.applyPrecisionPenalty(room, player, evaluation.normalizedWord || submittedWord, playerWords.has(evaluation.normalizedWord) ? DUPLICATE_WORD_PENALTY : -scoreWord(evaluation.normalizedWord, 'precision'));
@@ -1064,8 +1077,9 @@ class GameRoomManager {
     this.emitScoresUpdated(room);
 
     if (this.usesLightning(room.settings)) {
-      room.timeLeft += 1;
-      this.io.to(room.id).emit('timeUpdate', { timeLeft: room.timeLeft });
+      room.lightningTimeLeft.set(socketId, (room.lightningTimeLeft.get(socketId) ?? 0) + 1);
+      room.timeLeft = Math.max(0, ...Array.from(room.lightningTimeLeft.values()));
+      this.io.to(room.id).emit('timeUpdate', { timeLeft: room.timeLeft, lightningTimeLeft: Object.fromEntries(room.lightningTimeLeft) });
     }
 
     if (this.sprintTargetReached(room, player, playerWords)) {
@@ -1110,6 +1124,7 @@ class GameRoomManager {
     room.currentWord = '';
     room.currentRound = 0;
     room.timeLeft = this.roundSecondsFor(room.settings);
+    room.lightningTimeLeft.clear();
     room.validWords = new Set<string>();
     room.waitingSeconds = 0;
 
@@ -1176,6 +1191,7 @@ class GameRoomManager {
     room.phase = 'betting';
     room.currentWord = '';
     room.timeLeft = BETTING_SECONDS;
+    room.lightningTimeLeft.clear();
     room.validWords = new Set<string>();
     room.waitingSeconds = 0;
     room.currentBets = new Map<string, number>();
@@ -1232,6 +1248,9 @@ class GameRoomManager {
     room.phase = 'round';
     room.currentWord = sourceWord.toLowerCase();
     room.timeLeft = this.roundSecondsFor(room.settings);
+    room.lightningTimeLeft = this.usesLightning(room.settings)
+      ? new Map(this.activePlayers(room).map((player) => [player.id, LIGHTNING_SECONDS]))
+      : new Map<string, number>();
     room.validWords = createValidWords(room.currentWord, this.dictionary);
     room.waitingSeconds = 0;
     room.acceptedWords = this.emptyAcceptedWords(room);
@@ -1254,6 +1273,23 @@ class GameRoomManager {
     room.tickTimer = setInterval(() => {
       if (room.phase !== 'round') {
         this.clearTickTimer(room);
+        return;
+      }
+
+      if (this.usesLightning(room.settings)) {
+        for (const player of this.activePlayers(room)) {
+          const current = room.lightningTimeLeft.get(player.id);
+          if (current !== undefined && current > 0) {
+            room.lightningTimeLeft.set(player.id, Math.max(0, current - 1));
+          }
+        }
+        room.timeLeft = Math.max(0, ...Array.from(room.lightningTimeLeft.values()));
+        this.io.to(room.id).emit('timeUpdate', { timeLeft: room.timeLeft, lightningTimeLeft: Object.fromEntries(room.lightningTimeLeft) });
+
+        const activeTimers = this.activePlayers(room).map((player) => room.lightningTimeLeft.get(player.id) ?? 0);
+        if (activeTimers.length === 0 || activeTimers.every((timeLeft) => timeLeft <= 0)) {
+          this.finishRound(room);
+        }
         return;
       }
 
@@ -1534,6 +1570,7 @@ class GameRoomManager {
       phase: room.phase,
       currentWord: room.currentWord,
       timeLeft: room.timeLeft,
+      lightningTimeLeft: Object.fromEntries(room.lightningTimeLeft),
       currentRound: room.currentRound,
       totalRounds: room.settings.rounds,
       acceptedWords: this.acceptedWordsRecord(room),

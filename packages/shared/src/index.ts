@@ -164,6 +164,7 @@ export interface RoomSnapshot {
   phase: RoomPhase;
   currentWord: string;
   timeLeft: number;
+  lightningTimeLeft: Record<string, number>;
   currentRound: number;
   totalRounds: number;
   acceptedWords: Record<string, string[]>;
@@ -276,6 +277,7 @@ export interface RoundStartedPayload {
 
 export interface TimeUpdatedPayload {
   timeLeft: number;
+  lightningTimeLeft?: Record<string, number>;
 }
 
 export interface WordAcceptedPayload {

@@ -41,7 +41,7 @@ const GAME_MODE_INFO: Array<{ value: GameSettings['gameMode']; label: string; de
   { value: 'busted', label: 'Busted Mode', description: 'Each player’s first word becomes their bust word. Type another player’s bust word and your round score explodes to 0. Matching first words are safe.' },
   { value: 'commonWord', label: 'Common Word', description: 'Unique words score +3, rare unique words with 5+ letters score +5. If two or more players make the same word, everyone who used it gets -3 for that word.' },
   { value: 'intuition', label: 'Intuition Mode', description: 'The source word starts hidden and unlocks one random letter at a time over the round. You can guess words from the hidden letters before they appear.' },
-  { value: 'lightning', label: 'Lightning Mode', description: 'You start with 10 seconds. Every valid word adds 1 second. If it hits zero, the round is dead.' },
+  { value: 'lightning', label: 'Lightning Mode', description: 'Each player gets their own 10-second timer. Your valid words add 1 second to your timer. If your timer hits zero, you are out for that round.' },
   { value: 'bingo', label: 'Bingo Board', description: 'Everyone gets the same 7 hard tasks from a bigger pool: Pictureka-style word hunts plus rare letters, lengths, exact positions, edge letters, vowel traps, and pattern challenges. Every task is validated to be possible without using the source word itself. Each task gives 10 points; one word can complete multiple matching tasks. Complete all 7 for a 100 point bonus, then every extra valid word scores 3 points.' },
   { value: 'mix', label: 'Mix Mode', description: 'Choose Classic or Score Attack scoring, then stack compatible modifiers: Teams, Word Sprint, Blind Type, Claim, Busted, Intuition, and Lightning.' }
 ];
