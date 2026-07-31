@@ -1825,6 +1825,28 @@ fastify.get('/analytics', async (request, reply) => {
   return { ok: true, data: analytics.snapshot() };
 });
 
+fastify.get('/analytics/logs', async (request, reply) => {
+  const configuredToken = process.env.ANALYTICS_TOKEN;
+  const token = (request.query as { token?: string; limit?: string }).token;
+  if (!configuredToken || token !== configuredToken) {
+    return reply.code(401).send({ ok: false, error: 'Unauthorized.' });
+  }
+
+  if (!existsSync(ANALYTICS_LOG_FILE)) {
+    return { ok: true, data: { file: ANALYTICS_LOG_FILE, lines: [] } };
+  }
+
+  const limit = Math.min(Math.max(Number((request.query as { limit?: string }).limit ?? 100), 1), 500);
+  const lines = (await readFile(ANALYTICS_LOG_FILE, 'utf8'))
+    .trim()
+    .split('\n')
+    .filter(Boolean)
+    .slice(-limit)
+    .map((line) => JSON.parse(line) as unknown);
+
+  return { ok: true, data: { file: ANALYTICS_LOG_FILE, lines } };
+});
+
 const contentTypes: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
