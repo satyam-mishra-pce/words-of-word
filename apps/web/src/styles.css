@@ -279,6 +279,17 @@ p { margin-top: 0; }
 /* ============================================================
    ENTRY / SETTINGS FORM PANELS
    ============================================================ */
+.public-stats {
+  margin-top: 22px;
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  color: var(--sub);
+  font-size: 0.82rem;
+}
+.public-stats span { padding-right: 14px; border-right: 1px solid var(--sub-2); }
+.public-stats span:last-child { border-right: 0; }
+.public-stats strong { color: var(--main); font-size: 1rem; }
 .entry-panel   { margin-top: 28px; display: grid; gap: 16px; max-width: 480px; }
 .settings-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; margin: 20px 0; }
 .setting-group { display: grid; gap: 7px; }

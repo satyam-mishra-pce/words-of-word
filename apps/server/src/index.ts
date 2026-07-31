@@ -1,9 +1,10 @@
 import cors from '@fastify/cors';
 import Fastify from 'fastify';
+import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
-import { extname, join, normalize } from 'node:path';
+import { appendFile, mkdir, readFile } from 'node:fs/promises';
+import { dirname, extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { customAlphabet } from 'nanoid';
 import { Server, Socket } from 'socket.io';
@@ -52,6 +53,8 @@ import {
 
 const PORT = Number(process.env.PORT ?? 4000);
 const WEB_DIST_DIR = fileURLToPath(new URL('../../web/dist', import.meta.url));
+const ANALYTICS_LOG_FILE = process.env.ANALYTICS_LOG_FILE ?? join(process.cwd(), 'logs', 'game-analytics.jsonl');
+const ANALYTICS_IP_SALT = process.env.ANALYTICS_IP_SALT ?? 'words-of-word-local-salt';
 const WAIT_BETWEEN_ROUNDS_SECONDS = 10;
 const BETTING_SECONDS = 15;
 const LIGHTNING_SECONDS = 10;
@@ -136,12 +139,20 @@ interface InternalRoom {
   waitingSeconds: number;
 }
 
-interface AnalyticsPlayer {
+interface DeviceIdentity {
+  deviceId: string;
+  ipHash: string;
+  userAgent: string | undefined;
+}
+
+interface AnalyticsPlayer extends DeviceIdentity {
   socketId: string;
   name: string | undefined;
   connectedAt: string;
   disconnectedAt: string | undefined;
+  playTimeMs: number;
   lastRoomId: string | undefined;
+  lastSettings: GameSettings | undefined;
   roomsCreated: string[];
   roomsJoined: string[];
   wordsAccepted: number;
@@ -152,9 +163,11 @@ interface AnalyticsGame {
   roomId: string;
   gameMode: GameSettings['gameMode'];
   wordCategory: GameSettings['wordCategory'];
+  settings: GameSettings;
   startedAt: string;
   endedAt: string | undefined;
-  players: Array<{ playerId: string; playerName: string }>;
+  durationMs: number | undefined;
+  players: Array<{ playerId: string; playerName: string; deviceId: string | undefined }>;
   finalScores: GameOverPayload['finalScores'] | undefined;
   totalWordsAccepted: number;
 }
@@ -164,42 +177,54 @@ class AnalyticsStore {
   private readonly recentPlayers: AnalyticsPlayer[] = [];
   private readonly activeGamesByRoom = new Map<string, AnalyticsGame>();
   private readonly recentGames: AnalyticsGame[] = [];
+  private readonly uniqueDevices = new Set<string>();
   private readonly maxEntries = 250;
 
-  public recordConnect(socketId: string): void {
+  public recordConnect(socketId: string, identity: DeviceIdentity = anonymousIdentity(socketId)): void {
     const player: AnalyticsPlayer = {
       socketId,
+      ...identity,
       name: undefined,
       connectedAt: new Date().toISOString(),
       disconnectedAt: undefined,
+      playTimeMs: 0,
       lastRoomId: undefined,
+      lastSettings: undefined,
       roomsCreated: [],
       roomsJoined: [],
       wordsAccepted: 0
     };
     this.players.set(socketId, player);
+    this.uniqueDevices.add(identity.deviceId);
     this.pushRecent(this.recentPlayers, player);
+    this.writeLog('player_connected', player);
   }
 
   public recordDisconnect(socketId: string): void {
     const player = this.players.get(socketId);
     if (!player) return;
     player.disconnectedAt = new Date().toISOString();
+    player.playTimeMs = Date.parse(player.disconnectedAt) - Date.parse(player.connectedAt);
     this.players.delete(socketId);
+    this.writeLog('player_disconnected', player);
   }
 
-  public recordRoomCreated(socketId: string, username: string, roomId: string): void {
+  public recordRoomCreated(socketId: string, username: string, roomId: string, settings: GameSettings): void {
     const player = this.ensurePlayer(socketId);
     player.name = username;
     player.lastRoomId = roomId;
+    player.lastSettings = settings;
     player.roomsCreated.push(roomId);
+    this.writeLog('room_created', { player, roomId, settings });
   }
 
-  public recordRoomJoined(socketId: string, username: string, roomId: string): void {
+  public recordRoomJoined(socketId: string, username: string, roomId: string, settings: GameSettings): void {
     const player = this.ensurePlayer(socketId);
     player.name = username;
     player.lastRoomId = roomId;
+    player.lastSettings = settings;
     player.roomsJoined.push(roomId);
+    this.writeLog('room_joined', { player, roomId, settings });
   }
 
   public recordGameStarted(room: InternalRoom): void {
@@ -208,14 +233,21 @@ class AnalyticsStore {
       roomId: room.id,
       gameMode: room.settings.gameMode,
       wordCategory: room.settings.wordCategory,
+      settings: room.settings,
       startedAt: new Date().toISOString(),
       endedAt: undefined,
-      players: room.players.map((player) => ({ playerId: player.id, playerName: player.name })),
+      durationMs: undefined,
+      players: room.players.map((player) => ({
+        playerId: player.id,
+        playerName: player.name,
+        deviceId: this.players.get(player.id)?.deviceId
+      })),
       finalScores: undefined,
       totalWordsAccepted: 0
     };
     this.activeGamesByRoom.set(room.id, game);
     this.pushRecent(this.recentGames, game);
+    this.writeLog('game_started', game);
   }
 
   public recordWordAccepted(room: InternalRoom, socketId: string): void {
@@ -231,25 +263,45 @@ class AnalyticsStore {
       roomId: room.id,
       gameMode: room.settings.gameMode,
       wordCategory: room.settings.wordCategory,
+      settings: room.settings,
       startedAt: new Date().toISOString(),
       endedAt: undefined,
-      players: room.players.map((player) => ({ playerId: player.id, playerName: player.name })),
+      durationMs: undefined,
+      players: room.players.map((player) => ({
+        playerId: player.id,
+        playerName: player.name,
+        deviceId: this.players.get(player.id)?.deviceId
+      })),
       finalScores: undefined,
       totalWordsAccepted: 0
     };
     game.endedAt = new Date().toISOString();
+    game.durationMs = Date.parse(game.endedAt) - Date.parse(game.startedAt);
     game.finalScores = finalScores;
     game.totalWordsAccepted = Object.values(playerWords).reduce((total, wordsForPlayer) => total + wordsForPlayer.length, 0);
     this.activeGamesByRoom.delete(room.id);
     if (!this.recentGames.includes(game)) this.pushRecent(this.recentGames, game);
+    this.writeLog('game_finished', game);
   }
 
-  public snapshot(): { activePlayers: AnalyticsPlayer[]; recentPlayers: AnalyticsPlayer[]; activeGames: AnalyticsGame[]; recentGames: AnalyticsGame[] } {
+  public snapshot(): { activePlayers: AnalyticsPlayer[]; recentPlayers: AnalyticsPlayer[]; activeGames: AnalyticsGame[]; recentGames: AnalyticsGame[]; totals: ReturnType<AnalyticsStore['publicStats']> } {
     return {
       activePlayers: Array.from(this.players.values()).sort((left, right) => left.connectedAt.localeCompare(right.connectedAt)),
       recentPlayers: [...this.recentPlayers].reverse(),
       activeGames: Array.from(this.activeGamesByRoom.values()),
-      recentGames: [...this.recentGames].reverse()
+      recentGames: [...this.recentGames].reverse(),
+      totals: this.publicStats()
+    };
+  }
+
+  public publicStats(): { activePlayers: number; activeGames: number; uniqueDevices: number; gamesPlayed: number; wordsFound: number } {
+    const finishedGames = this.recentGames.filter((game) => game.endedAt);
+    return {
+      activePlayers: this.players.size,
+      activeGames: this.activeGamesByRoom.size,
+      uniqueDevices: this.uniqueDevices.size,
+      gamesPlayed: finishedGames.length,
+      wordsFound: this.recentGames.reduce((total, game) => total + game.totalWordsAccepted, 0)
     };
   }
 
@@ -266,6 +318,13 @@ class AnalyticsStore {
   private pushRecent<T>(items: T[], item: T): void {
     items.push(item);
     if (items.length > this.maxEntries) items.shift();
+  }
+
+  private writeLog(event: string, data: unknown): void {
+    const line = `${JSON.stringify({ event, at: new Date().toISOString(), data })}\n`;
+    void mkdir(dirname(ANALYTICS_LOG_FILE), { recursive: true })
+      .then(() => appendFile(ANALYTICS_LOG_FILE, line))
+      .catch((error: unknown) => fastify.log.warn({ error }, 'failed to write analytics log'));
   }
 }
 
@@ -611,7 +670,7 @@ class GameRoomManager {
 
     this.rooms.set(roomId, room);
     this.socketToRoom.set(socketId, roomId);
-    this.analytics.recordRoomCreated(socketId, username, roomId);
+    this.analytics.recordRoomCreated(socketId, username, roomId, settings);
 
     return { ok: true, data: this.toSnapshot(room) };
   }
@@ -718,7 +777,7 @@ class GameRoomManager {
     }
     room.bettingWordCounts.set(socketId, []);
     this.socketToRoom.set(socketId, roomId);
-    this.analytics.recordRoomJoined(socketId, username, roomId);
+    this.analytics.recordRoomJoined(socketId, username, roomId, room.settings);
 
     return { ok: true, data: { snapshot: this.toSnapshot(room), player } };
   }
@@ -1712,6 +1771,30 @@ function validationMessage(errorMessage: string): string {
   return errorMessage || 'Invalid request.';
 }
 
+function anonymousIdentity(seed: string): DeviceIdentity {
+  const hash = hashValue(`anonymous:${seed}`);
+  return { deviceId: hash, ipHash: hash, userAgent: undefined };
+}
+
+function deviceIdentityForSocket(socket: TypedSocket): DeviceIdentity {
+  const forwardedFor = socket.handshake.headers['x-forwarded-for'];
+  const rawIp = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor?.split(',')[0]?.trim();
+  const ip = rawIp || socket.handshake.address || 'unknown';
+  const userAgentHeader = socket.handshake.headers['user-agent'];
+  const userAgent = Array.isArray(userAgentHeader) ? userAgentHeader[0] : userAgentHeader;
+  const ipHash = hashValue(ip);
+  return {
+    // Do not store raw IPs. This is stable enough for public counts but safer for privacy.
+    deviceId: hashValue(`${ip}|${userAgent ?? ''}`),
+    ipHash,
+    userAgent
+  };
+}
+
+function hashValue(value: string): string {
+  return createHash('sha256').update(`${ANALYTICS_IP_SALT}:${value}`).digest('hex').slice(0, 16);
+}
+
 const fastify = Fastify({ logger: true });
 
 const configuredOrigin = process.env.CLIENT_ORIGIN;
@@ -1727,6 +1810,8 @@ await fastify.register(cors, {
 const analytics = new AnalyticsStore();
 
 fastify.get('/health', async () => ({ ok: true }));
+
+fastify.get('/stats', async () => ({ ok: true, data: analytics.publicStats() }));
 
 fastify.get('/analytics', async (request, reply) => {
   const configuredToken = process.env.ANALYTICS_TOKEN;
@@ -1829,8 +1914,9 @@ function detachSocketFromCurrentRoom(socket: TypedSocket): void {
 }
 
 io.on('connection', (socket) => {
-  analytics.recordConnect(socket.id);
-  fastify.log.info({ socketId: socket.id }, 'socket connected');
+  const identity = deviceIdentityForSocket(socket);
+  analytics.recordConnect(socket.id, identity);
+  fastify.log.info({ socketId: socket.id, deviceId: identity.deviceId }, 'socket connected');
 
   socket.on('createRoom', (payload, ack) => {
     const parsed = CreateRoomPayloadSchema.safeParse(payload);

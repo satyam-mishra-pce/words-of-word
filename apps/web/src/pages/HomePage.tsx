@@ -1,14 +1,45 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Alert, Button, Input, Label } from '../components/ui';
 import { loadUsername, saveUsername } from '../services/session';
 
 const FLOAT_CHARS = ['W', 'O', 'R', 'D', 'S', '?'];
+const statsUrl = `${import.meta.env.VITE_SOCKET_URL || window.location.origin}/stats`;
+
+interface PublicStats {
+  activePlayers: number;
+  activeGames: number;
+  uniqueDevices: number;
+  gamesPlayed: number;
+  wordsFound: number;
+}
 
 export default function HomePage(): JSX.Element {
   const navigate = useNavigate();
   const [username, setUsername] = useState(loadUsername());
   const [error, setError] = useState('');
+  const [stats, setStats] = useState<PublicStats | undefined>();
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadStats(): Promise<void> {
+      try {
+        const response = await fetch(statsUrl);
+        const payload = await response.json() as { ok: boolean; data?: PublicStats };
+        if (!cancelled && payload.ok) setStats(payload.data);
+      } catch {
+        // Stats are only social proof; never block the home page.
+      }
+    }
+
+    void loadStats();
+    const timer = window.setInterval(loadStats, 15_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   function requireUsername(): string | undefined {
     const trimmed = username.trim();
@@ -55,6 +86,14 @@ export default function HomePage(): JSX.Element {
         <p className="hero-copy">
           One enormous word. Hundreds hiding inside it. Race your friends to find them all before the clock hits zero.
         </p>
+
+        {stats && (
+          <div className="public-stats" aria-label="Live game stats">
+            <span><strong>{stats.activePlayers}</strong> playing now</span>
+            <span><strong>{stats.activeGames}</strong> live rooms</span>
+            <span><strong>{stats.uniqueDevices}</strong> unique players</span>
+          </div>
+        )}
 
         <form className="entry-panel" onSubmit={submit}>
           <div>
