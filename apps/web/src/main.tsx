@@ -1,7 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
-import App from './App';
+import { hydrateApplicationStorage } from './services/storage';
 import './styles.css';
 
 function syncVisualViewportVars(): void {
@@ -21,10 +21,24 @@ window.addEventListener('orientationchange', () => window.setTimeout(syncVisualV
 document.addEventListener('focusin', () => window.setTimeout(syncVisualViewportVars, 50));
 document.addEventListener('focusout', () => window.setTimeout(syncVisualViewportVars, 50));
 
-ReactDOM.createRoot(document.getElementById('root') ?? document.body).render(
-  <React.StrictMode>
-    <BrowserRouter>
-      <App />
-    </BrowserRouter>
-  </React.StrictMode>
-);
+async function bootstrap(): Promise<void> {
+  // Native Preferences is asynchronous. Hydrate it before importing pages so the
+  // synchronous username/theme/session reads begin with the durable device value.
+  await hydrateApplicationStorage();
+
+  const [{ default: App }, { NativeAppBridge }] = await Promise.all([
+    import('./App'),
+    import('./components/NativeAppBridge')
+  ]);
+
+  ReactDOM.createRoot(document.getElementById('root') ?? document.body).render(
+    <React.StrictMode>
+      <BrowserRouter>
+        <NativeAppBridge />
+        <App />
+      </BrowserRouter>
+    </React.StrictMode>
+  );
+}
+
+void bootstrap();

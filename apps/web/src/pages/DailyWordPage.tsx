@@ -1,6 +1,9 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Alert, Badge, Button, Input, Label, Separator, TimerRing } from '../components/ui';
+import { readStoredValue, writeStoredValue } from '../services/storage';
+import { getDailyChallengeUrl } from '../services/platform';
+import { shareContent } from '../services/nativeShare';
 
 const DAILY_SECONDS = 30;
 const DAILY_WORDS = [
@@ -39,7 +42,7 @@ function dailyStorageKey(day = currentDayNumber()): string {
 
 function loadDailyAttempt(day = currentDayNumber()): DailyAttempt | undefined {
   try {
-    const raw = localStorage.getItem(dailyStorageKey(day));
+    const raw = readStoredValue(dailyStorageKey(day));
     if (!raw) return undefined;
     const parsed = JSON.parse(raw) as Partial<DailyAttempt>;
     if (
@@ -67,7 +70,7 @@ function loadDailyAttempt(day = currentDayNumber()): DailyAttempt | undefined {
 }
 
 function saveDailyAttempt(attempt: DailyAttempt): void {
-  localStorage.setItem(dailyStorageKey(attempt.day), JSON.stringify(attempt));
+  writeStoredValue(dailyStorageKey(attempt.day), JSON.stringify(attempt));
 }
 
 function letterCounts(word: string): Map<string, number> {
@@ -217,25 +220,21 @@ export default function DailyWordPage(): JSX.Element {
   }
 
   async function shareScore(): Promise<void> {
-    const dailyUrl = `${window.location.origin}/daily`;
-    const text = `I made ${pluralizeWords(words.length)} from "${sourceWord}" in 30 seconds on Words of Word. I challenge you to make more. ${dailyUrl}`;
+    const dailyUrl = getDailyChallengeUrl();
+    const text = `I made ${pluralizeWords(words.length)} from "${sourceWord}" in 30 seconds on Words of Word. I challenge you to make more.`;
+    const method = await shareContent({
+      title: 'Words of Word Daily Challenge',
+      text,
+      url: dailyUrl,
+      dialogTitle: 'Share daily challenge'
+    });
 
-    try {
-      if (navigator.share) {
-        await navigator.share({
-          title: 'Words of Word Daily Challenge',
-          text,
-          url: dailyUrl
-        });
-        setShareStatus('Shared!');
-        return;
-      }
-
-      await navigator.clipboard.writeText(text);
-      setShareStatus('Challenge copied. Paste it on WhatsApp, Instagram, or anywhere.');
-    } catch {
-      setShareStatus(text);
+    if (method === 'unavailable') {
+      setShareStatus(`${text} ${dailyUrl}`);
+      return;
     }
+
+    setShareStatus(method === 'clipboard' ? 'Challenge copied. Paste it anywhere.' : 'Shared!');
   }
 
   return (

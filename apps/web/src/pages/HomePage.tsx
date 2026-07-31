@@ -1,10 +1,12 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Alert, Button, Input, Label } from '../components/ui';
+import { NativeNotificationPrompt } from '../components/NativeNotificationPrompt';
 import { loadUsername, saveUsername } from '../services/session';
+import { getGameServerUrl } from '../services/platform';
 
 const FLOAT_CHARS = ['W', 'O', 'R', 'D', 'S', '?'];
-const statsUrl = `${import.meta.env.VITE_SOCKET_URL || window.location.origin}/stats`;
+const statsUrl = `${getGameServerUrl()}/stats`;
 
 interface PublicStats {
   activePlayers: number;
@@ -126,6 +128,7 @@ export default function HomePage(): JSX.Element {
             </Button>
           </div>
         </form>
+        <NativeNotificationPrompt />
       </section>
     </main>
   );

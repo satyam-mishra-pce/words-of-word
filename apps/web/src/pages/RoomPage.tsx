@@ -3,6 +3,9 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { FinalScore, GameSettings, RoomSnapshot, RoundResultPlayer, TeamScore } from '@wow/shared';
 import socket from '../services/socket';
 import { loadUsername } from '../services/session';
+import { hapticError, hapticLight, hapticMedium, hapticSuccess, hapticWarning } from '../services/nativeFeedback';
+import { getRoomInviteUrl, isNativeApp } from '../services/platform';
+import { shareRoomInvite } from '../services/nativeShare';
 import {
   Alert,
   Avatar,
@@ -293,17 +296,26 @@ export default function RoomPage(): JSX.Element {
   /* ── socket setup ── */
   useEffect(() => {
     if (!roomId) return;
-    socket.emit('checkRoom', { roomId }, (response) => {
-      if (!response.ok) { setError(response.error); return; }
-      if (!response.data.exists || !response.data.snapshot) {
-        setError('Room not found.');
-        return;
-      }
-      setSnapshot(response.data.snapshot);
-      previousPhaseRef.current = response.data.snapshot.phase;
-      currentWordRef.current = response.data.snapshot.currentWord;
-      setWaitingSeconds(response.data.snapshot.waitingSeconds);
-    });
+
+    function loadRoom(): void {
+      socket.emit('checkRoom', { roomId }, (response) => {
+        if (!response.ok) { setError(response.error); return; }
+        if (!response.data.exists || !response.data.snapshot) {
+          setError('Room not found.');
+          return;
+        }
+        setSnapshot(response.data.snapshot);
+        previousPhaseRef.current = response.data.snapshot.phase;
+        currentWordRef.current = response.data.snapshot.currentWord;
+        setWaitingSeconds(response.data.snapshot.waitingSeconds);
+      });
+    }
+
+    loadRoom();
+    socket.on('connect', loadRoom);
+    return () => {
+      socket.off('connect', loadRoom);
+    };
   }, [roomId]);
 
   useEffect(() => {
@@ -341,6 +353,7 @@ export default function RoomPage(): JSX.Element {
       setNegativeMarkedWords([]);
       setBetInput('');
       setBustFlash(undefined);
+      void hapticMedium();
       // Restore keyboard focus when a new round begins
       requestAnimationFrame(() => inputRef.current?.focus());
     });
@@ -349,6 +362,7 @@ export default function RoomPage(): JSX.Element {
     });
     socket.on('wordAccepted', (p) => {
       setInputFeedback('success');
+      void hapticLight();
       if (p.message) setNotice(p.message);
       if (p.message.includes('-3')) {
         setNegativeMarkedWords((current) => [
@@ -366,6 +380,7 @@ export default function RoomPage(): JSX.Element {
     });
     socket.on('wordRejected', (p) => {
       setInputFeedback('error');
+      void hapticError();
       setNotice(p.message);
       if (p.penalty && p.penalty < 0) {
         setNegativeMarkedWords((current) => [
@@ -441,12 +456,14 @@ export default function RoomPage(): JSX.Element {
         });
       }
       setNotice('Game over!');
+      void hapticSuccess();
     });
     socket.on('playerBusted', (p) => {
       setSnapshot(p.snapshot);
       setInputFeedback(p.playerId === socket.id ? 'error' : null);
       setNotice(p.message);
       setBustFlash({ playerId: p.playerId, playerName: p.playerName, word: p.word, message: p.message });
+      void hapticWarning();
     });
     socket.on('gameRestarted', (p) => {
       previousPhaseRef.current = p.snapshot.phase;
@@ -483,13 +500,18 @@ export default function RoomPage(): JSX.Element {
   }, [waitingSeconds]);
 
   /* ── actions ── */
-  function copyShareLink(): void {
-    navigator.clipboard.writeText(`${window.location.origin}/join/${roomId}`)
-      .then(() => {
-        setShowCopied(true);
-        window.setTimeout(() => setShowCopied(false), 2500);
-      })
-      .catch(() => setNotice(`Copy: ${window.location.origin}/join/${roomId}`));
+  async function shareInvite(): Promise<void> {
+    const inviteUrl = getRoomInviteUrl(roomId);
+    const method = await shareRoomInvite({ roomId, url: inviteUrl });
+
+    if (method === 'unavailable') {
+      setNotice(`Share this room: ${inviteUrl}`);
+      return;
+    }
+
+    setShowCopied(true);
+    void hapticLight();
+    window.setTimeout(() => setShowCopied(false), 2500);
   }
 
   function startGame(): void {
@@ -640,6 +662,7 @@ export default function RoomPage(): JSX.Element {
   }
 
   const needsRejoin = !currentPlayer;
+  const inviteLabel = isNativeApp ? 'Invite players' : 'Copy invite link';
   const currentModeLabel = GAME_MODE_OPTIONS.find((mode) => mode.value === snapshot.settings.gameMode)?.label ?? snapshot.settings.gameMode;
   const mixModifierLabels = snapshot.settings.gameMode === 'mix'
     ? [
@@ -682,8 +705,8 @@ export default function RoomPage(): JSX.Element {
           </span>
         </div>
         <div className="game-header__right">
-          <Tooltip content={showCopied ? 'Copied!' : 'Copy invite link'} className="ui-tooltip-down ui-tooltip-end">
-            <Button variant="mini" size="sm" onClick={copyShareLink} aria-label={showCopied ? 'Copied!' : 'Copy invite link'} style={{ padding: '7px 10px' }}>
+          <Tooltip content={showCopied ? (isNativeApp ? 'Invite ready!' : 'Copied!') : inviteLabel} className="ui-tooltip-down ui-tooltip-end">
+            <Button variant="mini" size="sm" onClick={() => void shareInvite()} aria-label={showCopied ? (isNativeApp ? 'Invite ready!' : 'Copied!') : inviteLabel} style={{ padding: '7px 10px' }}>
               {showCopied ? (
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M2 7.5l3 3 7-7"/></svg>
               ) : (

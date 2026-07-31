@@ -26,6 +26,9 @@ import {
   PlayerBustedPayload,
   PlayerJoinedPayload,
   PlayerLeftPayload,
+  PushPlatform,
+  RegisterPushTokenPayloadSchema,
+  SetAppActivityPayloadSchema,
   RestartGamePayloadSchema,
   RoomSnapshot,
   RoundEndedPayload,
@@ -68,6 +71,25 @@ const BINGO_TASK_COUNT = 7;
 const BINGO_FULL_BOARD_BONUS = 100;
 const TEAM_NAMES: Record<'red' | 'blue', string> = { red: 'Red Team', blue: 'Blue Team' };
 const EMPTY_ROOM_TTL_MS = 10 * 60 * 1000;
+const DEFAULT_MOBILE_RECONNECT_GRACE_MS = 90_000;
+
+function mobileReconnectGraceMs(rawValue: string | undefined): number {
+  const parsed = Number(rawValue);
+  const value = Number.isFinite(parsed) ? parsed : DEFAULT_MOBILE_RECONNECT_GRACE_MS;
+  return Math.min(Math.max(value, 10_000), 5 * 60 * 1000);
+}
+
+const MOBILE_RECONNECT_GRACE_MS = mobileReconnectGraceMs(process.env.MOBILE_RECONNECT_GRACE_MS);
+const MOBILE_APP_ID = process.env.MOBILE_APP_ID ?? 'com.wordsofword.game';
+const IOS_APP_TEAM_ID = process.env.IOS_APP_TEAM_ID;
+const ANDROID_APP_LINK_CERTIFICATES = (process.env.ANDROID_APP_LINK_CERTIFICATES ?? '')
+  .split(',')
+  .map((certificate) => certificate.trim())
+  .filter(Boolean);
+const PUSH_RELAY_URL = process.env.PUSH_RELAY_URL;
+const PUSH_RELAY_TOKEN = process.env.PUSH_RELAY_TOKEN;
+const PUBLIC_WEB_URL = process.env.PUBLIC_WEB_URL?.replace(/\/+$/, '');
+const ClientIdSchema = z.string().uuid();
 const ONLINE_ROOM_SETTINGS: GameSettings = {
   minWordLength: 7,
   timePerRound: 30,
@@ -139,6 +161,56 @@ interface InternalRoom {
   waitingSeconds: number;
 }
 
+interface ReconnectSession {
+  socketId: string;
+  removalTimer: NodeJS.Timeout | undefined;
+}
+
+interface RegisteredPushToken {
+  clientId: string;
+  platform: PushPlatform;
+  token: string;
+  updatedAt: string;
+}
+
+const reconnectSessions = new Map<string, ReconnectSession>();
+const clientIdBySocketId = new Map<string, string>();
+const inactiveClientIds = new Set<string>();
+const reboundSocketIds = new Set<string>();
+const pushTokensByClientId = new Map<string, RegisteredPushToken>();
+
+function roomLink(roomId: string): string {
+  return PUBLIC_WEB_URL ? `${PUBLIC_WEB_URL}/join/${encodeURIComponent(roomId)}` : `wordsofword://join/${encodeURIComponent(roomId)}`;
+}
+
+function dispatchPush(clientId: string, title: string, body: string, data: Record<string, string>): void {
+  const registration = pushTokensByClientId.get(clientId);
+  if (!registration || !PUSH_RELAY_URL) return;
+
+  void fetch(PUSH_RELAY_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(PUSH_RELAY_TOKEN ? { Authorization: `Bearer ${PUSH_RELAY_TOKEN}` } : {})
+    },
+    body: JSON.stringify({
+      token: registration.token,
+      platform: registration.platform,
+      notification: { title, body, channelId: 'game-alerts' },
+      data
+    })
+  }).then(async (response) => {
+    if (response.ok) return;
+    if (response.status === 404 || response.status === 410) {
+      const current = pushTokensByClientId.get(clientId);
+      if (current?.token === registration.token) pushTokensByClientId.delete(clientId);
+    }
+    fastify.log.warn({ clientId, statusCode: response.status }, 'push relay rejected a notification');
+  }).catch((error: unknown) => {
+    fastify.log.warn({ clientId, error }, 'push relay delivery failed');
+  });
+}
+
 interface DeviceIdentity {
   deviceId: string;
   ipHash: string;
@@ -207,6 +279,15 @@ class AnalyticsStore {
     player.playTimeMs = Date.parse(player.disconnectedAt) - Date.parse(player.connectedAt);
     this.players.delete(socketId);
     this.writeLog('player_disconnected', player);
+  }
+
+  public rebindSocket(previousSocketId: string, nextSocketId: string): void {
+    const player = this.players.get(previousSocketId);
+    if (!player) return;
+
+    this.players.delete(previousSocketId);
+    player.socketId = nextSocketId;
+    this.players.set(nextSocketId, player);
   }
 
   public recordRoomCreated(socketId: string, username: string, roomId: string, settings: GameSettings): void {
@@ -611,6 +692,38 @@ class GameRoomManager {
     return undefined;
   }
 
+  private movePlayerMapEntry<T>(map: Map<string, T>, previousSocketId: string, nextSocketId: string): void {
+    if (!map.has(previousSocketId)) return;
+    const value = map.get(previousSocketId);
+    map.delete(previousSocketId);
+    if (value !== undefined) map.set(nextSocketId, value);
+  }
+
+  private movePlayerSetEntry(set: Set<string>, previousSocketId: string, nextSocketId: string): void {
+    if (!set.delete(previousSocketId)) return;
+    set.add(nextSocketId);
+  }
+
+  private queueRoundReminders(room: InternalRoom): void {
+    for (const player of room.players) {
+      const clientId = clientIdBySocketId.get(player.id);
+      if (!clientId) continue;
+      const isDisconnected = !this.io.sockets.sockets.has(player.id);
+      if (!isDisconnected && !inactiveClientIds.has(clientId)) continue;
+
+      dispatchPush(
+        clientId,
+        'Your Words of Word round is live',
+        `Round ${room.currentRound} has started. Jump back into room ${room.id}.`,
+        {
+          kind: 'round-started',
+          roomId: room.id,
+          url: roomLink(room.id)
+        }
+      );
+    }
+  }
+
   private defaultTeamId(room: InternalRoom): 'red' | 'blue' {
     const redCount = room.players.filter((player) => player.teamId === 'red').length;
     const blueCount = room.players.filter((player) => player.teamId === 'blue').length;
@@ -619,6 +732,47 @@ class GameRoomManager {
 
   public findRoomIdForSocket(socketId: string): string | undefined {
     return this.socketToRoom.get(socketId);
+  }
+
+  /** Atomically preserve a player's game state when a mobile reconnection gets a new socket ID. */
+  public rebindPlayerSocket(previousSocketId: string, nextSocketId: string): ManagerResult<{ roomId: string; snapshot: RoomSnapshot }> {
+    const roomId = this.socketToRoom.get(previousSocketId);
+    if (!roomId) {
+      return { ok: false, error: 'Player was not in a room.' };
+    }
+
+    if (this.socketToRoom.has(nextSocketId)) {
+      return { ok: false, error: 'Replacement socket is already in a room.' };
+    }
+
+    const room = this.rooms.get(roomId);
+    if (!room) {
+      return { ok: false, error: 'Room not found.' };
+    }
+
+    const player = room.players.find((candidate) => candidate.id === previousSocketId);
+    if (!player) {
+      return { ok: false, error: 'Player not found in room.' };
+    }
+
+    player.id = nextSocketId;
+    if (room.hostId === previousSocketId) room.hostId = nextSocketId;
+
+    this.movePlayerMapEntry(room.acceptedWords, previousSocketId, nextSocketId);
+    this.movePlayerMapEntry(room.roundPenalties, previousSocketId, nextSocketId);
+    this.movePlayerMapEntry(room.negativeWords, previousSocketId, nextSocketId);
+    this.movePlayerMapEntry(room.bustWords, previousSocketId, nextSocketId);
+    this.movePlayerMapEntry(room.currentBets, previousSocketId, nextSocketId);
+    this.movePlayerMapEntry(room.bettingWordCounts, previousSocketId, nextSocketId);
+    this.movePlayerMapEntry(room.bingoProgress, previousSocketId, nextSocketId);
+    this.movePlayerMapEntry(room.lightningTimeLeft, previousSocketId, nextSocketId);
+    this.movePlayerSetEntry(room.bustedPlayers, previousSocketId, nextSocketId);
+    this.movePlayerSetEntry(room.bingoCompletedBoards, previousSocketId, nextSocketId);
+
+    this.socketToRoom.delete(previousSocketId);
+    this.socketToRoom.set(nextSocketId, roomId);
+
+    return { ok: true, data: { roomId, snapshot: this.toSnapshot(room) } };
   }
 
   public createRoom(socketId: string, username: string, settings: GameSettings, isPublic = false): ManagerResult<RoomSnapshot> {
@@ -1328,6 +1482,7 @@ class GameRoomManager {
       totalRounds: room.settings.rounds,
       snapshot: this.toSnapshot(room)
     } satisfies RoundStartedPayload);
+    this.queueRoundReminders(room);
 
     room.tickTimer = setInterval(() => {
       if (room.phase !== 'round') {
@@ -1847,6 +2002,43 @@ fastify.get('/analytics/logs', async (request, reply) => {
   return { ok: true, data: { file: ANALYTICS_LOG_FILE, lines } };
 });
 
+fastify.get('/.well-known/apple-app-site-association', async (_request, reply) => {
+  if (!IOS_APP_TEAM_ID) {
+    return reply.code(404).send({ ok: false, error: 'iOS universal links are not configured.' });
+  }
+
+  return reply
+    .header('Cache-Control', 'public, max-age=3600')
+    .type('application/json')
+    .send({
+      applinks: {
+        apps: [],
+        details: [{
+          appID: `${IOS_APP_TEAM_ID}.${MOBILE_APP_ID}`,
+          components: [{ '/': '/join/*' }, { '/': '/daily' }]
+        }]
+      }
+    });
+});
+
+fastify.get('/.well-known/assetlinks.json', async (_request, reply) => {
+  if (ANDROID_APP_LINK_CERTIFICATES.length === 0) {
+    return reply.code(404).send({ ok: false, error: 'Android app links are not configured.' });
+  }
+
+  return reply
+    .header('Cache-Control', 'public, max-age=3600')
+    .type('application/json')
+    .send([{
+      relation: ['delegate_permission/common.handle_all_urls'],
+      target: {
+        namespace: 'android_app',
+        package_name: MOBILE_APP_ID,
+        sha256_cert_fingerprints: ANDROID_APP_LINK_CERTIFICATES
+      }
+    }]);
+});
+
 const contentTypes: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -1877,10 +2069,121 @@ const io: TypedIo = new Server(fastify.server, {
   cors: {
     origin: clientOrigins,
     methods: ['GET', 'POST']
+  },
+  connectionStateRecovery: {
+    maxDisconnectionDuration: MOBILE_RECONNECT_GRACE_MS,
+    skipMiddlewares: true
   }
 });
 
 const manager = new GameRoomManager(io, words, analytics);
+
+function clientIdForSocket(socket: TypedSocket): string | undefined {
+  const parsed = ClientIdSchema.safeParse(socket.handshake.auth?.clientId);
+  return parsed.success ? parsed.data : undefined;
+}
+
+function clearReconnectRemoval(clientId: string): void {
+  const session = reconnectSessions.get(clientId);
+  if (!session?.removalTimer) return;
+  clearTimeout(session.removalTimer);
+  session.removalTimer = undefined;
+}
+
+function removeDisconnectedPlayer(socketId: string, reason: string): void {
+  analytics.recordDisconnect(socketId);
+  const roomId = manager.findRoomIdForSocket(socketId);
+  fastify.log.info({ socketId, roomId, reason }, 'removing disconnected player');
+  const removal = manager.removePlayer(socketId);
+  if (!roomId || !removal.ok) {
+    if (roomId || !removal.ok) {
+      fastify.log.warn({ socketId, roomId, error: removal.ok ? undefined : removal.error }, 'disconnect room cleanup skipped');
+    }
+    return;
+  }
+
+  const snapshot = removal.data.snapshot;
+  fastify.log.info({
+    socketId,
+    roomId,
+    hostChanged: removal.data.hostChanged,
+    roomClosed: !snapshot,
+    ...(snapshot ? roomLogContext(snapshot) : {})
+  }, 'player removed after disconnect');
+
+  if (!snapshot) return;
+
+  io.to(removal.data.roomId).emit('playerLeft', {
+    playerId: socketId,
+    snapshot
+  } satisfies PlayerLeftPayload);
+
+  if (removal.data.hostChanged) {
+    io.to(removal.data.roomId).emit('hostChanged', {
+      hostId: snapshot.hostId,
+      snapshot
+    } satisfies HostChangedPayload);
+  }
+}
+
+function scheduleReconnectExpiry(clientId: string, socketId: string, reason: string): void {
+  const session = reconnectSessions.get(clientId);
+  if (!session || session.socketId !== socketId || session.removalTimer) return;
+
+  session.removalTimer = setTimeout(() => {
+    const currentSession = reconnectSessions.get(clientId);
+    if (!currentSession || currentSession.socketId !== socketId) return;
+
+    reconnectSessions.delete(clientId);
+    clientIdBySocketId.delete(socketId);
+    inactiveClientIds.delete(clientId);
+    removeDisconnectedPlayer(socketId, reason);
+  }, MOBILE_RECONNECT_GRACE_MS);
+}
+
+function restoreReconnectSession(socket: TypedSocket, clientId: string): boolean {
+  const previousSession = reconnectSessions.get(clientId);
+  if (!previousSession) {
+    reconnectSessions.set(clientId, { socketId: socket.id, removalTimer: undefined });
+    clientIdBySocketId.set(socket.id, clientId);
+    return true;
+  }
+
+  if (previousSession.socketId === socket.id) {
+    clearReconnectRemoval(clientId);
+    clientIdBySocketId.set(socket.id, clientId);
+    return true;
+  }
+
+  const previousSocket = io.sockets.sockets.get(previousSession.socketId) as TypedSocket | undefined;
+  if (previousSocket?.connected) {
+    fastify.log.warn({ clientId, activeSocketId: previousSession.socketId, rejectedSocketId: socket.id }, 'rejected duplicate reconnect client');
+    socket.disconnect(true);
+    return false;
+  }
+
+  clearReconnectRemoval(clientId);
+  const previousSocketId = previousSession.socketId;
+  const rebound = manager.rebindPlayerSocket(previousSocketId, socket.id);
+
+  previousSession.socketId = socket.id;
+  previousSession.removalTimer = undefined;
+  clientIdBySocketId.delete(previousSocketId);
+  clientIdBySocketId.set(socket.id, clientId);
+
+  if (!rebound.ok) {
+    // The installation may have reconnected after intentionally leaving a room.
+    analytics.recordDisconnect(previousSocketId);
+    return true;
+  }
+
+  analytics.rebindSocket(previousSocketId, socket.id);
+  reboundSocketIds.add(socket.id);
+  socket.join(rebound.data.roomId);
+  io.to(rebound.data.roomId).emit('roomSnapshot', { snapshot: rebound.data.snapshot });
+  fastify.log.info({ clientId, previousSocketId, socketId: socket.id, ...roomLogContext(rebound.data.snapshot) }, 'mobile player session rebound');
+  return true;
+}
 
 function roomLogContext(snapshot: RoomSnapshot): Record<string, unknown> {
   return {
@@ -1936,9 +2239,13 @@ function detachSocketFromCurrentRoom(socket: TypedSocket): void {
 }
 
 io.on('connection', (socket) => {
+  const clientId = clientIdForSocket(socket);
+  if (clientId && !restoreReconnectSession(socket, clientId)) return;
+
   const identity = deviceIdentityForSocket(socket);
-  analytics.recordConnect(socket.id, identity);
-  fastify.log.info({ socketId: socket.id, deviceId: identity.deviceId }, 'socket connected');
+  const wasRebound = reboundSocketIds.delete(socket.id);
+  if (!wasRebound && !socket.recovered) analytics.recordConnect(socket.id, identity);
+  fastify.log.info({ socketId: socket.id, clientId, recovered: socket.recovered, deviceId: identity.deviceId }, 'socket connected');
 
   socket.on('createRoom', (payload, ack) => {
     const parsed = CreateRoomPayloadSchema.safeParse(payload);
@@ -2135,42 +2442,72 @@ io.on('connection', (socket) => {
     reply(ack, result);
   });
 
+  socket.on('registerPushToken', (payload, ack) => {
+    const parsed = RegisterPushTokenPayloadSchema.safeParse(payload);
+    if (!parsed.success) {
+      reply(ack, { ok: false, error: validationMessage(parsed.error.message) });
+      return;
+    }
+
+    if (!clientId) {
+      reply(ack, { ok: false, error: 'A resumable device session is required for notifications.' });
+      return;
+    }
+
+    pushTokensByClientId.set(clientId, {
+      clientId,
+      token: parsed.data.token,
+      platform: parsed.data.platform,
+      updatedAt: new Date().toISOString()
+    });
+    fastify.log.info({ clientId, platform: parsed.data.platform }, 'push token registered');
+    reply(ack, { ok: true, data: { ok: true } });
+  });
+
+  socket.on('setAppActivity', (payload, ack) => {
+    const parsed = SetAppActivityPayloadSchema.safeParse(payload);
+    if (!parsed.success) {
+      reply(ack, { ok: false, error: validationMessage(parsed.error.message) });
+      return;
+    }
+
+    if (!clientId) {
+      reply(ack, { ok: true, data: { ok: true } });
+      return;
+    }
+
+    if (parsed.data.isActive) {
+      inactiveClientIds.delete(clientId);
+    } else {
+      inactiveClientIds.add(clientId);
+    }
+    reply(ack, { ok: true, data: { ok: true } });
+  });
+
   socket.on('disconnect', (reason) => {
-    analytics.recordDisconnect(socket.id);
     const roomId = manager.findRoomIdForSocket(socket.id);
-    fastify.log.info({ socketId: socket.id, roomId, reason }, 'socket disconnected');
-    const removal = manager.removePlayer(socket.id);
-    if (!roomId || !removal.ok) {
-      if (roomId || !removal.ok) {
-        fastify.log.warn({ socketId: socket.id, roomId, error: removal.ok ? undefined : removal.error }, 'disconnect room cleanup skipped');
-      }
+    fastify.log.info({ socketId: socket.id, clientId, roomId, reason }, 'socket disconnected');
+
+    if (!clientId) {
+      removeDisconnectedPlayer(socket.id, reason);
       return;
     }
 
-    const snapshot = removal.data.snapshot;
-    fastify.log.info({
-      socketId: socket.id,
-      roomId,
-      hostChanged: removal.data.hostChanged,
-      roomClosed: !snapshot,
-      ...(snapshot ? roomLogContext(snapshot) : {})
-    }, 'player removed after disconnect');
-
-    if (!snapshot) {
+    const reconnectSession = reconnectSessions.get(clientId);
+    if (!reconnectSession || reconnectSession.socketId !== socket.id) {
+      // A newer socket has already reclaimed this installation's player state.
       return;
     }
 
-    io.to(roomId).emit('playerLeft', {
-      playerId: socket.id,
-      snapshot
-    } satisfies PlayerLeftPayload);
-
-    if (removal.data.hostChanged) {
-      io.to(roomId).emit('hostChanged', {
-        hostId: snapshot.hostId,
-        snapshot
-      } satisfies HostChangedPayload);
+    if (!roomId) {
+      reconnectSessions.delete(clientId);
+      clientIdBySocketId.delete(socket.id);
+      inactiveClientIds.delete(clientId);
+      analytics.recordDisconnect(socket.id);
+      return;
     }
+
+    scheduleReconnectExpiry(clientId, socket.id, reason);
   });
 });
 
