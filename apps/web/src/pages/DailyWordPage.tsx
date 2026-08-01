@@ -250,7 +250,7 @@ export default function DailyWordPage(): JSX.Element {
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 18 }}>
-          <TimerRing timeLeft={timeLeft} totalTime={DAILY_SECONDS} size={96} />
+          <TimerRing timeLeft={timeLeft} totalTime={DAILY_SECONDS} size={72} />
         </div>
 
         <form className="word-form" onSubmit={submitWord}>

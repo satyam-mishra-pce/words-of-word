@@ -1083,7 +1083,7 @@ export default function RoomPage(): JSX.Element {
                 <TimerRing
                   timeLeft={displayedTimeLeft}
                   totalTime={isLightningMode ? Math.max(10, displayedTimeLeft) : snapshot.settings.timePerRound}
-                  size={96}
+                  size={72}
                 />
               </div>
             )}
