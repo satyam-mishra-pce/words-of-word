@@ -104,6 +104,17 @@ export const RestartGamePayloadSchema = z.object({
   autoStart: z.boolean().default(true)
 });
 
+export const PushPlatformSchema = z.enum(['android', 'ios']);
+
+export const RegisterPushTokenPayloadSchema = z.object({
+  token: z.string().trim().min(1).max(4096),
+  platform: PushPlatformSchema
+});
+
+export const SetAppActivityPayloadSchema = z.object({
+  isActive: z.boolean()
+});
+
 export const UpdateSettingsPayloadSchema = z.object({
   roomId: RoomIdSchema,
   settings: GameSettingsSchema
@@ -123,6 +134,9 @@ export type SubmitWordPayload = z.infer<typeof SubmitWordPayloadSchema>;
 export type UpdateTeamPayload = z.infer<typeof UpdateTeamPayloadSchema>;
 export type UpdateBetPayload = z.infer<typeof UpdateBetPayloadSchema>;
 export type RestartGamePayload = z.infer<typeof RestartGamePayloadSchema>;
+export type PushPlatform = z.infer<typeof PushPlatformSchema>;
+export type RegisterPushTokenPayload = z.infer<typeof RegisterPushTokenPayloadSchema>;
+export type SetAppActivityPayload = z.infer<typeof SetAppActivityPayloadSchema>;
 export type UpdateSettingsPayload = z.infer<typeof UpdateSettingsPayloadSchema>;
 
 export type RoomPhase = 'lobby' | 'betting' | 'round' | 'betweenRounds' | 'gameOver';
@@ -366,4 +380,6 @@ export interface ClientToServerEvents {
   startGame: (payload: StartGamePayload, ack?: Ack<EmptyResult>) => void;
   submitWord: (payload: SubmitWordPayload, ack?: Ack<EmptyResult>) => void;
   restartGame: (payload: RestartGamePayload, ack?: Ack<EmptyResult>) => void;
+  registerPushToken: (payload: RegisterPushTokenPayload, ack?: Ack<EmptyResult>) => void;
+  setAppActivity: (payload: SetAppActivityPayload, ack?: Ack<EmptyResult>) => void;
 }

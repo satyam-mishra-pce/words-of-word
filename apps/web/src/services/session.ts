@@ -1,9 +1,9 @@
-const USERNAME_KEY = 'wow.username';
+import { STORAGE_KEYS, readStoredValue, writeStoredValue } from './storage';
 
 export function saveUsername(username: string): void {
-  localStorage.setItem(USERNAME_KEY, username.trim());
+  writeStoredValue(STORAGE_KEYS.username, username.trim());
 }
 
 export function loadUsername(): string {
-  return localStorage.getItem(USERNAME_KEY) ?? '';
+  return readStoredValue(STORAGE_KEYS.username) ?? '';
 }

@@ -7,7 +7,10 @@
     "dev": "pnpm build && NODE_OPTIONS=--conditions=development turbo dev --parallel",
     "build": "turbo build",
     "typecheck": "turbo typecheck",
-    "lint": "turbo lint"
+    "lint": "turbo lint",
+    "mobile:sync": "pnpm --filter @wow/web cap:sync",
+    "mobile:ios": "pnpm --filter @wow/web cap:ios",
+    "mobile:android": "pnpm --filter @wow/web cap:android"
   },
   "devDependencies": {
     "turbo": "^2.5.8",

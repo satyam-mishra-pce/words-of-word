@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2732" height="2732" viewBox="0 0 2732 2732">
+  <rect width="2732" height="2732" fill="#111111"/>
+  <circle cx="1366" cy="1366" r="780" fill="#161616" stroke="#e2b714" stroke-opacity=".18" stroke-width="8"/>
+  <text x="1366" y="1200" text-anchor="middle" fill="#777777" font-family="Menlo, Monaco, monospace" font-size="62" font-weight="600" letter-spacing="16">WORD BATTLE</text>
+  <text x="1366" y="1495" text-anchor="middle" fill="#e2b714" font-family="Menlo, Monaco, monospace" font-size="330" font-weight="700" letter-spacing="-34">W·W</text>
+  <rect x="888" y="1590" width="956" height="18" rx="9" fill="#e2b714"/>
+  <text x="1366" y="1768" text-anchor="middle" fill="#d1d0c5" font-family="Menlo, Monaco, monospace" font-size="68" font-weight="600" letter-spacing="-4">words of word</text>
+</svg>

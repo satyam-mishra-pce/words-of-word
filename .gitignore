@@ -3,6 +3,8 @@ dist
 build
 .env
 .env.local
+apps/web/.env.mobile
+apps/web/.env.mobile.local
 .DS_Store
 .turbo
 coverage
@@ -10,5 +12,6 @@ logs
 **/logs
 .vercel
 .pi-run
+.pi-subagents
 pics and videos
 apps/web/public/.DS_Store
