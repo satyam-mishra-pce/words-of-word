@@ -790,7 +790,7 @@ export default function RoomPage(): JSX.Element {
       </aside>
 
       {/* ── CENTER: Word Stage ── */}
-      <section className="word-stage glass-panel">
+      <section className={`word-stage glass-panel${isBingoMode ? ' bingo-stage' : ''}`}>
 
         {/* Stage notice — fixed height, opacity-only, no layout jump */}
         <div className={`stage-notice-bar${notice ? ' active' : ''}`} aria-live="polite">
@@ -1034,24 +1034,24 @@ export default function RoomPage(): JSX.Element {
 
             {/* Bingo board */}
             {isBingoMode && snapshot.bingoTasks.length > 0 && (
-              <div className="words-card" style={{ marginTop: 14 }}>
-                <div className="words-header">
+              <div className="words-card bingo-board">
+                <div className="words-header bingo-board__header">
                   <h3>Bingo Board</h3>
                   <Badge>{snapshot.bingoProgress[currentPlayerId ?? '']?.length ?? 0}/{snapshot.bingoTasks.length}</Badge>
                 </div>
-                <div style={{ display: 'grid', gap: 8 }}>
+                <div className="bingo-task-grid">
                   {snapshot.bingoTasks.map((task) => {
                     const done = Boolean(snapshot.bingoProgress[currentPlayerId ?? '']?.includes(task.id));
                     return (
-                      <div key={task.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 12, background: done ? 'rgba(106,173,80,0.12)' : 'var(--main-10)', color: done ? 'var(--green)' : 'var(--text)' }}>
-                        <span aria-label={done ? 'completed' : 'not completed'} style={{ fontSize: '1.15rem', width: 22 }}>{done ? '✓' : '□'}</span>
+                      <div key={task.id} className={`bingo-task${done ? ' bingo-task--done' : ''}`}>
+                        <span className="bingo-task__check" aria-label={done ? 'completed' : 'not completed'}>{done ? '✓' : '□'}</span>
                         <strong>{task.label}</strong>
-                        <span style={{ marginLeft: 'auto' }}>+10</span>
+                        <span className="bingo-task__points">+10</span>
                       </div>
                     );
                   })}
                 </div>
-                <p className="muted" style={{ marginTop: 10 }}>Complete all {snapshot.bingoTasks.length} for a +100 bonus. The source word itself does not count for bingo tasks. After bingo, every extra valid word scores +3.</p>
+                <p className="muted bingo-board__hint">Full board: +100. Source word does not count. After bingo, extras are +3.</p>
               </div>
             )}
 

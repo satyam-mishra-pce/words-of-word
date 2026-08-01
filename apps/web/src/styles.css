@@ -1122,6 +1122,69 @@ p { margin-top: 0; }
   letter-spacing: 0.06em;
 }
 .words-count { font-size: 0.72rem; color: var(--main); }
+
+/* Bingo mode: keep the source word reachable and make the checklist use
+   its own compact scroll area instead of pushing gameplay off-screen. */
+.bingo-stage { gap: 12px; }
+.bingo-stage .current-word-card {
+  position: sticky;
+  top: 10px;
+  z-index: 30;
+  padding: clamp(12px,3vw,28px) 0;
+  background: linear-gradient(180deg, var(--bg-sub) 0%, var(--bg-sub) 88%, rgba(26,26,26,0) 100%);
+  border-bottom: 1px solid var(--sub-2);
+}
+.bingo-stage .current-word-label { margin-bottom: 10px; }
+.bingo-stage .current-word-text { font-size: clamp(2.4rem,6vw,5rem); }
+.bingo-stage .timer-section { padding: 2px 0; }
+.bingo-board {
+  margin-top: 0;
+  max-height: min(34dvh, 320px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  padding-right: 4px;
+}
+.bingo-board__header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 6px 0 8px;
+  background: var(--bg-sub);
+}
+.bingo-task-grid { display: grid; gap: 6px; }
+.bingo-task {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--r-md);
+  background: var(--main-10);
+  color: var(--text);
+  font-size: 0.82rem;
+  line-height: 1.25;
+}
+.bingo-task--done {
+  background: rgba(106,173,80,0.12);
+  color: var(--green);
+}
+.bingo-task__check {
+  width: 20px;
+  flex: 0 0 20px;
+  font-size: 1rem;
+  line-height: 1;
+}
+.bingo-task__points {
+  margin-left: auto;
+  color: var(--main);
+  font-size: 0.76rem;
+}
+.bingo-board__hint {
+  margin-top: 8px;
+  margin-bottom: 0;
+  font-size: 0.74rem;
+  line-height: 1.45;
+}
 .word-chip-list { display: flex; flex-wrap: wrap; gap: 4px 8px; }
 .word-chip-list em { color: var(--sub); font-size: 0.80rem; font-style: normal; }
 
@@ -1543,6 +1606,14 @@ p { margin-top: 0; }
   .button-row, .button-stack { flex-direction: column; align-items: stretch; }
   .hero-card h1 { font-size: 2.8rem; }
   .current-word-text { font-size: 2.6rem; }
+  .bingo-stage .current-word-card {
+    top: calc(var(--vv-top, 0px) + env(safe-area-inset-top, 0px));
+    padding: 10px 0 12px;
+  }
+  .bingo-stage .current-word-label { margin-bottom: 6px; font-size: 0.58rem; }
+  .bingo-stage .current-word-text { font-size: clamp(2rem, 11vw, 3rem); }
+  .bingo-board { max-height: 30dvh; }
+  .bingo-task { padding: 7px 9px; font-size: 0.78rem; }
   .timer-section { gap: 14px; }
   .ui-input { font-size: 16px; }
 
