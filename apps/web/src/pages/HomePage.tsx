@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PlayerAvatarEditor } from '../components/PlayerAvatarEditor';
 import { NativeNotificationPrompt } from '../components/NativeNotificationPrompt';
+import { ThemePicker } from '../components/ThemePicker';
 import { Alert, Avatar, Button, Input } from '../components/ui';
 import { loadPlayerAvatar, loadUsername, savePlayerAvatar, saveUsername } from '../services/session';
 import { getGameServerUrl } from '../services/platform';
@@ -179,6 +180,10 @@ export default function HomePage(): JSX.Element {
           </form>
         </section>
       </div>
+
+      <footer className="home-theme-footer home-theme-footer--starter">
+        <ThemePicker />
+      </footer>
 
       <PlayerAvatarEditor
         open={isAvatarEditorOpen}
