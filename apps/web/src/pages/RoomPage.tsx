@@ -24,7 +24,7 @@ import {
 
 const RANK_ICONS: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉' };
 
-type GameActionIconName = 'hint' | 'share' | 'rules' | 'stop' | 'exit' | 'check';
+type GameActionIconName = 'hint' | 'share' | 'rules' | 'stop' | 'exit' | 'leaderboard' | 'check';
 
 function GameActionIcon({ name }: { name: GameActionIconName }): JSX.Element {
   const svgProps = {
@@ -50,6 +50,8 @@ function GameActionIcon({ name }: { name: GameActionIconName }): JSX.Element {
       return <svg {...svgProps}><rect x="5" y="5" width="10" height="10" rx="1.5" /></svg>;
     case 'exit':
       return <svg {...svgProps}><path d="M8 3H4v14h4" /><path d="m11 6 4 4-4 4" /><path d="M7 10h8" /></svg>;
+    case 'leaderboard':
+      return <svg {...svgProps}><path d="M3.5 16.5h13" /><path d="M5 14V9.5h3V14" /><path d="M8.5 14V5.5h3V14" /><path d="M12 14V7.5h3V14" /></svg>;
     case 'check':
       return <svg {...svgProps}><path d="m4 10 3.5 3.5L16 5" /></svg>;
   }
@@ -115,6 +117,7 @@ export default function RoomPage(): JSX.Element {
   const [finalTeamScores, setFinalTeamScores] = useState<TeamScore[]>([]);
   const [showRoundHistory, setShowRoundHistory] = useState(false);
   const [showHowToPlay, setShowHowToPlay] = useState(false);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showStopConfirmation, setShowStopConfirmation] = useState(false);
   const [isStoppingGame, setIsStoppingGame] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
@@ -141,6 +144,20 @@ export default function RoomPage(): JSX.Element {
     () => snapshot?.players.find((p) => p.id === currentPlayerId),
     [currentPlayerId, snapshot]
   );
+  const liveLeaderboard = useMemo(() => {
+    const players = [...(snapshot?.players ?? [])].sort((left, right) => right.score - left.score);
+    let previousScore: number | undefined;
+    let rank = 0;
+
+    return players.map((player) => {
+      if (previousScore === undefined || player.score !== previousScore) {
+        rank += 1;
+        previousScore = player.score;
+      }
+      return { ...player, rank };
+    });
+  }, [snapshot?.players]);
+  const currentPlayerStanding = liveLeaderboard.find((player) => player.id === currentPlayerId);
   const isHost = Boolean(currentPlayer?.isHost);
   const myWords = currentPlayerId && snapshot ? snapshot.acceptedWords[currentPlayerId] ?? [] : [];
   const canStart = isHost && snapshot &&
@@ -631,6 +648,11 @@ export default function RoomPage(): JSX.Element {
     setShowHowToPlay(true);
   }
 
+  function openLeaderboard(): void {
+    inputRef.current?.blur();
+    setShowLeaderboard(true);
+  }
+
   function openStopConfirmation(): void {
     inputRef.current?.blur();
     setError('');
@@ -871,6 +893,22 @@ export default function RoomPage(): JSX.Element {
           <span className="game-header__count">
             {snapshot.players.length} player{snapshot.players.length !== 1 ? 's' : ''}
           </span>
+          {hasGameplayChrome && !needsRejoin && currentPlayerStanding && (
+            <Tooltip content="Open live leaderboard" className="ui-tooltip-down">
+              <Button
+                variant="mini"
+                size="sm"
+                type="button"
+                className="mobile-score-trigger"
+                onClick={openLeaderboard}
+                aria-label={`Open live leaderboard. You are rank ${currentPlayerStanding.rank} with ${currentPlayerStanding.score} points.`}
+              >
+                <GameActionIcon name="leaderboard" />
+                <span>#{currentPlayerStanding.rank}</span>
+                <strong>{currentPlayerStanding.score}</strong>
+              </Button>
+            </Tooltip>
+          )}
         </div>
         <div className={`game-header__right${hasVisibleEntryInput ? '' : ' game-header__right--labelled'}`}>
           {snapshot.settings.hintsEnabled && snapshot.phase === 'round' && !needsRejoin && (
@@ -1358,6 +1396,32 @@ export default function RoomPage(): JSX.Element {
 
                 {snapshot.phase === 'round' && (
                   <div className="gameplay-footer">
+                    <div className="mobile-entry-tools" aria-label="Quick game controls">
+                      {snapshot.settings.hintsEnabled && !needsRejoin && (
+                        <Tooltip content={hasUsedHint ? 'Hint already used this round' : canUseHint ? `Reveal ${HINTS_PER_REQUEST} private clues for −${HINT_COST} points` : 'Find an accepted word to unlock a hint'}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            type="button"
+                            className={`mobile-entry-tool mobile-entry-tool--hint${hasUsedHint ? ' mobile-entry-tool--used' : ''}`}
+                            onClick={requestHint}
+                            disabled={!canUseHint || hasUsedHint || isRequestingHint}
+                            aria-busy={isRequestingHint}
+                            aria-label={hasUsedHint ? 'Hint already used this round' : `Reveal ${HINTS_PER_REQUEST} private hints for ${HINT_COST} points`}
+                          >
+                            <GameActionIcon name="hint" />
+                            <span>Hint</span>
+                            {!hasUsedHint && <small>−{HINT_COST}</small>}
+                          </Button>
+                        </Tooltip>
+                      )}
+                      <Tooltip content="How to play">
+                        <Button variant="ghost" size="sm" type="button" className="mobile-entry-tool" onClick={openHowToPlay} aria-label="How to play">
+                          <GameActionIcon name="rules" />
+                          <span>Rules</span>
+                        </Button>
+                      </Tooltip>
+                    </div>
                     <form className="word-form" onSubmit={submitWord}>
                       <Input
                         ref={inputRef}
@@ -1433,6 +1497,47 @@ export default function RoomPage(): JSX.Element {
             Stop game
           </Button>
         </div>
+      </Dialog>
+
+      {/* ── MOBILE LIVE LEADERBOARD ── */}
+      <Dialog
+        open={showLeaderboard}
+        onClose={() => setShowLeaderboard(false)}
+        size="sm"
+        className="mobile-leaderboard-dialog"
+      >
+        <p className="eyebrow">Live room</p>
+        <h1 style={{ fontSize: 'clamp(1.6rem,5vw,2.35rem)', lineHeight: 0.96, marginBottom: 16 }}>
+          Leaderboard
+        </h1>
+        <div className="mobile-leaderboard-list">
+          {liveLeaderboard.map((player, index) => (
+            <div key={player.id} className={`mobile-leaderboard-row${player.id === currentPlayerId ? ' mobile-leaderboard-row--self' : ''}`}>
+              <span className="mobile-leaderboard-row__rank">#{player.rank}</span>
+              <Avatar name={player.name} colorIndex={index} size="sm" />
+              <div className="mobile-leaderboard-row__identity">
+                <strong>{player.name}{player.id === currentPlayerId ? ' (You)' : ''}</strong>
+                <span>{player.isHost ? 'Host' : player.teamId ? `${player.teamId === 'red' ? 'Red' : 'Blue'} team` : 'Player'}</span>
+              </div>
+              <div className="mobile-leaderboard-row__score">
+                <strong>{player.score}</strong>
+                <span>pts</span>
+              </div>
+            </div>
+          ))}
+        </div>
+        {isTeamsMode && snapshot.teamScores.length > 0 && (
+          <section className="mobile-team-scores" aria-label="Team scores">
+            <p className="eyebrow">Team scores</p>
+            {snapshot.teamScores.map((team) => (
+              <div key={team.teamId}>
+                <span>{team.teamName}</span>
+                <strong>{team.score} pts</strong>
+              </div>
+            ))}
+          </section>
+        )}
+        <Button variant="secondary" fullWidth onClick={() => setShowLeaderboard(false)}>Back to game</Button>
       </Dialog>
 
       {/* ── HOW TO PLAY MODAL ── */}

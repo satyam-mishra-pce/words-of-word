@@ -784,6 +784,48 @@ html[data-native-app="true"] .ui-dialog-backdrop {
   padding-inline: 12px;
 }
 
+.mobile-leaderboard-list {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 18px;
+}
+.mobile-leaderboard-row {
+  display: grid;
+  grid-template-columns: 30px auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 10px;
+  border-radius: var(--r-sm);
+  background: var(--bg-3);
+}
+.mobile-leaderboard-row--self { background: var(--main-10); }
+.mobile-leaderboard-row__rank { color: var(--sub); font-size: 0.72rem; }
+.mobile-leaderboard-row__identity { min-width: 0; }
+.mobile-leaderboard-row__identity strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: 0.78rem;
+}
+.mobile-leaderboard-row--self .mobile-leaderboard-row__identity strong { color: var(--main); }
+.mobile-leaderboard-row__identity span { display: block; margin-top: 2px; color: var(--sub); font-size: 0.60rem; }
+.mobile-leaderboard-row__score { min-width: 34px; text-align: right; }
+.mobile-leaderboard-row__score strong { display: block; color: var(--main); font-size: 0.86rem; }
+.mobile-leaderboard-row__score span { display: block; color: var(--sub); font-size: 0.56rem; }
+.mobile-team-scores {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 18px;
+  padding: 12px;
+  border-radius: var(--r-sm);
+  background: var(--bg-3);
+}
+.mobile-team-scores .eyebrow { margin-bottom: 3px; }
+.mobile-team-scores > div { display: flex; justify-content: space-between; gap: 12px; color: var(--sub); font-size: 0.72rem; }
+.mobile-team-scores strong { color: var(--main); }
+
 /* --- Progress --- */
 .ui-progress {
   height: 4px;
@@ -1019,8 +1061,11 @@ html[data-native-app="true"] .ui-dialog-backdrop {
 .game-header__action--stop:hover:not(:disabled) { color: var(--error); background: var(--error-10); }
 .game-header__action--exit {
   margin-left: 2px;
+  color: var(--error);
   box-shadow: inset 1px 0 var(--sub-2);
 }
+.game-header__action--exit:hover:not(:disabled) { color: var(--error); background: var(--error-10); }
+.mobile-score-trigger { display: none; }
 .game-header__right--labelled .game-header__action {
   width: auto;
   min-width: 34px;
@@ -1271,6 +1316,7 @@ body:has(.game-shell.has-gameplay-chrome),
   margin: 0;
   padding: 8px 16px 10px;
 }
+.mobile-entry-tools { display: none; }
 .game-shell.has-gameplay-chrome .gameplay-scroll .bingo-board {
   max-height: none;
   margin: 0;
@@ -2022,15 +2068,12 @@ html[data-native-app="true"][data-keyboard-open="true"] .theme-toggle {
 /* ============================================================
    RESPONSIVE
    ============================================================ */
-@media (max-width: 1080px) {
+/* Keep the leaderboard in view after the rules sidebar has yielded space. */
+@media (max-width: 1180px) {
   .game-shell {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(210px, 250px) minmax(0, 1fr);
   }
-  .game-header   { order: 1; }
-  .word-stage    { order: 2; }
-  .players-panel { order: 3; position: static; }
-  .game-shell.has-gameplay-chrome .players-panel { display: none; }
-  .info-panel    { display: none; }
+  .info-panel { display: none; }
 }
 
 /* ============================================================
@@ -2105,7 +2148,14 @@ html[data-native-app="true"][data-keyboard-open="true"] .theme-toggle {
   .game-header__label,
   .game-header__dot,
   .game-header__count { display: none; }
-  .game-header__roomid { flex: 0 0 auto; font-size: 0.72rem; }
+  .game-header__roomid {
+    flex: 0 1 auto;
+    max-width: min(24vw, 96px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.72rem;
+  }
   .game-header__mode {
     min-width: 0;
     max-width: 126px;
@@ -2139,6 +2189,19 @@ html[data-native-app="true"][data-keyboard-open="true"] .theme-toggle {
   @media (max-width: 360px) {
     .game-header:has(.game-header__right--labelled) .game-header__mode { display: none; }
   }
+  .game-shell.has-gameplay-chrome .game-header__mode { display: none; }
+  .mobile-score-trigger {
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    height: 30px;
+    padding: 0 7px;
+    gap: 4px;
+    color: var(--main);
+    font-size: 0.62rem;
+  }
+  .mobile-score-trigger svg { width: 14px; height: 14px; }
+  .mobile-score-trigger strong { font-size: 0.70rem; }
 
   /* Mix details are available outside an active round; do not create a third
      shell row that can displace the fixed game chrome. */
@@ -2260,6 +2323,27 @@ html[data-native-app="true"][data-keyboard-open="true"] .theme-toggle {
     background: var(--bg);
     border-top: 1px solid var(--sub-2);
   }
+  .mobile-entry-tools {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 36px;
+    padding: 3px 12px;
+    border-bottom: 1px solid rgba(100,102,105,0.32);
+  }
+  .mobile-entry-tools .ui-tooltip-host { display: flex; }
+  .mobile-entry-tool {
+    min-height: 30px;
+    padding: 5px 8px;
+    gap: 4px;
+    color: var(--sub);
+    font-size: 0.62rem;
+  }
+  .mobile-entry-tool:hover:not(:disabled) { color: var(--text); background: var(--bg-3); }
+  .mobile-entry-tool--hint { color: var(--main); }
+  .mobile-entry-tool--hint:hover:not(:disabled) { color: var(--main); background: var(--main-10); }
+  .mobile-entry-tool--used { color: var(--sub); }
+  .mobile-entry-tool small { color: var(--main); font-size: 0.54rem; }
   .gameplay-footer .word-form {
     min-width: 0;
     margin: 0;
