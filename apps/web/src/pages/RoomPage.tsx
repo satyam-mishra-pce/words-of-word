@@ -1,6 +1,6 @@
 import { CSSProperties, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { FinalScore, GameSettings, RoomSnapshot, RoundResultPlayer, TeamScore } from '@wow/shared';
+import { FinalScore, GameSettings, HINT_COST, HINTS_PER_REQUEST, RoomSnapshot, RoundResultPlayer, TeamScore, WordHint } from '@wow/shared';
 import socket from '../services/socket';
 import { loadUsername } from '../services/session';
 import { hapticError, hapticLight, hapticMedium, hapticSuccess, hapticWarning } from '../services/nativeFeedback';
@@ -93,6 +93,8 @@ export default function RoomPage(): JSX.Element {
   const [bustFlash, setBustFlash] = useState<{ playerId: string; playerName: string; word: string; message: string } | undefined>();
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
   const [draftSettings, setDraftSettings] = useState<GameSettings | undefined>();
+  const [activeHints, setActiveHints] = useState<WordHint[]>([]);
+  const [isRequestingHint, setIsRequestingHint] = useState(false);
 
   // Keep a ref to the word input so we can restore focus after submit
   const inputRef = useRef<HTMLInputElement>(null);
@@ -130,6 +132,8 @@ export default function RoomPage(): JSX.Element {
     ? snapshot.lightningTimeLeft[currentPlayerId] ?? 0
     : snapshot?.timeLeft ?? 0;
   const canSubmit = snapshot?.phase === 'round' && Boolean(currentPlayer) && !currentPlayer?.isEliminated && !isCurrentPlayerBusted && (!isLightningMode || displayedTimeLeft > 0);
+  const canUseHint = Boolean(snapshot?.settings.hintsEnabled && canSubmit && currentPlayerId && snapshot?.acceptedWords[currentPlayerId]);
+  const hasUsedHint = activeHints.length > 0;
   const isUrgent = Boolean(snapshot?.phase === 'round' && displayedTimeLeft <= 10);
   const currentBet = currentPlayerId && snapshot ? snapshot.bettingBets[currentPlayerId] : undefined;
   const minimumBet = currentPlayerId && snapshot ? snapshot.minimumBets[currentPlayerId] ?? 3 : 3;
@@ -305,6 +309,7 @@ export default function RoomPage(): JSX.Element {
           return;
         }
         setSnapshot(response.data.snapshot);
+        setActiveHints(response.data.snapshot.personalHints ?? []);
         previousPhaseRef.current = response.data.snapshot.phase;
         currentWordRef.current = response.data.snapshot.currentWord;
         setWaitingSeconds(response.data.snapshot.waitingSeconds);
@@ -327,6 +332,7 @@ export default function RoomPage(): JSX.Element {
       }
       previousPhaseRef.current = payload.snapshot.phase;
       setSnapshot(payload.snapshot);
+      if (payload.snapshot.personalHints) setActiveHints(payload.snapshot.personalHints);
       currentWordRef.current = payload.snapshot.currentWord;
       setWaitingSeconds(payload.snapshot.waitingSeconds);
     };
@@ -351,6 +357,8 @@ export default function RoomPage(): JSX.Element {
       setWaitingSeconds(0);
       setValidWordCount(0);
       setNegativeMarkedWords([]);
+      setActiveHints([]);
+      setIsRequestingHint(false);
       setBetInput('');
       setBustFlash(undefined);
       void hapticMedium();
@@ -533,6 +541,28 @@ export default function RoomPage(): JSX.Element {
     requestAnimationFrame(() => inputRef.current?.focus());
   }
 
+  function requestHint(): void {
+    if (!canUseHint || isRequestingHint) return;
+
+    setIsRequestingHint(true);
+    socket.emit('requestHint', { roomId }, (response) => {
+      setIsRequestingHint(false);
+      if (!response.ok) {
+        setNotice(response.error);
+        void hapticError();
+        return;
+      }
+
+      setActiveHints(response.data.hints);
+      setSnapshot((current) => current ? {
+        ...current,
+        players: current.players.map((player) => player.id === socket.id ? { ...player, score: response.data.score } : player)
+      } : current);
+      setNotice(`${HINTS_PER_REQUEST} private hints unlocked. −${response.data.cost} points.`);
+      void hapticWarning();
+    });
+  }
+
   function submitBet(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
     const bet = Number(betInput);
@@ -609,6 +639,8 @@ export default function RoomPage(): JSX.Element {
     setWaitingSeconds(0);
     setValidWordCount(0);
     setNegativeMarkedWords([]);
+    setActiveHints([]);
+    setIsRequestingHint(false);
     setInputWord('');
     setBetInput('');
     setBustFlash(undefined);
@@ -672,7 +704,8 @@ export default function RoomPage(): JSX.Element {
       snapshot.settings.mixModifiers.claim && 'Claim: words are global',
       snapshot.settings.mixModifiers.busted && 'Busted',
       snapshot.settings.mixModifiers.intuition && 'Intuition reveal',
-      snapshot.settings.mixModifiers.lightning && 'Lightning: +1s per word'
+      snapshot.settings.mixModifiers.lightning && 'Lightning: +1s per word',
+      snapshot.settings.hintsEnabled && `Hints: ${HINTS_PER_REQUEST} clues / round (−${HINT_COST})`
     ].filter((label): label is string => Boolean(label))
     : [];
   const mixScoringLabel = snapshot.settings.mixScoringMode === 'arcade' ? 'Score Attack' : 'Classic';
@@ -1055,6 +1088,51 @@ export default function RoomPage(): JSX.Element {
               </div>
             )}
 
+            {/* Private player hints */}
+            {snapshot.settings.hintsEnabled && snapshot.phase === 'round' && !needsRejoin && (
+              <section className={`hint-panel${hasUsedHint ? ' hint-panel--revealed' : ''}`} aria-labelledby="hint-panel-title" aria-live="polite">
+                <div className="hint-panel__header">
+                  <div>
+                    <span className="hint-panel__kicker">private assist</span>
+                    <h3 id="hint-panel-title">Need a nudge?</h3>
+                  </div>
+                  <Badge variant={hasUsedHint ? 'gold' : 'ink'}>−{HINT_COST} pts</Badge>
+                </div>
+
+                {hasUsedHint ? (
+                  <>
+                    <ol className="hint-list">
+                      {activeHints.map((hint, hintIndex) => (
+                        <li key={`hint-${hintIndex}`} className="hint-clue">
+                          <span className="hint-clue__label">Hint {hintIndex + 1} · {hint.letters.length} letters</span>
+                          <span
+                            className="hint-pattern"
+                            role="img"
+                            aria-label={`Hint ${hintIndex + 1}: a ${hint.letters.length}-letter word with ${hint.blanks} blank${hint.blanks === 1 ? '' : 's'}`}
+                          >
+                            {hint.letters.map((letter, letterIndex) => (
+                              <span key={`${hintIndex}-${letterIndex}`} className={`hint-letter${letter ? ' hint-letter--revealed' : ''}`} aria-hidden="true">
+                                {letter ?? ''}
+                              </span>
+                            ))}
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                    <p className="hint-panel__help">These clues are private. Fill the blanks, then submit your guesses.</p>
+                  </>
+                ) : (
+                  <div className="hint-panel__action">
+                    <p>Reveal {HINTS_PER_REQUEST} valid hidden words with enough blanks to solve them yourself.</p>
+                    <Button variant="outline" size="sm" onClick={requestHint} disabled={!canUseHint} isLoading={isRequestingHint}>
+                      Reveal {HINTS_PER_REQUEST} hints · −{HINT_COST} pts
+                    </Button>
+                    {!canUseHint && <span className="hint-panel__help">Hints are available while you are active in the round.</span>}
+                  </div>
+                )}
+              </section>
+            )}
+
             {/* Bingo board */}
             {isBingoMode && snapshot.bingoTasks.length > 0 && (
               <div className="words-card bingo-board">
@@ -1176,6 +1254,7 @@ export default function RoomPage(): JSX.Element {
                             bet {result.bettingBet} · {result.words.length}/{result.bettingBet} {result.bettingHit ? 'hit' : 'miss'}
                           </Badge>
                         )}
+                        {result.hintPenalty && <Badge variant="ink" style={{ marginRight: 8 }}>hint {result.hintPenalty} pts</Badge>}
                         {result.score} pts
                       </span>
                     </div>
@@ -1216,6 +1295,7 @@ export default function RoomPage(): JSX.Element {
           <li>{isTeamsMode ? <>Teams: choose Red or Blue in the lobby. Individual points add into the cumulative team score.</> : isPrecisionMode ? <>Precision scores <strong>3 + word length</strong>, wrong words cost <strong>-(3 + word length)</strong>, duplicates cost <strong>-3</strong>.</> : isArcadeMode ? <>Score Attack scores <strong>3 + word length</strong>.</> : isBettingMode ? <>Betting: lock a word-count bet before the word appears. Hit it for <strong>bet × 10</strong>, extra words give <strong>3</strong>, miss it and lose <strong>bet × 10</strong>.</> : isBustedMode ? <>Busted: your first accepted word becomes your bust word. Type someone else’s bust word and your round score becomes <strong>0</strong>. Same first words are safe.</> : isCommonWordMode ? <>Common Word: unique words score <strong>+3</strong>, rare unique words with <strong>5+ letters</strong> score <strong>+5</strong>. If another player also makes that word, every player who used it gets <strong>-3</strong> for it.</> : isLightningMode ? <>Lightning Mode gives each player their own <strong>10 seconds</strong>. Your valid words add <strong>1 second</strong> to your timer; when your timer hits zero, you are out for that round.</> : isBingoMode ? <>Bingo Board gives everyone the same <strong>7 Pictureka-style word hunt tasks</strong> from the source word. Each task is <strong>+10</strong>; finish all 7 for <strong>+100</strong>. The source word itself does not count for bingo tasks; then extra valid words score <strong>+3</strong>.</> : isIntuitionMode ? <>Intuition Mode unlocks the source word letter by letter over the round. You can still guess hidden words early.</> : snapshot.settings.gameMode === 'fastestNWords' ? <>Word Sprint: first to <strong>{snapshot.settings.fastestWordTarget} words</strong> ends the round and gets a highlighted <strong>10 point bonus</strong>.</> : snapshot.settings.gameMode === 'battleRoyale' ? <>Knockout: lowest scoring <strong>{snapshot.settings.eliminationsPerRound}</strong> player(s) are eliminated each round.</> : snapshot.settings.gameMode === 'typist' ? <>Blind Type hides your input until you submit.</> : snapshot.settings.gameMode === 'oneWordForAll' ? <>Claim Mode: once any player finds a word, nobody else can use it. If it is taken, you will be told clearly.</> : <>Each accepted word scores <strong>3 points</strong>.</>}</li>
           <li>Letters must come from the source word.</li>
           <li>No reusing the same word in a round.</li>
+          {snapshot.settings.hintsEnabled && <li>Hints: once per round, spend <strong>{HINT_COST} points</strong> to reveal <strong>{HINTS_PER_REQUEST} private partial words</strong>. Scores may go below zero.</li>}
           <li>The host controls start and restart.</li>
           <li>Rooms close when everyone leaves.</li>
         </ul>
@@ -1236,6 +1316,7 @@ export default function RoomPage(): JSX.Element {
           <li>{isTeamsMode ? <>Teams: choose Red or Blue in the lobby. Individual points add into the cumulative team score.</> : isPrecisionMode ? <>Precision scores <strong style={{ color: 'var(--text)' }}>3 + word length</strong>, wrong words cost <strong style={{ color: 'var(--text)' }}>-(3 + word length)</strong>, duplicates cost <strong style={{ color: 'var(--text)' }}>-3</strong>.</> : isArcadeMode ? <>Score Attack scores <strong style={{ color: 'var(--text)' }}>3 + word length</strong>.</> : isBettingMode ? <>Betting: lock a word-count bet before the word appears. Hit it for <strong style={{ color: 'var(--text)' }}>bet × 10</strong>, extra words give <strong style={{ color: 'var(--text)' }}>3</strong>, miss it and lose <strong style={{ color: 'var(--text)' }}>bet × 10</strong>.</> : isBustedMode ? <>Busted: your first word is your bust word. Type someone else’s bust word and your round score becomes <strong style={{ color: 'var(--text)' }}>0</strong>. Matching first words are safe.</> : isCommonWordMode ? <>Common Word: unique words score <strong style={{ color: 'var(--text)' }}>+3</strong>, rare unique words with <strong style={{ color: 'var(--text)' }}>5+ letters</strong> score <strong style={{ color: 'var(--text)' }}>+5</strong>. Shared words score <strong style={{ color: 'var(--text)' }}>-3</strong> for everyone who used them.</> : isLightningMode ? <>Lightning Mode gives every player their own <strong style={{ color: 'var(--text)' }}>10 seconds</strong>. Your valid words add <strong style={{ color: 'var(--text)' }}>1 second</strong> to your timer; hit zero and you are out for that round.</> : isBingoMode ? <>Bingo Board gives everyone the same <strong style={{ color: 'var(--text)' }}>7 Pictureka-style word hunt tasks</strong> generated from the source word. Tasks give <strong style={{ color: 'var(--text)' }}>+10</strong>; full board gives <strong style={{ color: 'var(--text)' }}>+100</strong>. The source word itself does not count for bingo tasks; after bingo, extra valid words give <strong style={{ color: 'var(--text)' }}>+3</strong>.</> : isIntuitionMode ? <>Intuition Mode reveals the source word evenly over time. Guess from hidden letters whenever your gut says go.</> : snapshot.settings.gameMode === 'fastestNWords' ? <>Word Sprint: first to <strong style={{ color: 'var(--text)' }}>{snapshot.settings.fastestWordTarget} words</strong> ends the round and gets a highlighted <strong style={{ color: 'var(--text)' }}>10 point bonus</strong>.</> : snapshot.settings.gameMode === 'battleRoyale' ? <>Knockout: lowest scoring <strong style={{ color: 'var(--text)' }}>{snapshot.settings.eliminationsPerRound}</strong> player(s) are eliminated each round.</> : snapshot.settings.gameMode === 'typist' ? <>Blind Type hides your input until you submit.</> : snapshot.settings.gameMode === 'oneWordForAll' ? <>Claim Mode: once any player finds a word, nobody else can use it. If it is taken, you will be told clearly.</> : <>Each accepted word scores <strong style={{ color: 'var(--text)' }}>3 points</strong>.</>}</li>
           <li>Letters must come from the source word.</li>
           <li>No reusing the same word in a round.</li>
+          {snapshot.settings.hintsEnabled && <li>Hints: once per round, spend <strong style={{ color: 'var(--text)' }}>{HINT_COST} points</strong> to reveal <strong style={{ color: 'var(--text)' }}>{HINTS_PER_REQUEST} private partial words</strong>. Scores may go below zero.</li>}
           <li>The host controls start and restart.</li>
           <li>Rooms close when everyone leaves.</li>
         </ul>
@@ -1287,6 +1368,22 @@ export default function RoomPage(): JSX.Element {
                 </div>
               </>
             )}
+
+            <div className="setting-group setting-group--full">
+              <Label htmlFor="room-hints-enabled">Hints</Label>
+              <label className="hint-setting" htmlFor="room-hints-enabled">
+                <input
+                  id="room-hints-enabled"
+                  type="checkbox"
+                  checked={draftSettings.hintsEnabled}
+                  onChange={(e) => setDraft('hintsEnabled', e.currentTarget.checked)}
+                />
+                <span>
+                  <strong>Allow player hints</strong>
+                  <small>Once per round, each player can spend {HINT_COST} points to reveal {HINTS_PER_REQUEST} partially blanked hidden words. Scores can go below zero.</small>
+                </span>
+              </label>
+            </div>
 
             {(draftSettings.gameMode === 'fastestNWords' || (draftSettings.gameMode === 'mix' && draftSettings.mixModifiers.wordSprint)) && (
               <div className="setting-group">
@@ -1398,6 +1495,7 @@ export default function RoomPage(): JSX.Element {
                           bet {result.bettingBet} · {result.words.length}/{result.bettingBet} {result.bettingHit ? 'hit' : 'miss'}
                         </Badge>
                       )}
+                      {result.hintPenalty && <Badge variant="ink" style={{ marginRight: 8 }}>hint {result.hintPenalty} pts</Badge>}
                       {result.score} pts
                     </span>
                   </div>

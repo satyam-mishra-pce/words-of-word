@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { GameSettings } from '@wow/shared';
+import { GameSettings, HINT_COST, HINTS_PER_REQUEST } from '@wow/shared';
 import socket from '../services/socket';
 import { loadUsername } from '../services/session';
 import { Alert, Button, Dialog, Label, Select, Textarea } from '../components/ui';
@@ -24,7 +24,8 @@ const DEFAULT_SETTINGS: GameSettings = {
     busted: false,
     intuition: false,
     lightning: false
-  }
+  },
+  hintsEnabled: false
 };
 
 const GAME_MODE_INFO: Array<{ value: GameSettings['gameMode']; label: string; description: string }> = [
@@ -214,6 +215,22 @@ export default function SettingsPage(): JSX.Element {
               </div>
             </>
           )}
+
+          <div className="setting-group setting-group--full">
+            <Label htmlFor="hints-enabled">Hints</Label>
+            <label className="hint-setting" htmlFor="hints-enabled">
+              <input
+                id="hints-enabled"
+                type="checkbox"
+                checked={settings.hintsEnabled}
+                onChange={(e) => set('hintsEnabled', e.currentTarget.checked)}
+              />
+              <span>
+                <strong>Allow player hints</strong>
+                <small>Once per round, each player can spend {HINT_COST} points to reveal {HINTS_PER_REQUEST} partially blanked hidden words. Scores can go below zero.</small>
+              </span>
+            </label>
+          </div>
 
           {usesWordSprint && (
             <div className="setting-group">

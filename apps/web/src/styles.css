@@ -423,6 +423,25 @@ html[data-native-app="true"] .ui-dialog-backdrop {
 .entry-panel   { margin-top: 28px; display: grid; gap: 16px; max-width: 480px; }
 .settings-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; margin: 20px 0; }
 .setting-group { display: grid; gap: 7px; }
+.setting-group--full { grid-column: 1 / -1; }
+.hint-setting {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 12px 13px;
+  border: 1px solid var(--sub-2);
+  border-radius: var(--r-sm);
+  background: var(--main-10);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+.hint-setting:hover { border-color: var(--main-25); background: var(--main-15); }
+.hint-setting:focus-within { outline: 2px solid var(--main); outline-offset: 2px; }
+.hint-setting input { accent-color: var(--main); margin: 3px 0 0; flex: 0 0 auto; }
+.hint-setting > span { display: grid; gap: 3px; min-width: 0; }
+.hint-setting strong { font-size: 0.80rem; font-weight: 600; }
+.hint-setting small { color: var(--sub); font-size: 0.70rem; line-height: 1.5; }
 .button-stack  { display: flex; flex-direction: column; gap: 10px; }
 .button-row    { display: flex; gap: 10px; justify-content: space-between; align-items: center; flex-wrap: wrap; }
 
@@ -1230,6 +1249,65 @@ html[data-native-app="true"] .ui-dialog-backdrop {
   gap: 10px;
 }
 
+/* Hints — intentionally compact: an optional tactical assist, not a second game board. */
+.hint-panel {
+  display: grid;
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid var(--main-25);
+  border-bottom: 1px solid var(--main-25);
+  background: linear-gradient(90deg, var(--main-10), transparent 72%);
+}
+.hint-panel--revealed { background: linear-gradient(90deg, var(--main-15), transparent 78%); }
+.hint-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.hint-panel__header h3 {
+  margin: 2px 0 0;
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.hint-panel__kicker {
+  display: block;
+  color: var(--main);
+  font-size: 0.60rem;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+.hint-panel__action { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.hint-panel__action p,
+.hint-panel__help { margin: 0; color: var(--sub); font-size: 0.74rem; line-height: 1.5; }
+.hint-panel__action p { flex: 1 1 220px; }
+.hint-list { display: grid; gap: 8px; padding: 0; margin: 0; list-style: none; }
+.hint-clue {
+  display: grid;
+  grid-template-columns: minmax(104px, 0.7fr) 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 10px;
+  border-radius: var(--r-sm);
+  background: var(--bg-sub);
+}
+.hint-clue__label { color: var(--sub); font-size: 0.68rem; letter-spacing: 0.03em; }
+.hint-pattern { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
+.hint-letter {
+  display: inline-grid;
+  place-items: center;
+  width: 1.72em;
+  height: 1.95em;
+  border-bottom: 2px solid var(--sub-2);
+  color: transparent;
+  font-size: clamp(0.92rem, 2.5vw, 1.08rem);
+  font-weight: 700;
+  line-height: 1;
+}
+.hint-letter--revealed { border-bottom-color: var(--main); color: var(--main); }
+
 /* Words card — transparent, flowing word display */
 .words-card {
   border-radius: 0;
@@ -1744,6 +1822,8 @@ html[data-native-app="true"][data-keyboard-open="true"] .theme-toggle {
 @media (max-width: 640px) {
   .page-shell, .game-shell { padding: 16px; }
   .settings-grid, .word-form { grid-template-columns: 1fr; }
+  .hint-clue { grid-template-columns: 1fr; gap: 7px; }
+  .hint-pattern { justify-content: flex-start; }
   .button-row, .button-stack { flex-direction: column; align-items: stretch; }
   .hero-card h1 { font-size: 2.8rem; }
   .current-word-text { font-size: 2.6rem; }
