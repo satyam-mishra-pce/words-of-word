@@ -15,12 +15,31 @@ interface ShareRoomInviteOptions {
   url: string;
 }
 
-async function copyToClipboard(value: string): Promise<boolean> {
+export async function copyTextToClipboard(value: string): Promise<boolean> {
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return true;
+    } catch {
+      // Fall through to the legacy browser path below.
+    }
+  }
+
+  if (typeof document === 'undefined' || !document.body) return false;
+
+  const textarea = document.createElement('textarea');
+  textarea.value = value;
+  textarea.setAttribute('readonly', '');
+  textarea.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none;';
+  document.body.append(textarea);
+  textarea.select();
+
   try {
-    await navigator.clipboard.writeText(value);
-    return true;
+    return document.execCommand('copy');
   } catch {
     return false;
+  } finally {
+    textarea.remove();
   }
 }
 
@@ -46,7 +65,7 @@ export async function shareContent({ title, text, url, dialogTitle }: ShareConte
     }
   }
 
-  return (await copyToClipboard(`${text} ${url}`.trim())) ? 'clipboard' : 'unavailable';
+  return (await copyTextToClipboard(`${text} ${url}`.trim())) ? 'clipboard' : 'unavailable';
 }
 
 export function shareRoomInvite({ roomId, url }: ShareRoomInviteOptions): Promise<ShareMethod> {

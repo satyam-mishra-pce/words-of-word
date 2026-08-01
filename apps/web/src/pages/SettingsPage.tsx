@@ -364,7 +364,7 @@ export default function SettingsPage(): JSX.Element {
         </div>
       </section>
 
-      <Dialog open={Boolean(infoMode)} onClose={() => setInfoMode(undefined)} size="sm">
+      <Dialog open={Boolean(infoMode)} onClose={() => setInfoMode(undefined)} size="sm" ariaLabel="Game mode information">
         <p className="eyebrow">game mode info</p>
         <h1 style={{ fontSize: 'clamp(1.8rem,5vw,2.6rem)', lineHeight: 0.94, marginBottom: 16 }}>
           {infoMode?.label}

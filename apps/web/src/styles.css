@@ -784,6 +784,87 @@ html[data-native-app="true"] .ui-dialog-backdrop {
   padding-inline: 12px;
 }
 
+.invite-dialog__intro {
+  margin: 0 0 18px;
+  color: var(--sub);
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+.invite-dialog__intro code {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--main-10);
+  color: var(--main);
+  font: 600 0.78rem 'JetBrains Mono', monospace;
+  letter-spacing: 0.05em;
+}
+.invite-dialog__options {
+  display: grid;
+  gap: 6px;
+}
+.invite-dialog__option {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--sub-2);
+  border-radius: var(--r-sm);
+  background: var(--bg-3);
+  color: var(--text);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease, transform 100ms ease;
+}
+.invite-dialog__option:hover:not(:disabled) {
+  border-color: var(--main-25);
+  background: var(--main-10);
+}
+.invite-dialog__option:active:not(:disabled) { transform: scale(0.99); }
+.invite-dialog__option:focus-visible {
+  outline: 2px solid var(--main);
+  outline-offset: 3px;
+}
+.invite-dialog__option:disabled { cursor: wait; opacity: 0.55; }
+.invite-dialog__option-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--main);
+}
+.invite-dialog__option-icon svg { width: 17px; height: 17px; }
+.invite-dialog__option-copy { min-width: 0; }
+.invite-dialog__option-copy strong,
+.invite-dialog__option-copy small { display: block; }
+.invite-dialog__option-copy strong { font-size: 0.78rem; font-weight: 600; }
+.invite-dialog__option-copy small {
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--sub);
+  font: 0.64rem 'JetBrains Mono', monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.invite-dialog__option-arrow { color: var(--sub); font-size: 1rem; }
+.invite-dialog__option:hover:not(:disabled) .invite-dialog__option-arrow { color: var(--main); }
+.invite-dialog__feedback {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 12px 0 0;
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+.invite-dialog__feedback svg { width: 15px; height: 15px; flex: 0 0 auto; }
+.invite-dialog__feedback--success { color: var(--main); }
+.invite-dialog__feedback--error { color: var(--error); }
+
 .mobile-leaderboard-list {
   display: grid;
   gap: 4px;
@@ -1065,7 +1146,6 @@ html[data-native-app="true"] .ui-dialog-backdrop {
   box-shadow: inset 1px 0 var(--sub-2);
 }
 .game-header__action--exit:hover:not(:disabled) { color: var(--error); background: var(--error-10); }
-.mobile-score-trigger { display: none; }
 .game-header__right--labelled .game-header__action {
   width: auto;
   min-width: 34px;
@@ -2186,22 +2266,19 @@ html[data-native-app="true"][data-keyboard-open="true"] .theme-toggle {
   .game-header__right--labelled .game-header__action svg { width: 15px; height: 15px; }
   .game-header__right--labelled .game-header__action-label { display: inline; }
   .game-header__right--labelled .game-header__action-meta { display: none; }
+  /* The mode remains the primary game context. At very narrow widths, the
+     room code and action labels yield before the mode does. */
   @media (max-width: 360px) {
-    .game-header:has(.game-header__right--labelled) .game-header__mode { display: none; }
+    .game-shell.has-gameplay-chrome .game-header__roomid,
+    .game-header:has(.game-header__right--labelled) .game-header__roomid { display: none; }
+    .game-header:has(.game-header__right--labelled) .game-header__right--labelled .game-header__action {
+      width: 30px;
+      min-width: 30px;
+      padding: 0;
+      gap: 0;
+    }
+    .game-header:has(.game-header__right--labelled) .game-header__right--labelled .game-header__action-label { display: none; }
   }
-  .game-shell.has-gameplay-chrome .game-header__mode { display: none; }
-  .mobile-score-trigger {
-    display: inline-flex;
-    align-items: center;
-    min-width: 0;
-    height: 30px;
-    padding: 0 7px;
-    gap: 4px;
-    color: var(--main);
-    font-size: 0.62rem;
-  }
-  .mobile-score-trigger svg { width: 14px; height: 14px; }
-  .mobile-score-trigger strong { font-size: 0.70rem; }
 
   /* Mix details are available outside an active round; do not create a third
      shell row that can displace the fixed game chrome. */
@@ -2327,11 +2404,52 @@ html[data-native-app="true"][data-keyboard-open="true"] .theme-toggle {
     display: flex;
     align-items: center;
     gap: 4px;
-    min-height: 36px;
+    min-height: 38px;
     padding: 3px 12px;
     border-bottom: 1px solid rgba(100,102,105,0.32);
   }
   .mobile-entry-tools .ui-tooltip-host { display: flex; }
+  .mobile-standing-trigger {
+    display: grid;
+    grid-template-columns: auto auto 1px auto;
+    align-items: center;
+    min-height: 32px;
+    padding: 3px 7px;
+    gap: 5px;
+    border: 1px solid var(--sub-2);
+    border-radius: var(--r-sm);
+    background: var(--bg-3);
+    color: var(--text);
+    white-space: nowrap;
+  }
+  .mobile-standing-trigger:hover:not(:disabled) {
+    border-color: var(--main-25);
+    background: var(--main-10);
+    color: var(--text);
+  }
+  .mobile-standing-trigger svg { width: 14px; height: 14px; color: var(--main); }
+  .mobile-standing-trigger__metric {
+    display: grid;
+    gap: 1px;
+    text-align: left;
+    line-height: 1;
+  }
+  .mobile-standing-trigger__metric > span {
+    color: var(--sub);
+    font-size: 0.47rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .mobile-standing-trigger__metric strong {
+    color: var(--main);
+    font: 600 0.66rem 'JetBrains Mono', monospace;
+  }
+  .mobile-standing-trigger__divider {
+    width: 1px;
+    height: 18px;
+    background: var(--sub-2);
+  }
   .mobile-entry-tool {
     min-height: 30px;
     padding: 5px 8px;

@@ -4,8 +4,8 @@ import { FinalScore, GameSettings, HINT_COST, HINTS_PER_REQUEST, RoomSnapshot, R
 import socket from '../services/socket';
 import { loadUsername } from '../services/session';
 import { hapticError, hapticLight, hapticMedium, hapticSuccess, hapticWarning } from '../services/nativeFeedback';
-import { getRoomInviteUrl, isNativeApp } from '../services/platform';
-import { shareRoomInvite } from '../services/nativeShare';
+import { getRoomInviteUrl } from '../services/platform';
+import { copyTextToClipboard, shareRoomInvite } from '../services/nativeShare';
 import {
   Alert,
   Avatar,
@@ -24,7 +24,7 @@ import {
 
 const RANK_ICONS: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉' };
 
-type GameActionIconName = 'hint' | 'share' | 'rules' | 'stop' | 'exit' | 'leaderboard' | 'check';
+type GameActionIconName = 'hint' | 'share' | 'rules' | 'stop' | 'exit' | 'leaderboard' | 'link' | 'code' | 'check';
 
 function GameActionIcon({ name }: { name: GameActionIconName }): JSX.Element {
   const svgProps = {
@@ -52,6 +52,10 @@ function GameActionIcon({ name }: { name: GameActionIconName }): JSX.Element {
       return <svg {...svgProps}><path d="M8 3H4v14h4" /><path d="m11 6 4 4-4 4" /><path d="M7 10h8" /></svg>;
     case 'leaderboard':
       return <svg {...svgProps}><path d="M3.5 16.5h13" /><path d="M5 14V9.5h3V14" /><path d="M8.5 14V5.5h3V14" /><path d="M12 14V7.5h3V14" /></svg>;
+    case 'link':
+      return <svg {...svgProps}><path d="M8.1 11.9a3 3 0 0 0 4.25.05l2-2a3 3 0 0 0-4.25-4.25l-1.15 1.15" /><path d="M11.9 8.1a3 3 0 0 0-4.25-.05l-2 2a3 3 0 0 0 4.25 4.25l1.15-1.15" /></svg>;
+    case 'code':
+      return <svg {...svgProps}><path d="m7.5 5-5 5 5 5" /><path d="m12.5 5 5 5-5 5" /><path d="m11.5 3.5-3 13" /></svg>;
     case 'check':
       return <svg {...svgProps}><path d="m4 10 3.5 3.5L16 5" /></svg>;
   }
@@ -111,7 +115,9 @@ export default function RoomPage(): JSX.Element {
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [inputFeedback, setInputFeedback] = useState<'success' | 'error' | null>(null);
-  const [showCopied, setShowCopied] = useState(false);
+  const [showInviteMenu, setShowInviteMenu] = useState(false);
+  const [inviteFeedback, setInviteFeedback] = useState<{ message: string; tone: 'success' | 'error' }>();
+  const [isSharingInvite, setIsSharingInvite] = useState(false);
   const [roundResults, setRoundResults] = useState<RoundResultPlayer[] | undefined>();
   const [finalScores, setFinalScores] = useState<FinalScore[]>([]);
   const [finalTeamScores, setFinalTeamScores] = useState<TeamScore[]>([]);
@@ -568,17 +574,35 @@ export default function RoomPage(): JSX.Element {
 
   /* ── actions ── */
   async function shareInvite(): Promise<void> {
-    const inviteUrl = getRoomInviteUrl(roomId);
-    const method = await shareRoomInvite({ roomId, url: inviteUrl });
+    if (isSharingInvite) return;
+
+    setIsSharingInvite(true);
+    const method = await shareRoomInvite({ roomId, url: getRoomInviteUrl(roomId) });
+    setIsSharingInvite(false);
 
     if (method === 'unavailable') {
-      setNotice(`Share this room: ${inviteUrl}`);
+      setInviteFeedback({ message: 'Sharing is unavailable on this device.', tone: 'error' });
+      void hapticError();
       return;
     }
 
-    setShowCopied(true);
+    setInviteFeedback({
+      message: method === 'clipboard' ? 'Sharing is unavailable — invite text copied instead.' : 'Invite shared.',
+      tone: 'success'
+    });
     void hapticLight();
-    window.setTimeout(() => setShowCopied(false), 2500);
+  }
+
+  async function copyInviteValue(value: string, label: string): Promise<void> {
+    const copied = await copyTextToClipboard(value);
+    if (!copied) {
+      setInviteFeedback({ message: `Could not copy the ${label.toLowerCase()}.`, tone: 'error' });
+      void hapticError();
+      return;
+    }
+
+    setInviteFeedback({ message: `${label} copied.`, tone: 'success' });
+    void hapticLight();
   }
 
   function startGame(): void {
@@ -640,7 +664,13 @@ export default function RoomPage(): JSX.Element {
 
   function openInvite(): void {
     inputRef.current?.blur();
-    void shareInvite();
+    setInviteFeedback(undefined);
+    setShowInviteMenu(true);
+  }
+
+  function closeInviteMenu(): void {
+    setShowInviteMenu(false);
+    setInviteFeedback(undefined);
   }
 
   function openHowToPlay(): void {
@@ -805,7 +835,6 @@ export default function RoomPage(): JSX.Element {
   }
 
   const needsRejoin = !currentPlayer;
-  const inviteLabel = isNativeApp ? 'Invite players' : 'Copy invite link';
   const currentModeLabel = GAME_MODE_OPTIONS.find((mode) => mode.value === snapshot.settings.gameMode)?.label ?? snapshot.settings.gameMode;
   const mixModifierLabels = snapshot.settings.gameMode === 'mix'
     ? [
@@ -893,22 +922,6 @@ export default function RoomPage(): JSX.Element {
           <span className="game-header__count">
             {snapshot.players.length} player{snapshot.players.length !== 1 ? 's' : ''}
           </span>
-          {hasGameplayChrome && !needsRejoin && currentPlayerStanding && (
-            <Tooltip content="Open live leaderboard" className="ui-tooltip-down">
-              <Button
-                variant="mini"
-                size="sm"
-                type="button"
-                className="mobile-score-trigger"
-                onClick={openLeaderboard}
-                aria-label={`Open live leaderboard. You are rank ${currentPlayerStanding.rank} with ${currentPlayerStanding.score} points.`}
-              >
-                <GameActionIcon name="leaderboard" />
-                <span>#{currentPlayerStanding.rank}</span>
-                <strong>{currentPlayerStanding.score}</strong>
-              </Button>
-            </Tooltip>
-          )}
         </div>
         <div className={`game-header__right${hasVisibleEntryInput ? '' : ' game-header__right--labelled'}`}>
           {snapshot.settings.hintsEnabled && snapshot.phase === 'round' && !needsRejoin && (
@@ -929,10 +942,19 @@ export default function RoomPage(): JSX.Element {
               </Button>
             </Tooltip>
           )}
-          <Tooltip content={showCopied ? (isNativeApp ? 'Invite ready!' : 'Copied!') : inviteLabel} className="ui-tooltip-down">
-            <Button variant="mini" size="sm" type="button" className="game-header__action" onClick={openInvite} aria-label={showCopied ? (isNativeApp ? 'Invite ready!' : 'Copied!') : inviteLabel}>
-              <GameActionIcon name={showCopied ? 'check' : 'share'} />
-              <span className="game-header__action-label">{showCopied ? 'Copied' : 'Invite'}</span>
+          <Tooltip content="Invite players" className="ui-tooltip-down">
+            <Button
+              variant="mini"
+              size="sm"
+              type="button"
+              className="game-header__action"
+              onClick={openInvite}
+              aria-label="Invite players"
+              aria-haspopup="dialog"
+              aria-expanded={showInviteMenu}
+            >
+              <GameActionIcon name="share" />
+              <span className="game-header__action-label">Invite</span>
             </Button>
           </Tooltip>
           <Tooltip content="How to play" className="ui-tooltip-down">
@@ -1397,6 +1419,29 @@ export default function RoomPage(): JSX.Element {
                 {snapshot.phase === 'round' && (
                   <div className="gameplay-footer">
                     <div className="mobile-entry-tools" aria-label="Quick game controls">
+                      {!needsRejoin && currentPlayerStanding && (
+                        <Tooltip content="Open live leaderboard">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            type="button"
+                            className="mobile-standing-trigger"
+                            onClick={openLeaderboard}
+                            aria-label={`Open live leaderboard. Rank ${currentPlayerStanding.rank}; score ${currentPlayerStanding.score} points.`}
+                          >
+                            <GameActionIcon name="leaderboard" />
+                            <span className="mobile-standing-trigger__metric">
+                              <span>Rank</span>
+                              <strong>#{currentPlayerStanding.rank}</strong>
+                            </span>
+                            <span className="mobile-standing-trigger__divider" aria-hidden="true" />
+                            <span className="mobile-standing-trigger__metric">
+                              <span>Score</span>
+                              <strong>{currentPlayerStanding.score} pts</strong>
+                            </span>
+                          </Button>
+                        </Tooltip>
+                      )}
                       {snapshot.settings.hintsEnabled && !needsRejoin && (
                         <Tooltip content={hasUsedHint ? 'Hint already used this round' : canUseHint ? `Reveal ${HINTS_PER_REQUEST} private clues for −${HINT_COST} points` : 'Find an accepted word to unlock a hint'}>
                           <Button
@@ -1479,6 +1524,7 @@ export default function RoomPage(): JSX.Element {
         open={showStopConfirmation}
         onClose={() => { if (!isStoppingGame) setShowStopConfirmation(false); }}
         size="sm"
+        ariaLabel="Stop game confirmation"
         className="stop-confirmation-dialog"
       >
         <p className="eyebrow">Host control</p>
@@ -1499,11 +1545,77 @@ export default function RoomPage(): JSX.Element {
         </div>
       </Dialog>
 
+      {/* ── INVITE OPTIONS ── */}
+      <Dialog
+        open={showInviteMenu}
+        onClose={closeInviteMenu}
+        size="sm"
+        ariaLabel="Invite players"
+        className="invite-dialog"
+      >
+        <p className="eyebrow">Invite players</p>
+        <h1 style={{ fontSize: 'clamp(1.6rem,5vw,2.35rem)', lineHeight: 0.96, marginBottom: 10 }}>
+          Bring someone in.
+        </h1>
+        <p className="invite-dialog__intro">
+          Share the join link or hand over room code <code>{snapshot.roomId}</code>.
+        </p>
+        <div className="invite-dialog__options">
+          <button
+            type="button"
+            className="invite-dialog__option"
+            onClick={() => { void shareInvite(); }}
+            disabled={isSharingInvite}
+          >
+            <span className="invite-dialog__option-icon"><GameActionIcon name="share" /></span>
+            <span className="invite-dialog__option-copy">
+              <strong>{isSharingInvite ? 'Opening share…' : 'Share'}</strong>
+              <small>Send an invite with your device</small>
+            </span>
+            <span className="invite-dialog__option-arrow" aria-hidden="true">→</span>
+          </button>
+          <button
+            type="button"
+            className="invite-dialog__option"
+            onClick={() => { void copyInviteValue(getRoomInviteUrl(roomId), 'Room link'); }}
+          >
+            <span className="invite-dialog__option-icon"><GameActionIcon name="link" /></span>
+            <span className="invite-dialog__option-copy">
+              <strong>Copy room link</strong>
+              <small>Copy the direct join link</small>
+            </span>
+            <span className="invite-dialog__option-arrow" aria-hidden="true">→</span>
+          </button>
+          <button
+            type="button"
+            className="invite-dialog__option"
+            onClick={() => { void copyInviteValue(snapshot.roomId, 'Room code'); }}
+          >
+            <span className="invite-dialog__option-icon"><GameActionIcon name="code" /></span>
+            <span className="invite-dialog__option-copy">
+              <strong>Copy room code</strong>
+              <small>{snapshot.roomId}</small>
+            </span>
+            <span className="invite-dialog__option-arrow" aria-hidden="true">→</span>
+          </button>
+        </div>
+        {inviteFeedback && (
+          <p
+            className={`invite-dialog__feedback invite-dialog__feedback--${inviteFeedback.tone}`}
+            role={inviteFeedback.tone === 'error' ? 'alert' : 'status'}
+          >
+            {inviteFeedback.tone === 'success' && <GameActionIcon name="check" />}
+            {inviteFeedback.message}
+          </p>
+        )}
+      </Dialog>
+
       {/* ── MOBILE LIVE LEADERBOARD ── */}
       <Dialog
         open={showLeaderboard}
         onClose={() => setShowLeaderboard(false)}
         size="sm"
+        ariaLabel="Live leaderboard"
         className="mobile-leaderboard-dialog"
       >
         <p className="eyebrow">Live room</p>
@@ -1545,6 +1657,7 @@ export default function RoomPage(): JSX.Element {
         open={showHowToPlay}
         onClose={() => setShowHowToPlay(false)}
         size="sm"
+        ariaLabel="How to play"
       >
         <p className="eyebrow">How to play</p>
         <h1 style={{ fontSize: 'clamp(1.8rem,5vw,2.8rem)', lineHeight: 0.94, marginBottom: 16 }}>
@@ -1563,7 +1676,7 @@ export default function RoomPage(): JSX.Element {
       </Dialog>
 
       {/* ── SETTINGS MODAL ── */}
-      <Dialog open={showSettingsDialog} onClose={() => setShowSettingsDialog(false)} size="lg">
+      <Dialog open={showSettingsDialog} onClose={() => setShowSettingsDialog(false)} size="lg" ariaLabel="Change settings">
         <p className="eyebrow">same room, new rules</p>
         <h1 style={{ fontSize: 'clamp(1.8rem,5vw,3rem)', lineHeight: 0.9, marginBottom: 12 }}>Change Settings</h1>
         <p className="muted" style={{ marginBottom: 18 }}>Everyone stays seated. Saving resets scores and returns the room to the lobby.</p>
@@ -1707,6 +1820,7 @@ export default function RoomPage(): JSX.Element {
         open={showRoundHistory}
         onClose={() => setShowRoundHistory(false)}
         size="lg"
+        ariaLabel="Round history"
       >
         <p className="eyebrow">All rounds</p>
         <h1 style={{ fontSize: 'clamp(1.8rem,5vw,3rem)', lineHeight: 0.9, marginBottom: 20 }}>
