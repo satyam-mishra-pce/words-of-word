@@ -1086,6 +1086,12 @@ html[data-native-app="true"] .ui-dialog-backdrop {
 }
 .word-stage::after { content: none; }
 
+/* These wrappers are layout-neutral on larger screens. On phones they create
+   the fixed gameplay chrome and the single scrollable middle region. */
+.gameplay-layout,
+.gameplay-header,
+.gameplay-scroll { display: contents; }
+
 /* Round strip */
 .round-strip {
   display: flex;
@@ -1807,278 +1813,294 @@ html[data-native-app="true"][data-keyboard-open="true"] .theme-toggle {
 }
 
 /* ============================================================
-   MOBILE GAME LAYOUT — Complete redesign for phones
-   Sticky top (word+timer), scrollable middle, sticky bottom (input)
+   MOBILE GAME LAYOUT — stable game chrome, one scroll region
    ============================================================ */
 @media (max-width: 640px) {
-  /* ── Base layout ── */
+  /* The shell owns the viewport. Only the stage content is allowed to scroll. */
   .game-shell {
     display: grid;
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr auto;
-    min-height: 100dvh;
-    max-height: 100dvh;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    width: 100%;
+    height: var(--vv-height, 100dvh);
+    min-height: 0;
+    max-height: var(--vv-height, 100dvh);
     padding: 0;
     gap: 0;
     overflow: hidden;
+    overscroll-behavior: none;
+  }
+  /* Keep a resizing virtual keyboard from leaving a scrollable document behind
+     the game shell. :has() is supported by the mobile browser engines we ship. */
+  body:has(.game-shell),
+  #root:has(.game-shell) {
+    height: var(--vv-height, 100dvh);
+    min-height: var(--vv-height, 100dvh);
+    max-height: var(--vv-height, 100dvh);
+    overflow: hidden;
+  }
+  html[data-native-app="true"] .game-shell {
+    height: var(--vv-height, 100dvh);
+    min-height: 0;
+    max-height: var(--vv-height, 100dvh);
+    padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
   }
 
-  /* ── Row 1: Header ── */
+  /* This stays outside every scroll container. */
   .game-header {
     grid-row: 1;
-    padding: 6px 12px;
+    grid-column: 1;
+    z-index: 10;
+    min-width: 0;
+    padding: 8px 12px;
     background: var(--bg);
     border-bottom: 1px solid var(--sub-2);
   }
-  .game-header__left { gap: 4px; }
-  .game-header__label { display: none; }
-  .game-header__roomid { font-size: 0.72rem; }
-  .game-header__dot { display: none; }
-  .game-header__mode { font-size: 0.62rem; padding: 2px 6px; }
+  .game-header__left { flex: 1 1 auto; gap: 5px; }
+  .game-header__label,
+  .game-header__dot,
   .game-header__count { display: none; }
+  .game-header__roomid { flex: 0 0 auto; font-size: 0.72rem; }
+  .game-header__mode {
+    min-width: 0;
+    max-width: 126px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 0.62rem;
+    padding: 2px 6px;
+  }
   .game-header__right { gap: 4px; }
   .game-header__right .ui-btn-mini { padding: 5px 8px; font-size: 0.65rem; }
 
-  /* ── Row 2: Word stage (scrollable) ── */
+  /* Mix details are available outside an active round; do not create a third
+     shell row that can displace the fixed game chrome. */
+  .mix-config-banner,
+  .players-panel,
+  .info-panel { display: none; }
+
   .word-stage {
     grid-row: 2;
+    grid-column: 1;
+    display: block;
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    padding: 0;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: 0 12px;
-    gap: 8px;
+    overscroll-behavior-y: contain;
     -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
   }
   .word-stage.glass-panel {
     border-radius: 0;
     background: var(--bg);
   }
+  .word-stage--active { overflow: hidden; }
+  /* The room header already carries this metadata; keep announcements for
+     assistive tech without inserting visual content above the source word. */
+  .word-stage > .stage-notice-bar {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+  .word-stage > .stage-ctas,
+  .word-stage > .game-over-panel { margin: 14px 12px; }
 
-  /* ── Row 3: Players panel (hidden on mobile during game) ── */
-  .players-panel {
-    display: none;
+  /* Active gameplay has three non-overlapping regions: source/timer, content,
+     then the form. The height is inherited from .word-stage, not hard-coded. */
+  .gameplay-layout {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
   }
-
-  /* ── Top sticky inside word-stage: word + timer ── */
-  .round-strip {
-    position: sticky;
-    top: 0;
-    z-index: 10;
+  .gameplay-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    padding: 8px 12px;
     background: var(--bg);
-    padding: 8px 0 4px;
-    font-size: 0.62rem;
   }
-  .current-word-card {
-    position: sticky;
-    top: 24px;
-    z-index: 9;
-    background: var(--bg);
-    padding: 4px 0;
+  .gameplay-header .round-strip { display: none; }
+  .gameplay-header .stage-ctas {
+    grid-row: 2;
+    grid-column: 1 / -1;
+    margin-top: 2px;
   }
-  .timer-section {
-    position: sticky;
-    top: 80px;
-    z-index: 8;
-    background: var(--bg);
-    padding: 4px 0 8px;
-  }
-
-  /* ── Bottom sticky inside word-stage: input ── */
-  .word-form {
-    position: sticky;
-    bottom: 0;
-    z-index: 10;
-    background: var(--bg);
-    padding: 10px 0;
-    margin-top: auto;
-  }
-
-  /* ── Source word: compact, no letter-spacing ── */
-  .current-word-card {
-    padding: 8px 0;
+  .gameplay-header .current-word-card {
+    grid-row: 1;
+    grid-column: 1;
+    min-width: 0;
+    position: static;
+    padding: 0;
+    background: transparent;
+    border: 0;
     text-align: center;
   }
-  .current-word-label {
-    font-size: 0.55rem;
-    margin-bottom: 4px;
-    letter-spacing: 0.08em;
+  .gameplay-header .current-word-label {
+    margin-bottom: 3px;
+    font-size: 0.50rem;
+    letter-spacing: 0.09em;
   }
-  .current-word-text {
-    font-size: clamp(1.4rem, 6vw, 2rem);
+  .gameplay-header .current-word-text {
+    font-size: clamp(1.25rem, 5.6vw, 1.75rem);
+    line-height: 1.08;
     letter-spacing: 0.02em;
-    word-break: break-word;
-    line-height: 1.2;
+    overflow-wrap: anywhere;
   }
-
-  /* ── Timer: inline, smaller ── */
-  .timer-section {
-    padding: 4px 0;
-    gap: 8px;
+  .gameplay-header .current-word-waiting { font-size: 0.9rem; }
+  .gameplay-header .intuition-unlock-hint {
+    margin-top: 4px;
+    font-size: 0.58rem;
+    line-height: 1.35;
   }
-  .ui-timer-ring {
+  .gameplay-header .timer-section {
+    grid-row: 1;
+    grid-column: 2;
+    justify-self: end;
+    padding: 0;
+  }
+  .gameplay-header .ui-timer-ring {
     width: 48px !important;
     height: 48px !important;
   }
-  .ui-timer-ring-label {
-    font-size: 0.9rem !important;
+  .gameplay-header .ui-timer-ring-label { font-size: 0.9rem !important; }
+
+  .gameplay-scroll {
+    display: grid;
+    align-content: start;
+    gap: 10px;
+    min-width: 0;
+    min-height: 0;
+    padding: 8px 12px 14px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
   }
 
-  /* ── Round strip: compact ── */
-  .round-strip {
-    font-size: 0.62rem;
-    padding: 0;
-  }
-  .round-dot { width: 6px; height: 2px; }
-  .round-dot-current { width: 12px; }
-
-  /* ── Notice bar: minimal ── */
-  .stage-notice-bar {
-    height: 16px;
-    font-size: 0.60rem;
-  }
-
-  /* ── Hint panel: inline compact ── */
-  .hint-panel {
-    padding: 8px 10px;
+  /* The only persistent bottom bar during a round. */
+  .gameplay-layout > .word-form {
+    grid-row: 3;
+    min-width: 0;
+    margin: 0;
+    padding: 9px 12px 10px;
     gap: 8px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    background: var(--bg);
+    border-top: 1px solid var(--sub-2);
   }
-  .hint-panel--revealed {
-    padding: 10px;
+  .word-form .ui-input {
+    min-width: 0;
+    padding: 10px 12px;
+    font-size: 16px;
   }
-  .hint-panel__header h3 { font-size: 0.75rem; }
-  .hint-panel .ui-btn { padding: 6px 10px; font-size: 0.70rem; }
-  .hint-clue {
-    grid-template-columns: 1fr;
-    gap: 4px;
-    padding: 6px 8px;
+  .word-form .ui-btn { padding: 10px 16px; font-size: 0.78rem; }
+
+  /* Hints stay a quiet utility until a player has actually revealed them. */
+  .gameplay-scroll .hint-panel {
+    padding: 4px 0;
+    gap: 8px;
+    background: transparent;
+    border-radius: 0;
   }
+  .gameplay-scroll .hint-panel--revealed {
+    padding: 8px;
+    background: var(--main-10);
+    border-radius: var(--r-sm);
+  }
+  .gameplay-scroll .hint-panel__header h3 {
+    color: var(--sub);
+    font-size: 0.70rem;
+    font-weight: 400;
+  }
+  .gameplay-scroll .hint-panel .ui-btn { padding: 5px 9px; font-size: 0.66rem; }
+  .hint-clue { grid-template-columns: 1fr; gap: 4px; padding: 6px 8px; }
   .hint-clue__label { font-size: 0.58rem; }
   .hint-pattern { justify-content: flex-start; gap: 2px; }
-  .hint-letter {
-    width: 1.4em;
-    height: 1.6em;
-    font-size: 0.85rem;
-  }
+  .hint-letter { width: 1.4em; height: 1.6em; font-size: 0.85rem; }
 
-  /* ── Bingo board: constrained height ── */
-  .bingo-stage { gap: 10px; }
-  .bingo-stage .current-word-card {
-    position: static;
-    padding: 6px 0;
-    background: none;
-    border: none;
-  }
-  .bingo-stage .current-word-text {
-    font-size: clamp(1.2rem, 5vw, 1.6rem);
-  }
-  .bingo-board {
-    max-height: 28vh;
+  /* Bingo belongs to the shared middle scroller — never create a nested one. */
+  .bingo-stage { gap: 0; }
+  .bingo-stage .current-word-card { position: static; padding: 0; background: transparent; border: 0; }
+  .bingo-stage .current-word-text { font-size: clamp(1.25rem, 5.6vw, 1.75rem); }
+  .bingo-stage .timer-section { padding: 0; }
+  .gameplay-scroll .bingo-board {
+    max-height: none;
     margin: 0;
+    padding-right: 0;
+    overflow: visible;
+  }
+  .gameplay-scroll .bingo-board__header {
+    position: static;
+    padding: 0 0 6px;
+    background: transparent;
   }
   .bingo-board__header h3 { font-size: 0.65rem; }
-  .bingo-task {
-    padding: 6px 8px;
-    font-size: 0.72rem;
-    gap: 6px;
-  }
+  .bingo-task { padding: 6px 8px; font-size: 0.72rem; gap: 6px; }
   .bingo-task__check { width: 16px; flex: 0 0 16px; font-size: 0.85rem; }
   .bingo-task__points { font-size: 0.65rem; }
   .bingo-board__hint { font-size: 0.65rem; margin-top: 6px; }
 
-  /* ── Word form: compact ── */
-  .word-form {
-    gap: 8px;
-    grid-template-columns: 1fr auto;
-  }
-  .word-form .ui-input {
-    padding: 10px 12px;
-    font-size: 16px;
-  }
-  .word-form .ui-btn {
-    padding: 10px 16px;
-    font-size: 0.78rem;
-  }
-
-  /* ── Words list: compact ── */
-  .words-card {
-    padding: 8px 0;
-  }
-  .words-header {
-    margin-bottom: 6px;
-  }
+  .words-card { padding: 8px 0; }
+  .words-header { margin-bottom: 6px; }
   .words-header h3 { font-size: 0.62rem; }
   .words-count { font-size: 0.62rem; }
   .word-chip-list { gap: 4px 6px; }
   .ui-badge-word { font-size: 0.72rem; }
   .scored-word-badge .word-score-formula { font-size: 0.55em; }
 
-  /* ── Between rounds: compact ── */
-  .between-rounds {
-    padding: 12px 0;
-    gap: 4px;
-  }
+  .between-rounds { padding: 12px 0; gap: 4px; }
   .between-rounds__countdown { font-size: 2.5rem; }
   .between-rounds__label { font-size: 0.58rem; }
   .between-rounds__hint { font-size: 0.68rem; }
 
-  /* ── Results: scrollable ── */
-  .results-card {
-    padding: 8px 0;
-    gap: 6px;
-  }
+  .results-card { padding: 8px 0; gap: 6px; }
   .results-card h2 { font-size: 0.95rem; }
   .result-row { padding: 8px 10px; }
   .result-header strong { font-size: 0.78rem; }
   .result-score { font-size: 0.70rem; }
 
-  /* ── Game over panel: compact ── */
   .game-over-panel { gap: 10px; }
   .game-over-panel h2 { font-size: clamp(1.2rem, 4vw, 1.5rem); }
   .standings-list { gap: 2px; margin: 8px 0; }
-  .standing-row {
-    padding: 8px 10px;
-    grid-template-columns: 36px 1fr auto;
-    gap: 8px;
-  }
+  .standing-row { padding: 8px 10px; grid-template-columns: 36px 1fr auto; gap: 8px; }
   .standing-rank { font-size: 1.1rem; }
   .standing-name { font-size: 0.80rem; }
   .standing-title { font-size: 0.65rem; }
   .standing-title-meaning { font-size: 0.60rem; }
   .standing-score { font-size: 0.88rem; }
 
-  /* ── Players panel: hidden by default, shown at game over ── */
-  .players-panel {
-    display: none;
-  }
-  .game-over-panel ~ .players-panel,
-  .phase-lobby .players-panel,
-  .phase-gameOver .players-panel {
-    display: block;
-    padding: 10px 12px;
-    max-height: 120px;
-    overflow-y: auto;
-  }
   .player-row { padding: 6px 8px; }
   .player-row__name { font-size: 0.75rem; }
   .player-row__tag { font-size: 0.55rem; }
   .player-row__score { font-size: 0.85rem; }
   .ui-avatar-sm { width: 20px; height: 20px; font-size: 0.50rem; }
 
-  /* ── CTAs: full width ── */
   .stage-ctas { gap: 8px; }
   .stage-ctas .ui-btn { font-size: 0.82rem; }
   .rejoin-card { padding: 10px; }
   .rejoin-card p { font-size: 0.75rem; margin-bottom: 8px; }
 
-  /* ── Settings/forms: compact ── */
   .settings-grid { grid-template-columns: 1fr; gap: 10px; }
   .button-row, .button-stack { flex-direction: column; gap: 8px; }
-
-  /* ── Page shell: compact ── */
   .page-shell { padding: 16px; }
   .hero-card h1 { font-size: 2.4rem; }
   .panel-card h1 { font-size: clamp(1.6rem, 6vw, 2.2rem); }
 
-  /* ── Dialogs: bottom sheet ── */
   .ui-dialog-backdrop { align-items: end; padding: 0; }
   .ui-dialog {
     width: 100% !important;
@@ -2090,34 +2112,8 @@ html[data-native-app="true"][data-keyboard-open="true"] .theme-toggle {
   }
   .ui-dialog-content { padding: 20px 16px 32px; }
 
-  /* ── Keyboard open: source word sticks to top ── */
-  .game-shell.is-typing {
-    display: flex;
-    flex-direction: column;
-  }
-  .game-shell.is-typing .word-stage {
-    padding-top: 60px;
-  }
-  .game-shell.is-typing .current-word-card {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 100;
-    padding: 6px 12px;
-    background: var(--bg);
-    border-bottom: 1px solid var(--sub-2);
-  }
-  .game-shell.is-typing .current-word-label {
-    font-size: 0.48rem;
-    margin-bottom: 2px;
-  }
-  .game-shell.is-typing .current-word-text {
-    font-size: clamp(1.1rem, 5vw, 1.5rem);
-  }
-  .game-shell.is-typing .timer-section {
-    display: none;
-  }
+  /* A floating theme control over the bottom form is unusable during a round. */
+  #root:has(.game-shell) .theme-toggle { display: none; }
 }
 
 /* ============================================================

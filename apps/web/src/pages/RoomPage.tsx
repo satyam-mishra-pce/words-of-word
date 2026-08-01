@@ -709,6 +709,52 @@ export default function RoomPage(): JSX.Element {
     ].filter((label): label is string => Boolean(label))
     : [];
   const mixScoringLabel = snapshot.settings.mixScoringMode === 'arcade' ? 'Score Attack' : 'Classic';
+  const stageCtas = (needsRejoin || canStart ||
+    (!needsRejoin && (
+      (snapshot.phase === 'lobby' && (!isHost || snapshot.players.length < 2)) ||
+      (snapshot.phase === 'gameOver' && !isHost)
+    ))) ? (
+      <div className="stage-ctas">
+        {needsRejoin && (
+          <div className="rejoin-card" style={{ marginBottom: 0 }}>
+            <p>You're watching but not seated.</p>
+            <Button
+              variant="secondary"
+              size="sm"
+              fullWidth
+              onClick={() => navigate(`/join/${roomId}`)}
+            >
+              Rejoin as {loadUsername() || 'player'}
+            </Button>
+          </div>
+        )}
+        {canStart && (
+          <>
+            <Button variant="primary" size="lg" fullWidth onClick={snapshot.phase === 'gameOver' ? restartGame : startGame}>
+              {snapshot.phase === 'gameOver' ? 'Play Again' : 'Start Game'}
+            </Button>
+            <Button variant="secondary" size="sm" fullWidth onClick={openSettingsDialog}>
+              Change Settings
+            </Button>
+          </>
+        )}
+        {!isHost && snapshot.phase === 'lobby' && snapshot.players.length >= 2 && !needsRejoin && (
+          <p className="muted centered" style={{ fontSize: '0.82rem', marginBottom: 0 }}>
+            Waiting for the host to start.
+          </p>
+        )}
+        {!isHost && snapshot.phase === 'gameOver' && !needsRejoin && (
+          <p className="muted centered" style={{ fontSize: '0.82rem', marginBottom: 0 }}>
+            Waiting for the host to play again.
+          </p>
+        )}
+        {snapshot.players.length < 2 && !needsRejoin && (
+          <p className="muted centered" style={{ fontSize: '0.82rem', marginBottom: 0 }}>
+            Waiting for one more player.
+          </p>
+        )}
+      </div>
+    ) : null;
 
   /* ── main game view ── */
   return (
@@ -846,60 +892,14 @@ export default function RoomPage(): JSX.Element {
       </aside>
 
       {/* ── CENTER: Word Stage ── */}
-      <section className={`word-stage glass-panel${isBingoMode ? ' bingo-stage' : ''}`}>
+      <section className={`word-stage glass-panel${isBingoMode ? ' bingo-stage' : ''}${snapshot.phase === 'round' ? ' word-stage--active' : ''}`}>
 
         {/* Stage notice — fixed height, opacity-only, no layout jump */}
         <div className={`stage-notice-bar${notice ? ' active' : ''}`} aria-live="polite">
           {notice || snapshot.status.message}
         </div>
 
-        {/* CTAs — start game, rejoin, waiting (visible on all screen sizes) */}
-        {(needsRejoin || canStart ||
-          (!needsRejoin && (
-            (snapshot.phase === 'lobby' && (!isHost || snapshot.players.length < 2)) ||
-            (snapshot.phase === 'gameOver' && !isHost)
-          ))) && (
-          <div className="stage-ctas">
-            {needsRejoin && (
-              <div className="rejoin-card" style={{ marginBottom: 0 }}>
-                <p>You're watching but not seated.</p>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  fullWidth
-                  onClick={() => navigate(`/join/${roomId}`)}
-                >
-                  Rejoin as {loadUsername() || 'player'}
-                </Button>
-              </div>
-            )}
-            {canStart && (
-              <>
-                <Button variant="primary" size="lg" fullWidth onClick={snapshot.phase === 'gameOver' ? restartGame : startGame}>
-                  {snapshot.phase === 'gameOver' ? 'Play Again' : 'Start Game'}
-                </Button>
-                <Button variant="secondary" size="sm" fullWidth onClick={openSettingsDialog}>
-                  Change Settings
-                </Button>
-              </>
-            )}
-            {!isHost && snapshot.phase === 'lobby' && snapshot.players.length >= 2 && !needsRejoin && (
-              <p className="muted centered" style={{ fontSize: '0.82rem', marginBottom: 0 }}>
-                Waiting for the host to start.
-              </p>
-            )}
-            {!isHost && snapshot.phase === 'gameOver' && !needsRejoin && (
-              <p className="muted centered" style={{ fontSize: '0.82rem', marginBottom: 0 }}>
-                Waiting for the host to play again.
-              </p>
-            )}
-            {snapshot.players.length < 2 && !needsRejoin && (
-              <p className="muted centered" style={{ fontSize: '0.82rem', marginBottom: 0 }}>
-                Waiting for one more player.
-              </p>
-            )}
-          </div>
-        )}
+        {(snapshot.phase === 'gameOver' || snapshot.phase === 'betting') && stageCtas}
 
         {snapshot.phase === 'gameOver' ? (
           <div className="game-over-panel">
@@ -1045,8 +1045,10 @@ export default function RoomPage(): JSX.Element {
             )}
 
             {snapshot.phase !== 'betting' && (
-              <>
-            {/* Round progress strip */}
+              <div className="gameplay-layout">
+                <div className="gameplay-header">
+                  {stageCtas}
+                  {/* Round progress strip */}
             <div className="round-strip">
               <span>Round {Math.max(snapshot.currentRound, 1)} / {snapshot.totalRounds}</span>
               <div className="round-dots" aria-label="Round progress">
@@ -1088,6 +1090,9 @@ export default function RoomPage(): JSX.Element {
               </div>
             )}
 
+                </div>
+
+                <div className="gameplay-scroll">
             {/* Private player hints */}
             {snapshot.settings.hintsEnabled && snapshot.phase === 'round' && !needsRejoin && (
               <section className={`hint-panel${hasUsedHint ? ' hint-panel--revealed' : ''}`} aria-labelledby="hint-panel-title" aria-live="polite">
@@ -1240,7 +1245,9 @@ export default function RoomPage(): JSX.Element {
               </div>
             )}
 
-            {/* Word submit form - at the end for sticky bottom on mobile */}
+                </div>
+
+            {/* Word submit form */}
             {snapshot.phase === 'round' && (
               <form className="word-form" onSubmit={submitWord}>
                 <Input
@@ -1270,7 +1277,7 @@ export default function RoomPage(): JSX.Element {
                 </Button>
               </form>
             )}
-              </>
+              </div>
             )}
           </>
         )}
