@@ -1,6 +1,6 @@
 import { CSSProperties, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { FinalScore, GameSettings, HINT_COST, HINTS_PER_REQUEST, RoomSnapshot, RoundResultPlayer, TeamScore, WordHint } from '@wow/shared';
+import { FinalScore, GameSettings, HINT_COST, HINTS_PER_REQUEST, type PlayerAvatar, RoomSnapshot, RoundResultPlayer, TeamScore, WordHint } from '@wow/shared';
 import socket from '../services/socket';
 import { loadUsername } from '../services/session';
 import { hapticError, hapticLight, hapticMedium, hapticSuccess, hapticWarning } from '../services/nativeFeedback';
@@ -118,6 +118,7 @@ interface PlayerFinalAward {
 
 interface FinalPodiumProps {
   players: FinalScore[];
+  avatarsByPlayerId: ReadonlyMap<string, PlayerAvatar>;
   currentPlayerId: string | undefined;
   getAward: (player: FinalScore) => PlayerFinalAward;
 }
@@ -134,7 +135,7 @@ function ordinal(value: number): string {
   }
 }
 
-function FinalPodium({ players, currentPlayerId, getAward }: FinalPodiumProps): JSX.Element | null {
+function FinalPodium({ players, avatarsByPlayerId, currentPlayerId, getAward }: FinalPodiumProps): JSX.Element | null {
   const slots: Array<{ player: FinalScore; place: 1 | 2 | 3 }> = [];
   const runnerUp = players[1];
   const winner = players[0];
@@ -164,7 +165,7 @@ function FinalPodium({ players, currentPlayerId, getAward }: FinalPodiumProps): 
             >
               <div className="podium-player__profile">
                 <span className="podium-player__medal" aria-hidden="true">{RANK_ICONS[player.rank] ?? `#${player.rank}`}</span>
-                <Avatar name={player.playerName} colorIndex={place - 1} size="lg" className="podium-player__avatar" />
+                <Avatar name={player.playerName} avatar={avatarsByPlayerId.get(player.playerId)} colorIndex={place - 1} size="lg" className="podium-player__avatar" />
                 <div className="podium-player__identity">
                   <strong title={player.playerName}>{player.playerName}</strong>
                   <span>{isCurrentPlayer ? 'You · ' : ''}{ordinal(player.rank)}</span>
@@ -243,6 +244,10 @@ export default function RoomPage(): JSX.Element {
     });
   }, [snapshot?.players]);
   const currentPlayerStanding = liveLeaderboard.find((player) => player.id === currentPlayerId);
+  const avatarsByPlayerId = useMemo<ReadonlyMap<string, PlayerAvatar>>(
+    () => new Map((snapshot?.players ?? []).map((player) => [player.id, player.avatar])),
+    [snapshot?.players]
+  );
   const isHost = Boolean(currentPlayer?.isHost);
   const myWords = currentPlayerId && snapshot ? snapshot.acceptedWords[currentPlayerId] ?? [] : [];
   const canStart = isHost && snapshot &&
@@ -1032,6 +1037,7 @@ export default function RoomPage(): JSX.Element {
           <div className="bomb-blast" aria-hidden="true">💣</div>
           <div className="blast-ring" aria-hidden="true" />
           <div className="bust-card">
+            <Avatar name={bustFlash.playerName} avatar={avatarsByPlayerId.get(bustFlash.playerId)} size="lg" className="bust-avatar" />
             <div className="bust-title">BOOOOM!</div>
             <div className="bust-message">{bustFlash.playerName} is BUSTED</div>
             <div className="bust-word">typed “{bustFlash.word}” · round score 0</div>
@@ -1167,14 +1173,17 @@ export default function RoomPage(): JSX.Element {
         {isBettingMode && snapshot.phase !== 'lobby' && snapshot.phase !== 'gameOver' && (
           <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
             <p className="eyebrow" style={{ marginBottom: 0 }}>Bets</p>
-            {snapshot.players.map((player) => {
+            {snapshot.players.map((player, playerIndex) => {
               const bet = snapshot.bettingBets[player.id];
               const words = snapshot.acceptedWords[player.id]?.length ?? 0;
               return (
                 <div key={player.id} className="player-row">
-                  <div className="player-row__text">
-                    <div className="player-row__name">{player.name}</div>
-                    <span className="player-row__tag">{bet ? `${words} / ${bet} words` : 'Choosing bet'}</span>
+                  <div className="player-row__info">
+                    <Avatar name={player.name} avatar={player.avatar} colorIndex={playerIndex} size="sm" />
+                    <div className="player-row__text">
+                      <div className="player-row__name">{player.name}</div>
+                      <span className="player-row__tag">{bet ? `${words} / ${bet} words` : 'Choosing bet'}</span>
+                    </div>
                   </div>
                   <span className="player-row__score">{bet ? (words >= bet ? '✅' : '🎲') : '—'}</span>
                 </div>
@@ -1221,6 +1230,7 @@ export default function RoomPage(): JSX.Element {
             {finalPlayerStandings.length > 0 && (
               <FinalPodium
                 players={finalPlayerStandings}
+                avatarsByPlayerId={avatarsByPlayerId}
                 currentPlayerId={currentPlayerId}
                 getAward={finalPlayerAward}
               />
@@ -1255,15 +1265,18 @@ export default function RoomPage(): JSX.Element {
                 {finalPlayerStandings.map((player) => (
                   <div key={player.playerId} className={`standing-row rank-${player.rank}`}>
                     <span className="standing-rank">{RANK_ICONS[player.rank] ?? `#${player.rank}`}</span>
-                    <div>
-                      <div className="standing-name">
-                        {player.playerName}
-                        {player.playerId === currentPlayerId && (
-                          <Badge variant="ink" style={{ marginLeft: 8, fontSize: '0.72rem', padding: '3px 8px' }}>You</Badge>
-                        )}
+                    <div className="standing-player-identity">
+                      <Avatar name={player.playerName} avatar={avatarsByPlayerId.get(player.playerId)} colorIndex={player.rank - 1} size="sm" className="standing-player-avatar" />
+                      <div>
+                        <div className="standing-name">
+                          {player.playerName}
+                          {player.playerId === currentPlayerId && (
+                            <Badge variant="ink" style={{ marginLeft: 8, fontSize: '0.72rem', padding: '3px 8px' }}>You</Badge>
+                          )}
+                        </div>
+                        <div className="standing-title">{finalPlayerAward(player).title}</div>
+                        <div className="standing-title-meaning">{finalPlayerAward(player).meaning}</div>
                       </div>
-                      <div className="standing-title">{finalPlayerAward(player).title}</div>
-                      <div className="standing-title-meaning">{finalPlayerAward(player).meaning}</div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
                       <div className="standing-score">{player.score}</div>
@@ -1282,10 +1295,13 @@ export default function RoomPage(): JSX.Element {
                   {finalPlayerStandings.map((player) => (
                     <div key={player.playerId} className="standing-row">
                       <span className="standing-rank">🏷️</span>
-                      <div>
-                        <div className="standing-name">{player.playerName}</div>
-                        <div className="standing-title">{finalPlayerAward(player).title}</div>
-                        <div className="standing-title-meaning">{finalPlayerAward(player).meaning}</div>
+                      <div className="standing-player-identity">
+                        <Avatar name={player.playerName} avatar={avatarsByPlayerId.get(player.playerId)} colorIndex={player.rank - 1} size="sm" className="standing-player-avatar" />
+                        <div>
+                          <div className="standing-name">{player.playerName}</div>
+                          <div className="standing-title">{finalPlayerAward(player).title}</div>
+                          <div className="standing-title-meaning">{finalPlayerAward(player).meaning}</div>
+                        </div>
                       </div>
                       <div style={{ textAlign: 'right' }}>
                         <div className="standing-score">{player.score}</div>
@@ -1334,15 +1350,18 @@ export default function RoomPage(): JSX.Element {
                 )}
 
                 <div className="standings-list">
-                  {snapshot.players.map((player) => {
+                  {snapshot.players.map((player, playerIndex) => {
                     const bet = snapshot.bettingBets[player.id];
                     const average = snapshot.bettingAverages[player.id] ?? 0;
                     return (
                       <div key={player.id} className={`standing-row ${player.id === currentPlayerId ? 'self' : ''}`}>
                         <span className="standing-rank">🎲</span>
-                        <div>
-                          <div className="standing-name">{player.name}{player.id === currentPlayerId ? ' (You)' : ''}</div>
-                          <div className="muted" style={{ fontSize: '0.76rem' }}>avg {average.toFixed(1)} · min {snapshot.minimumBets[player.id] ?? 3}</div>
+                        <div className="standing-player-identity">
+                          <Avatar name={player.name} avatar={player.avatar} colorIndex={playerIndex} size="sm" className="standing-player-avatar" />
+                          <div>
+                            <div className="standing-name">{player.name}{player.id === currentPlayerId ? ' (You)' : ''}</div>
+                            <div className="muted" style={{ fontSize: '0.76rem' }}>avg {average.toFixed(1)} · min {snapshot.minimumBets[player.id] ?? 3}</div>
+                          </div>
                         </div>
                         <div style={{ textAlign: 'right' }}>
                           <div className="standing-score">{bet ?? '—'}</div>
@@ -1511,10 +1530,13 @@ export default function RoomPage(): JSX.Element {
                     style={{ animationDelay: `${i * 60}ms` }}
                   >
                     <div className="result-header">
-                      <strong>
-                        {result.playerName}
-                        {result.playerId === currentPlayerId && ' (You)'}
-                      </strong>
+                      <div className="result-player-identity">
+                        <Avatar name={result.playerName} avatar={avatarsByPlayerId.get(result.playerId)} colorIndex={i} size="sm" className="result-player-avatar" />
+                        <strong>
+                          {result.playerName}
+                          {result.playerId === currentPlayerId && ' (You)'}
+                        </strong>
+                      </div>
                       <span className="result-score">
                         {isFastestNMode && result.words.length >= snapshot.settings.fastestWordTarget && (
                           <Badge variant="gold" style={{ marginRight: 8 }}>+10 winner bonus</Badge>
@@ -1982,10 +2004,13 @@ export default function RoomPage(): JSX.Element {
               <span className="history-round-meta">{entry.validWordCount} possible words</span>
             </div>
             <div className="history-players">
-              {entry.results.map((result) => (
+              {entry.results.map((result, resultIndex) => (
                 <div key={result.playerId} className={`history-player ${result.playerId === currentPlayerId ? 'self' : ''}`}>
                   <div className="history-player-header">
-                    <strong>{result.playerName}{result.playerId === currentPlayerId ? ' (You)' : ''}</strong>
+                    <div className="history-player-identity">
+                      <Avatar name={result.playerName} avatar={avatarsByPlayerId.get(result.playerId)} colorIndex={resultIndex} size="sm" className="history-player-avatar" />
+                      <strong>{result.playerName}{result.playerId === currentPlayerId ? ' (You)' : ''}</strong>
+                    </div>
                     <span className="result-score">
                       {isFastestNMode && result.words.length >= snapshot.settings.fastestWordTarget && (
                         <Badge variant="gold" style={{ marginRight: 8 }}>+10 winner bonus</Badge>

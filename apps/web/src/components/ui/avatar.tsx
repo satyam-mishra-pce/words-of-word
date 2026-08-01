@@ -8,7 +8,7 @@ export type AvatarSize = 'sm' | 'md' | 'lg';
 export interface AvatarProps extends HTMLAttributes<HTMLDivElement> {
   name: string;
   /** A compact Pipoya recipe supplied by the player. Falls back to initials for legacy data. */
-  avatar?: PlayerAvatar;
+  avatar?: PlayerAvatar | undefined;
   colorIndex?: number;
   size?: AvatarSize;
 }

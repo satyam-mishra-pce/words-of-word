@@ -349,6 +349,44 @@
   .podium-player__plinth span { font-size: 1.2rem; }
 }
 
+.bust-avatar {
+  width: 58px;
+  height: 58px;
+  margin: 0 auto 10px;
+  border: 3px solid var(--main);
+  box-shadow: 0 0 0 4px var(--main-10), 0 9px 22px rgba(0, 0, 0, 0.35);
+}
+
+/* Avatar-bearing identities share the same compact rhythm in results and
+   standings, including the post-game lists that stay visible longest. */
+.standing-player-identity,
+.result-player-identity,
+.history-player-identity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.standing-player-identity > div,
+.result-player-identity > div,
+.history-player-identity > div {
+  min-width: 0;
+}
+
+.standing-player-avatar,
+.result-player-avatar,
+.history-player-avatar {
+  flex: 0 0 auto;
+}
+
+.result-player-identity strong,
+.history-player-identity strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .word-score-float,
   .podium-player {
