@@ -1,4 +1,5 @@
 import { DEFAULT_PLAYER_AVATAR, PlayerAvatarSchema, type PlayerAvatar } from '@wow/shared';
+import { randomizePlayerAvatar } from './playerAvatar';
 import { STORAGE_KEYS, readStoredValue, writeStoredValue } from './storage';
 
 const STARTER_NAMES = [
@@ -56,8 +57,9 @@ export function loadPlayerAvatar(): PlayerAvatar {
     }
   }
 
-  // Replace pre-Pipoya recipes once, so future room payloads use the new engine.
-  const defaultAvatar = { ...DEFAULT_PLAYER_AVATAR };
-  savePlayerAvatar(defaultAvatar);
-  return defaultAvatar;
+  // First-time players get a unique, editable character. Malformed legacy
+  // values still receive the safe shared default.
+  const avatar = storedAvatar ? { ...DEFAULT_PLAYER_AVATAR } : randomizePlayerAvatar();
+  savePlayerAvatar(avatar);
+  return avatar;
 }
