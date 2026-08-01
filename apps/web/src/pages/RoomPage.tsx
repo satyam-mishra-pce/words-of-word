@@ -24,6 +24,35 @@ import {
 
 const RANK_ICONS: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉' };
 
+type GameActionIconName = 'hint' | 'share' | 'rules' | 'stop' | 'check';
+
+function GameActionIcon({ name }: { name: GameActionIconName }): JSX.Element {
+  const svgProps = {
+    width: 18,
+    height: 18,
+    viewBox: '0 0 20 20',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.7,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    'aria-hidden': true,
+  };
+
+  switch (name) {
+    case 'hint':
+      return <svg {...svgProps}><path d="m10 2.5 1.35 4.55 4.15 1.35-4.15 1.35L10 14.5 8.65 9.75 4.5 8.4l4.15-1.35L10 2.5Z" /><path d="m15.5 12 .65 2.15 2.15.65-2.15.65-.65 2.15-.65-2.15-2.15-.65 2.15-.65.65-2.15Z" /></svg>;
+    case 'share':
+      return <svg {...svgProps}><path d="M10 11V2.5" /><path d="m6.5 6 3.5-3.5L13.5 6" /><path d="M4 10.5v5h12v-5" /></svg>;
+    case 'rules':
+      return <svg {...svgProps}><path d="M3.5 3.5h5a2 2 0 0 1 2 2v11a2 2 0 0 0-2-2h-5Z" /><path d="M16.5 3.5h-5a2 2 0 0 0-2 2v11a2 2 0 0 1 2-2h5Z" /></svg>;
+    case 'stop':
+      return <svg {...svgProps}><rect x="5" y="5" width="10" height="10" rx="1.5" /></svg>;
+    case 'check':
+      return <svg {...svgProps}><path d="m4 10 3.5 3.5L16 5" /></svg>;
+  }
+}
+
 const GAME_MODE_OPTIONS: Array<{ value: GameSettings['gameMode']; label: string }> = [
   { value: 'classic', label: 'Classic' },
   { value: 'arcade', label: 'Score Attack' },
@@ -84,6 +113,8 @@ export default function RoomPage(): JSX.Element {
   const [finalTeamScores, setFinalTeamScores] = useState<TeamScore[]>([]);
   const [showRoundHistory, setShowRoundHistory] = useState(false);
   const [showHowToPlay, setShowHowToPlay] = useState(false);
+  const [showStopConfirmation, setShowStopConfirmation] = useState(false);
+  const [isStoppingGame, setIsStoppingGame] = useState(false);
   const [waitingSeconds, setWaitingSeconds] = useState(0);
   const [validWordCount, setValidWordCount] = useState(0);
   const [roundHistory, setRoundHistory] = useState<RoundEntry[]>([]);
@@ -586,10 +617,30 @@ export default function RoomPage(): JSX.Element {
     });
   }
 
+  function openHowToPlay(): void {
+    inputRef.current?.blur();
+    setShowHowToPlay(true);
+  }
+
+  function openStopConfirmation(): void {
+    inputRef.current?.blur();
+    setError('');
+    setShowStopConfirmation(true);
+  }
+
   function stopToLobby(): void {
+    if (isStoppingGame) return;
+
+    setIsStoppingGame(true);
     socket.emit('restartGame', { roomId, autoStart: false }, (r) => {
-      if (!r.ok) setError(r.error);
-      else setError('');
+      setIsStoppingGame(false);
+      if (!r.ok) {
+        setError(r.error);
+        return;
+      }
+
+      setError('');
+      setShowStopConfirmation(false);
     });
   }
 
@@ -790,25 +841,26 @@ export default function RoomPage(): JSX.Element {
             {snapshot.players.length} player{snapshot.players.length !== 1 ? 's' : ''}
           </span>
         </div>
-        <div className="game-header__right">
-          <Tooltip content={showCopied ? (isNativeApp ? 'Invite ready!' : 'Copied!') : inviteLabel} className="ui-tooltip-down ui-tooltip-end">
-            <Button variant="mini" size="sm" onClick={() => void shareInvite()} aria-label={showCopied ? (isNativeApp ? 'Invite ready!' : 'Copied!') : inviteLabel} style={{ padding: '7px 10px' }}>
-              {showCopied ? (
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M2 7.5l3 3 7-7"/></svg>
-              ) : (
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5.5 8.5a3 3 0 004.24 0l1.5-1.5a3 3 0 00-4.24-4.24l-.86.86"/><path d="M8.5 5.5a3 3 0 00-4.24 0L2.76 7a3 3 0 004.24 4.24l.86-.86"/></svg>
-              )}
-            </Button>
-          </Tooltip>
-          {canStopToLobby && (
-            <Button variant="mini" size="sm" onClick={stopToLobby} aria-label="Stop game and return to lobby">
-              Stop
-            </Button>
-          )}
-          <Button variant="mini" size="sm" onClick={() => setShowHowToPlay(true)} aria-label="How to play">
-            ?
-          </Button>
-        </div>
+        {!hasGameplayChrome && (
+          <div className="game-header__right">
+            <Tooltip content={showCopied ? (isNativeApp ? 'Invite ready!' : 'Copied!') : inviteLabel} className="ui-tooltip-down ui-tooltip-end">
+              <Button variant="mini" size="sm" className="game-header__icon-action" onClick={() => void shareInvite()} aria-label={showCopied ? (isNativeApp ? 'Invite ready!' : 'Copied!') : inviteLabel}>
+                <GameActionIcon name={showCopied ? 'check' : 'share'} />
+              </Button>
+            </Tooltip>
+            {canStopToLobby && (
+              <Button variant="mini" size="sm" className="game-header__stop-action" onClick={openStopConfirmation} aria-label="Stop game and return to lobby">
+                <GameActionIcon name="stop" />
+                <span>Stop</span>
+              </Button>
+            )}
+            <Tooltip content="How to play" className="ui-tooltip-down ui-tooltip-end">
+              <Button variant="mini" size="sm" className="game-header__icon-action" onClick={openHowToPlay} aria-label="How to play">
+                <GameActionIcon name="rules" />
+              </Button>
+            </Tooltip>
+          </div>
+        )}
       </header>
 
       {snapshot.settings.gameMode === 'mix' && (
@@ -1105,40 +1157,28 @@ export default function RoomPage(): JSX.Element {
                     </div>
                   </div>
 
-            {/* Private player hints */}
-            {snapshot.settings.hintsEnabled && snapshot.phase === 'round' && !needsRejoin && (
-              <section className={`hint-panel${hasUsedHint ? ' hint-panel--revealed' : ''}`} aria-labelledby="hint-panel-title" aria-live="polite">
-                {hasUsedHint ? (
-                  <>
-                    <div className="hint-panel__header">
-                      <h3 id="hint-panel-title">Hints</h3>
-                      <Badge variant="gold">−{HINT_COST}</Badge>
-                    </div>
-                    <ol className="hint-list">
-                      {activeHints.map((hint, hintIndex) => (
-                        <li key={`hint-${hintIndex}`} className="hint-clue">
-                          <span className="hint-clue__label">{hint.letters.length} letters</span>
-                          <span className="hint-pattern" aria-label={`${hint.letters.length}-letter word`}>
-                            {hint.letters.map((letter, letterIndex) => (
-                              <span key={`${hintIndex}-${letterIndex}`} className={`hint-letter${letter ? ' hint-letter--revealed' : ''}`}>
-                                {letter ?? ''}
-                              </span>
-                            ))}
+            {/* Revealed private hints stay with the round content. The control itself
+                lives beside the word input so it remains easy to reach. */}
+            {snapshot.settings.hintsEnabled && snapshot.phase === 'round' && !needsRejoin && hasUsedHint && (
+              <section className="hint-panel hint-panel--revealed" aria-labelledby="hint-panel-title" aria-live="polite">
+                <div className="hint-panel__header">
+                  <h3 id="hint-panel-title">Hints</h3>
+                  <Badge variant="gold">−{HINT_COST}</Badge>
+                </div>
+                <ol className="hint-list">
+                  {activeHints.map((hint, hintIndex) => (
+                    <li key={`hint-${hintIndex}`} className="hint-clue">
+                      <span className="hint-clue__label">{hint.letters.length} letters</span>
+                      <span className="hint-pattern" aria-label={`${hint.letters.length}-letter word`}>
+                        {hint.letters.map((letter, letterIndex) => (
+                          <span key={`${hintIndex}-${letterIndex}`} className={`hint-letter${letter ? ' hint-letter--revealed' : ''}`}>
+                            {letter ?? ''}
                           </span>
-                        </li>
-                      ))}
-                    </ol>
-                  </>
-                ) : (
-                  <>
-                    <div className="hint-panel__header">
-                      <h3 id="hint-panel-title">Need a hint?</h3>
-                    </div>
-                    <Button variant="outline" size="sm" onClick={requestHint} disabled={!canUseHint} isLoading={isRequestingHint}>
-                      −{HINT_COST} pts
-                    </Button>
-                  </>
-                )}
+                        ))}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
               </section>
             )}
 
@@ -1259,36 +1299,101 @@ export default function RoomPage(): JSX.Element {
 
                 </div>
 
-            {/* Word submit form */}
-            {snapshot.phase === 'round' && (
-              <form className="word-form" onSubmit={submitWord}>
-                <Input
-                  ref={inputRef}
-                  type={isTypistMode ? 'password' : 'text'}
-                  value={inputWord}
-                  onChange={(e) => setInputWord(e.currentTarget.value)}
-                  onFocus={() => setIsWordInputFocused(true)}
-                  onBlur={() => setIsWordInputFocused(false)}
-                  placeholder={isCurrentPlayerBusted ? 'You are busted this round 💣' : canSubmit ? (isTypistMode ? 'Blind Type: hidden word' : 'Type a word…') : 'Rejoin to submit'}
-                  disabled={!canSubmit}
-                  hasError={inputFeedback === 'error'}
-                  hasSuccess={inputFeedback === 'success'}
-                  autoFocus
-                  autoComplete="off"
-                  autoCorrect="off"
-                  autoCapitalize="none"
-                  spellCheck={false}
-                  enterKeyHint="done"
-                />
-                <Button
-                  variant="primary"
-                  type="submit"
-                  disabled={!canSubmit || !inputWord.trim()}
-                >
-                  Go
-                </Button>
-              </form>
-            )}
+                {hasGameplayChrome && (
+                  <div className="gameplay-footer">
+                    <div className="round-actions" aria-label="Game controls">
+                      {snapshot.settings.hintsEnabled && snapshot.phase === 'round' && !needsRejoin && (
+                        <Tooltip content={hasUsedHint ? 'Hint already used this round' : canUseHint ? `Reveal ${HINTS_PER_REQUEST} private clues for −${HINT_COST} points` : 'Find an accepted word to unlock a hint'}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            type="button"
+                            className={`round-action round-action--hint${hasUsedHint ? ' round-action--used' : ''}`}
+                            onClick={requestHint}
+                            disabled={!canUseHint || hasUsedHint}
+                            isLoading={isRequestingHint}
+                            aria-label={hasUsedHint ? 'Hint already used this round' : `Reveal ${HINTS_PER_REQUEST} private hints for ${HINT_COST} points`}
+                          >
+                            <GameActionIcon name="hint" />
+                            <span className="round-action__label">Hint</span>
+                            {!hasUsedHint && <span className="round-action__meta">−{HINT_COST}</span>}
+                          </Button>
+                        </Tooltip>
+                      )}
+                      <Tooltip content={showCopied ? (isNativeApp ? 'Invite ready!' : 'Copied!') : inviteLabel}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          type="button"
+                          className="round-action"
+                          onClick={() => void shareInvite()}
+                          aria-label={showCopied ? (isNativeApp ? 'Invite ready!' : 'Copied!') : inviteLabel}
+                        >
+                          <GameActionIcon name={showCopied ? 'check' : 'share'} />
+                          <span className="round-action__label">{showCopied ? 'Ready' : 'Invite'}</span>
+                        </Button>
+                      </Tooltip>
+                      <Tooltip content="How to play">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          type="button"
+                          className="round-action"
+                          onClick={openHowToPlay}
+                          aria-label="How to play"
+                        >
+                          <GameActionIcon name="rules" />
+                          <span className="round-action__label">Rules</span>
+                        </Button>
+                      </Tooltip>
+                      {canStopToLobby && (
+                        <Tooltip content="Stop game and return everyone to the lobby">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            type="button"
+                            className="round-action round-action--stop"
+                            onClick={openStopConfirmation}
+                            aria-label="Stop game and return everyone to the lobby"
+                          >
+                            <GameActionIcon name="stop" />
+                            <span className="round-action__label">Stop</span>
+                          </Button>
+                        </Tooltip>
+                      )}
+                    </div>
+
+                    {snapshot.phase === 'round' && (
+                      <form className="word-form" onSubmit={submitWord}>
+                        <Input
+                          ref={inputRef}
+                          type={isTypistMode ? 'password' : 'text'}
+                          value={inputWord}
+                          onChange={(e) => setInputWord(e.currentTarget.value)}
+                          onFocus={() => setIsWordInputFocused(true)}
+                          onBlur={() => setIsWordInputFocused(false)}
+                          placeholder={isCurrentPlayerBusted ? 'You are busted this round 💣' : canSubmit ? (isTypistMode ? 'Blind Type: hidden word' : 'Type a word…') : 'Rejoin to submit'}
+                          disabled={!canSubmit}
+                          hasError={inputFeedback === 'error'}
+                          hasSuccess={inputFeedback === 'success'}
+                          autoFocus
+                          autoComplete="off"
+                          autoCorrect="off"
+                          autoCapitalize="none"
+                          spellCheck={false}
+                          enterKeyHint="done"
+                        />
+                        <Button
+                          variant="primary"
+                          type="submit"
+                          disabled={!canSubmit || !inputWord.trim()}
+                        >
+                          Go
+                        </Button>
+                      </form>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </>
@@ -1311,6 +1416,31 @@ export default function RoomPage(): JSX.Element {
           <li>Rooms close when everyone leaves.</li>
         </ul>
       </aside>
+
+      {/* ── STOP GAME CONFIRMATION ── */}
+      <Dialog
+        open={showStopConfirmation}
+        onClose={() => { if (!isStoppingGame) setShowStopConfirmation(false); }}
+        size="sm"
+        className="stop-confirmation-dialog"
+      >
+        <p className="eyebrow">Host control</p>
+        <h1 id="stop-game-title" style={{ fontSize: 'clamp(1.6rem,5vw,2.35rem)', lineHeight: 0.96, marginBottom: 12 }}>
+          Stop this game?
+        </h1>
+        <p className="stop-confirmation-dialog__copy">
+          Everyone will return to the lobby and the current game progress will be lost.
+        </p>
+        {error && <Alert variant="error" style={{ marginBottom: 16 }}>{error}</Alert>}
+        <div className="stop-confirmation-dialog__actions">
+          <Button variant="secondary" onClick={() => setShowStopConfirmation(false)} disabled={isStoppingGame}>
+            Keep playing
+          </Button>
+          <Button variant="danger" onClick={stopToLobby} isLoading={isStoppingGame}>
+            Stop game
+          </Button>
+        </div>
+      </Dialog>
 
       {/* ── HOW TO PLAY MODAL ── */}
       <Dialog
