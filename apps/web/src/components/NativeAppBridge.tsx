@@ -12,19 +12,14 @@ import { resumeGameConnection, setGameAppActivity, syncPushRegistration } from '
 
 type Navigate = ReturnType<typeof useNavigate>;
 
-function isLightTheme(): boolean {
-  return document.documentElement.getAttribute('data-theme') === 'light';
-}
-
 async function configureSystemBars(): Promise<void> {
   if (!isNativeApp) return;
 
-  const lightTheme = isLightTheme();
-  const backgroundColor = lightTheme ? '#FFF3E4' : '#111111';
+  const backgroundColor = '#111111';
 
   try {
     await StatusBar.setOverlaysWebView({ overlay: true });
-    await StatusBar.setStyle({ style: lightTheme ? StatusBarStyle.Light : StatusBarStyle.Dark });
+    await StatusBar.setStyle({ style: StatusBarStyle.Dark });
     // On Android 15+ the browser surface supplies the background under an edge-to-edge bar.
     await StatusBar.setBackgroundColor({ color: backgroundColor });
   } catch {
@@ -34,7 +29,7 @@ async function configureSystemBars(): Promise<void> {
   if (nativePlatform === 'android') {
     try {
       await NavigationBar.setColor({ color: backgroundColor, dividerColor: backgroundColor });
-      await NavigationBar.setStyle({ style: lightTheme ? NavigationBarStyle.Light : NavigationBarStyle.Dark });
+      await NavigationBar.setStyle({ style: NavigationBarStyle.Dark });
     } catch {
       // The web surface and CSS safe-area padding remain the primary Android 15 strategy.
     }
@@ -43,7 +38,7 @@ async function configureSystemBars(): Promise<void> {
   if (nativePlatform === 'ios') {
     try {
       await Keyboard.setResizeMode({ mode: KeyboardResize.Body });
-      await Keyboard.setStyle({ style: lightTheme ? KeyboardStyle.Light : KeyboardStyle.Dark });
+      await Keyboard.setStyle({ style: KeyboardStyle.Dark });
     } catch {
       // Keyboard plugin controls are iOS-only and remain progressive enhancement.
     }

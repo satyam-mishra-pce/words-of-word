@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Alert, Button, Input, Label } from '../components/ui';
 import { NativeNotificationPrompt } from '../components/NativeNotificationPrompt';
+import { ThemePicker } from '../components/ThemePicker';
 import { loadUsername, saveUsername } from '../services/session';
 import { getGameServerUrl } from '../services/platform';
 
@@ -75,7 +76,7 @@ export default function HomePage(): JSX.Element {
   }
 
   return (
-    <main className="page-shell">
+    <main className="page-shell home-page-shell">
       <div className="float-letters" aria-hidden="true">
         {FLOAT_CHARS.map((char) => (
           <span key={char} className="float-letter">{char}</span>
@@ -130,6 +131,10 @@ export default function HomePage(): JSX.Element {
         </form>
         <NativeNotificationPrompt />
       </section>
+
+      <footer className="home-theme-footer">
+        <ThemePicker />
+      </footer>
     </main>
   );
 }
