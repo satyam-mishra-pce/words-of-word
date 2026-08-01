@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { GameSettings, HINT_COST, HINTS_PER_REQUEST } from '@wow/shared';
 import socket from '../services/socket';
-import { loadUsername } from '../services/session';
+import { loadPlayerAvatar, loadUsername } from '../services/session';
 import { Alert, Button, Dialog, Label, Select, Textarea } from '../components/ui';
 
 const DEFAULT_SETTINGS: GameSettings = {
@@ -52,6 +52,7 @@ export default function SettingsPage(): JSX.Element {
   const [searchParams] = useSearchParams();
   const isOnlineRoom = searchParams.get('online') === '1';
   const username = loadUsername();
+  const avatar = loadPlayerAvatar();
   const [settings, setSettings] = useState<GameSettings>(DEFAULT_SETTINGS);
   const [error, setError] = useState('');
   const [isCreating, setIsCreating] = useState(false);
@@ -91,7 +92,7 @@ export default function SettingsPage(): JSX.Element {
       setError('Could not reach the game server. Make sure the local server is running on port 4000, then try again.');
     }, 8000);
 
-    socket.emit('createRoom', { username, settings, isPublic: isOnlineRoom }, (response) => {
+    socket.emit('createRoom', { username, avatar, settings, isPublic: isOnlineRoom }, (response) => {
       if (settled) return;
       settled = true;
       window.clearTimeout(timeout);

@@ -3,6 +3,50 @@ import { z } from 'zod';
 export const UsernameSchema = z.string().trim().min(1).max(20);
 export const RoomIdSchema = z.string().trim().toUpperCase().min(3).max(16);
 
+/**
+ * A compact Pipoya recipe. The browser composes these layer IDs from the same
+ * atlas-based pixel-character system used by Simocracy, rather than sending
+ * image blobs through room events.
+ */
+export const PlayerAvatarCharacterSetSchema = z.enum(['adult', 'oldman', 'nekonin', 'children']);
+export const PlayerAvatarPartSchema = z.number().int().min(0).max(70);
+
+export const DEFAULT_PLAYER_AVATAR = {
+  engine: 'pipoya',
+  characterSet: 'adult',
+  skin: 1,
+  clothes: 1,
+  eyes: 1,
+  hair: 1,
+  hairadd: 0,
+  hat: 0,
+  glasses: 0,
+  cloak: 0,
+  makeup: 0,
+  beard: 0,
+  ear: 0,
+  tail: 0,
+  item: 0
+} as const;
+
+export const PlayerAvatarSchema = z.object({
+  engine: z.literal('pipoya'),
+  characterSet: PlayerAvatarCharacterSetSchema,
+  skin: PlayerAvatarPartSchema.refine((value) => value > 0, 'A skin is required'),
+  clothes: PlayerAvatarPartSchema,
+  eyes: PlayerAvatarPartSchema.refine((value) => value > 0, 'Eyes are required'),
+  hair: PlayerAvatarPartSchema,
+  hairadd: PlayerAvatarPartSchema,
+  hat: PlayerAvatarPartSchema,
+  glasses: PlayerAvatarPartSchema,
+  cloak: PlayerAvatarPartSchema,
+  makeup: PlayerAvatarPartSchema,
+  beard: PlayerAvatarPartSchema,
+  ear: PlayerAvatarPartSchema,
+  tail: PlayerAvatarPartSchema,
+  item: PlayerAvatarPartSchema
+});
+
 export const GameModeSchema = z.enum([
   'classic',
   'arcade',
@@ -68,6 +112,7 @@ export const HINTS_PER_REQUEST = 2;
 
 export const CreateRoomPayloadSchema = z.object({
   username: UsernameSchema,
+  avatar: PlayerAvatarSchema.default(DEFAULT_PLAYER_AVATAR),
   settings: GameSettingsSchema,
   isPublic: z.boolean().default(false)
 });
@@ -78,11 +123,13 @@ export const CheckRoomPayloadSchema = z.object({
 
 export const JoinRoomPayloadSchema = z.object({
   roomId: RoomIdSchema,
-  username: UsernameSchema
+  username: UsernameSchema,
+  avatar: PlayerAvatarSchema.default(DEFAULT_PLAYER_AVATAR)
 });
 
 export const QuickJoinRoomPayloadSchema = z.object({
-  username: UsernameSchema
+  username: UsernameSchema,
+  avatar: PlayerAvatarSchema.default(DEFAULT_PLAYER_AVATAR)
 });
 
 export const StartGamePayloadSchema = z.object({
@@ -134,6 +181,7 @@ export const UpdateSettingsPayloadSchema = z.object({
 });
 
 export type GameMode = z.infer<typeof GameModeSchema>;
+export type PlayerAvatar = z.infer<typeof PlayerAvatarSchema>;
 export type MixScoringMode = z.infer<typeof MixScoringModeSchema>;
 export type MixModifiers = z.infer<typeof MixModifiersSchema>;
 export type WordCategory = z.infer<typeof WordCategorySchema>;
@@ -159,6 +207,7 @@ export type RoomPhase = 'lobby' | 'betting' | 'round' | 'betweenRounds' | 'gameO
 export interface Player {
   id: string;
   name: string;
+  avatar: PlayerAvatar;
   score: number;
   isHost: boolean;
   isEliminated?: boolean;

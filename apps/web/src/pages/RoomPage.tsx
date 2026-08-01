@@ -1007,7 +1007,7 @@ export default function RoomPage(): JSX.Element {
               className={`player-row ${player.id === currentPlayerId ? 'self' : ''}`}
             >
               <div className="player-row__info">
-                <Avatar name={player.name} colorIndex={idx} size="sm" />
+                <Avatar name={player.name} avatar={player.avatar} colorIndex={idx} size="sm" />
                 <div className="player-row__text">
                   <div className="player-row__name">{player.name}</div>
                   <span className="player-row__tag">
@@ -1625,7 +1625,7 @@ export default function RoomPage(): JSX.Element {
           {liveLeaderboard.map((player, index) => (
             <div key={player.id} className={`mobile-leaderboard-row${player.id === currentPlayerId ? ' mobile-leaderboard-row--self' : ''}`}>
               <span className="mobile-leaderboard-row__rank">#{player.rank}</span>
-              <Avatar name={player.name} colorIndex={index} size="sm" />
+              <Avatar name={player.name} avatar={player.avatar} colorIndex={index} size="sm" />
               <div className="mobile-leaderboard-row__identity">
                 <strong>{player.name}{player.id === currentPlayerId ? ' (You)' : ''}</strong>
                 <span>{player.isHost ? 'Host' : player.teamId ? `${player.teamId === 'red' ? 'Red' : 'Blue'} team` : 'Player'}</span>

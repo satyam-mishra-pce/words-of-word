@@ -26,6 +26,7 @@ import {
   JoinRoomPayloadSchema,
   QuickJoinRoomPayloadSchema,
   Player,
+  PlayerAvatar,
   OnlineRoomSummary,
   PlayerBustedPayload,
   PlayerJoinedPayload,
@@ -787,7 +788,7 @@ class GameRoomManager {
     return { ok: true, data: { roomId, snapshot: this.toSnapshot(room) } };
   }
 
-  public createRoom(socketId: string, username: string, settings: GameSettings, isPublic = false): ManagerResult<RoomSnapshot> {
+  public createRoom(socketId: string, username: string, avatar: PlayerAvatar, settings: GameSettings, isPublic = false): ManagerResult<RoomSnapshot> {
     const battleRoyaleError = this.validateBattleRoyale(settings, settings.maxPlayers);
     if (battleRoyaleError) {
       return { ok: false, error: battleRoyaleError };
@@ -801,6 +802,7 @@ class GameRoomManager {
     const player: Player = {
       id: socketId,
       name: username,
+      avatar,
       score: 0,
       isHost: true,
       ...(this.usesTeams(settings) ? { teamId: 'red' as const } : {})
@@ -880,22 +882,22 @@ class GameRoomManager {
     return Boolean(this.findOpenOnlineRoom());
   }
 
-  public quickJoinRoom(socketId: string, username: string): ManagerResult<{ snapshot: RoomSnapshot; player: Player; created: boolean }> {
+  public quickJoinRoom(socketId: string, username: string, avatar: PlayerAvatar): ManagerResult<{ snapshot: RoomSnapshot; player: Player; created: boolean }> {
     const openRoom = this.findOpenOnlineRoom();
     if (openRoom) {
-      const joined = this.joinRoom(socketId, username, openRoom.id);
+      const joined = this.joinRoom(socketId, username, avatar, openRoom.id);
       if (!joined.ok) return joined;
       return { ok: true, data: { ...joined.data, created: false } };
     }
 
-    const created = this.createRoom(socketId, username, ONLINE_ROOM_SETTINGS, true);
+    const created = this.createRoom(socketId, username, avatar, ONLINE_ROOM_SETTINGS, true);
     if (!created.ok) return created;
     const player = created.data.players.find((candidate) => candidate.id === socketId);
     if (!player) return { ok: false, error: 'Unable to create online room.' };
     return { ok: true, data: { snapshot: created.data, player, created: true } };
   }
 
-  public joinRoom(socketId: string, username: string, roomId: string): ManagerResult<{ snapshot: RoomSnapshot; player: Player }> {
+  public joinRoom(socketId: string, username: string, avatar: PlayerAvatar, roomId: string): ManagerResult<{ snapshot: RoomSnapshot; player: Player }> {
     roomId = roomId.toUpperCase();
     const room = this.rooms.get(roomId);
     if (!room) {
@@ -924,6 +926,7 @@ class GameRoomManager {
     const player: Player = {
       id: socketId,
       name: username,
+      avatar,
       score: 0,
       isHost: isFirstPlayerBack,
       ...(this.usesTeams(room.settings) ? { teamId: this.defaultTeamId(room) } : {})
@@ -2405,7 +2408,7 @@ io.on('connection', (socket) => {
     }, 'createRoom requested');
 
     detachSocketFromCurrentRoom(socket);
-    const result = manager.createRoom(socket.id, parsed.data.username, parsed.data.settings, parsed.data.isPublic);
+    const result = manager.createRoom(socket.id, parsed.data.username, parsed.data.avatar, parsed.data.settings, parsed.data.isPublic);
     if (!result.ok) {
       fastify.log.warn({ socketId: socket.id, username: parsed.data.username, error: result.error }, 'createRoom failed');
       reply(ack, result);
@@ -2448,7 +2451,7 @@ io.on('connection', (socket) => {
     fastify.log.info({ socketId: socket.id, username: parsed.data.username, roomId: parsed.data.roomId }, 'joinRoom requested');
 
     detachSocketFromCurrentRoom(socket);
-    const result = manager.joinRoom(socket.id, parsed.data.username, parsed.data.roomId);
+    const result = manager.joinRoom(socket.id, parsed.data.username, parsed.data.avatar, parsed.data.roomId);
     if (!result.ok) {
       fastify.log.warn({ socketId: socket.id, username: parsed.data.username, roomId: parsed.data.roomId, error: result.error }, 'joinRoom failed');
       reply(ack, result);
@@ -2480,7 +2483,7 @@ io.on('connection', (socket) => {
     fastify.log.info({ socketId: socket.id, username: parsed.data.username }, 'quickJoinRoom requested');
 
     detachSocketFromCurrentRoom(socket);
-    const result = manager.quickJoinRoom(socket.id, parsed.data.username);
+    const result = manager.quickJoinRoom(socket.id, parsed.data.username, parsed.data.avatar);
     if (!result.ok) {
       fastify.log.warn({ socketId: socket.id, username: parsed.data.username, error: result.error }, 'quickJoinRoom failed');
       reply(ack, result);

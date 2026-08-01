@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { OnlineRoomSummary } from '@wow/shared';
 import socket from '../services/socket';
-import { loadUsername, saveUsername } from '../services/session';
+import { loadPlayerAvatar, loadUsername, saveUsername } from '../services/session';
 import { Alert, Button, Input, Label } from '../components/ui';
 
 const MODE_LABELS: Record<OnlineRoomSummary['gameMode'], string> = {
@@ -73,7 +73,7 @@ export default function OnlinePage(): JSX.Element {
 
     setJoiningRoomId(roomId);
     setError('');
-    socket.emit('joinRoom', { roomId, username: trimmed }, (response) => {
+    socket.emit('joinRoom', { roomId, username: trimmed, avatar: loadPlayerAvatar() }, (response) => {
       setJoiningRoomId(undefined);
       if (!response.ok) {
         setError(response.error);

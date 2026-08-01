@@ -5,7 +5,8 @@ export const STORAGE_KEYS = {
   installationId: 'wow.installation-id',
   pushRegistration: 'wow.push-registration',
   theme: 'wow-theme',
-  username: 'wow.username'
+  username: 'wow.username',
+  avatar: 'wow.avatar'
 } as const;
 
 const startupKeys = Object.values(STORAGE_KEYS);

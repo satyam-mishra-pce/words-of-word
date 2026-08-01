@@ -1,8 +1,9 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Alert, Button, Input, Label } from '../components/ui';
+import { PlayerAvatarEditor } from '../components/PlayerAvatarEditor';
 import { NativeNotificationPrompt } from '../components/NativeNotificationPrompt';
-import { loadUsername, saveUsername } from '../services/session';
+import { Alert, Avatar, Button, Input } from '../components/ui';
+import { loadPlayerAvatar, loadUsername, savePlayerAvatar, saveUsername } from '../services/session';
 import { getGameServerUrl } from '../services/platform';
 
 const FLOAT_CHARS = ['W', 'O', 'R', 'D', 'S', '?'];
@@ -16,11 +17,29 @@ interface PublicStats {
   wordsFound: number;
 }
 
+function ArrowIcon(): JSX.Element {
+  return (
+    <svg viewBox="0 0 18 18" aria-hidden="true">
+      <path d="M3 9h11M10 4l5 5-5 5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function EditIcon(): JSX.Element {
+  return (
+    <svg viewBox="0 0 18 18" aria-hidden="true">
+      <path d="m11.8 3.2 3 3M3.5 14.5l2.4-.5 8.5-8.5-2-2L3.9 12l-.4 2.5Z" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.55" />
+    </svg>
+  );
+}
+
 export default function HomePage(): JSX.Element {
   const navigate = useNavigate();
   const [username, setUsername] = useState(loadUsername());
+  const [avatar, setAvatar] = useState(loadPlayerAvatar());
   const [error, setError] = useState('');
   const [stats, setStats] = useState<PublicStats | undefined>();
+  const [isAvatarEditorOpen, setAvatarEditorOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,13 +62,19 @@ export default function HomePage(): JSX.Element {
     };
   }, []);
 
+  function updateAvatar(nextAvatar: typeof avatar): void {
+    setAvatar(nextAvatar);
+    savePlayerAvatar(nextAvatar);
+  }
+
   function requireUsername(): string | undefined {
     const trimmed = username.trim();
     if (!trimmed) {
-      setError('Please enter a username.');
+      setError('Choose a player name to enter the room.');
       return undefined;
     }
     saveUsername(trimmed);
+    savePlayerAvatar(avatar);
     return trimmed;
   }
 
@@ -65,71 +90,103 @@ export default function HomePage(): JSX.Element {
     if (requireUsername()) navigate('/join');
   }
 
-  function dailyWord(): void {
-    if (requireUsername()) navigate('/daily');
-  }
-
   function submit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
     onlineRoom();
   }
 
   return (
-    <main className="page-shell">
-      <div className="float-letters" aria-hidden="true">
-        {FLOAT_CHARS.map((char) => (
-          <span key={char} className="float-letter">{char}</span>
-        ))}
+    <main className="starter-shell">
+      <div className="starter-letter-field" aria-hidden="true">
+        {FLOAT_CHARS.map((char, index) => <span key={`${char}-${index}`}>{char}</span>)}
       </div>
 
-      <section className="hero-card">
-        <p className="eyebrow">word battle · real-time</p>
-        <h1>Words of Word</h1>
-        <p className="hero-copy">
-          One enormous word. Hundreds hiding inside it. Race your friends to find them all before the clock hits zero.
-        </p>
+      <header className="starter-header">
+        <a className="starter-brand" href="/" aria-label="Words of Word home">
+          words <i>of</i> word
+        </a>
+        <div className="starter-header__actions">
+          {stats && (
+            <span className="starter-live-count" title={`${stats.activeGames} live rooms`}>
+              <i /> {stats.activePlayers} playing
+            </span>
+          )}
+          <button type="button" className="starter-daily-link" onClick={() => navigate('/daily')} aria-label="Daily word">
+            <span><b>Daily</b> <em>word</em></span>
+            <ArrowIcon />
+          </button>
+        </div>
+      </header>
 
-        {stats && (
-          <div className="public-stats" aria-label="Live game stats">
-            <span><strong>{stats.activePlayers}</strong> playing now</span>
-            <span><strong>{stats.activeGames}</strong> live rooms</span>
-            <span><strong>{stats.uniqueDevices}</strong> unique players</span>
+      <div className="starter-center">
+        <section className="starter-stage" aria-labelledby="starter-title">
+          <div className="starter-intro">
+            <p className="starter-kicker">word battle · real-time</p>
+            <h1 id="starter-title">words of word</h1>
+            <p>One enormous word. Hundreds hiding inside it. Race your friends to find them all before the clock hits zero.</p>
+            {stats && (
+              <div className="starter-proof" aria-label="Live game stats">
+                <span><strong>{stats.activeGames}</strong> rooms live</span>
+                <span><strong>{stats.wordsFound.toLocaleString()}</strong> words found</span>
+              </div>
+            )}
           </div>
-        )}
 
-        <form className="entry-panel" onSubmit={submit}>
-          <div>
-            <Label htmlFor="username">Player name</Label>
-            <Input
-              id="username"
-              value={username}
-              onChange={(e) => { setUsername(e.currentTarget.value); setError(''); }}
-              placeholder="e.g. Lexicon Larry"
-              maxLength={20}
-              autoComplete="nickname"
-              hasError={Boolean(error)}
-            />
-          </div>
+          <form className="starter-console" onSubmit={submit}>
+            <div className="starter-profile">
+              <button
+                type="button"
+                className="starter-avatar-button"
+                onClick={() => setAvatarEditorOpen(true)}
+                aria-label="Customize your player character"
+              >
+                <span className="starter-avatar-frame">
+                  <Avatar name={username} avatar={avatar} size="lg" />
+                  <span className="starter-avatar-edit"><EditIcon /></span>
+                </span>
+              </button>
 
-          {error && <Alert variant="error">{error}</Alert>}
+              <div className="starter-name-field">
+                <Input
+                  id="username"
+                  aria-label="Player name"
+                  value={username}
+                  onChange={(event) => { setUsername(event.currentTarget.value); setError(''); }}
+                  placeholder="Player name"
+                  maxLength={20}
+                  autoComplete="nickname"
+                  hasError={Boolean(error)}
+                />
+              </div>
+            </div>
 
-          <div className="button-stack" style={{ marginTop: 4 }}>
-            <Button variant="primary" size="lg" fullWidth type="button" onClick={onlineRoom}>
-              Online Multiplayer
+            {error && <Alert variant="error">{error}</Alert>}
+
+            <Button variant="primary" size="lg" fullWidth type="submit" className="starter-primary-action">
+              Online Multiplayer <ArrowIcon />
             </Button>
-            <Button variant="secondary" size="lg" fullWidth type="button" onClick={createRoom}>
-              Create Private Room
-            </Button>
-            <Button variant="secondary" size="lg" fullWidth type="button" onClick={joinRoom}>
-              Join Private Room
-            </Button>
-            <Button className="daily-word-cta" variant="ghost" size="lg" fullWidth type="button" onClick={dailyWord}>
-              Daily Word
-            </Button>
-          </div>
-        </form>
-        <NativeNotificationPrompt />
-      </section>
+
+            <div className="starter-private-actions" aria-label="Private room actions">
+              <Button variant="secondary" size="md" type="button" onClick={createRoom}>
+                Create Private Room
+              </Button>
+              <Button variant="secondary" size="md" type="button" onClick={joinRoom}>
+                Join Private Room
+              </Button>
+            </div>
+
+            <NativeNotificationPrompt />
+          </form>
+        </section>
+      </div>
+
+      <PlayerAvatarEditor
+        open={isAvatarEditorOpen}
+        onClose={() => setAvatarEditorOpen(false)}
+        avatar={avatar}
+        name={username}
+        onChange={updateAvatar}
+      />
     </main>
   );
 }

@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { RoomSnapshot } from '@wow/shared';
 import socket from '../services/socket';
-import { loadUsername, saveUsername } from '../services/session';
+import { loadPlayerAvatar, loadUsername, saveUsername } from '../services/session';
 import { Alert, Button, Input, Label } from '../components/ui';
 
 export default function JoinPage(): JSX.Element {
@@ -40,7 +40,7 @@ export default function JoinPage(): JSX.Element {
     setError('');
     saveUsername(trimmedUsername);
 
-    socket.emit('joinRoom', { roomId: trimmedRoomCode, username: trimmedUsername }, (response) => {
+    socket.emit('joinRoom', { roomId: trimmedRoomCode, username: trimmedUsername, avatar: loadPlayerAvatar() }, (response) => {
       setIsJoining(false);
       if (!response.ok) { setError(response.error); return; }
       navigate(`/room/${response.data.snapshot.roomId}`);
