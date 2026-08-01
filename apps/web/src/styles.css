@@ -1178,28 +1178,15 @@ html[data-native-app="true"] .ui-dialog-backdrop {
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Timer section — minimal stat row */
+/* Timer section — compact centered */
 .timer-section {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 20px;
-  padding: 10px 0;
-  background: transparent;
-  border: none;
-  transition: none;
+  padding: 6px 0;
 }
 .timer-section.urgent .timer-meta { color: var(--error); }
-.timer-meta { text-align: left; }
-.timer-label {
-  font-size: 0.64rem;
-  text-transform: lowercase;
-  letter-spacing: 0.10em;
-  color: var(--sub);
-  display: block;
-  margin-bottom: 6px;
-}
-.timer-progress-wrap { width: 120px; }
+.timer-meta { display: none; }
 
 /* Between rounds */
 .between-rounds {
@@ -1249,40 +1236,42 @@ html[data-native-app="true"] .ui-dialog-backdrop {
   gap: 10px;
 }
 
-/* Hints — intentionally compact: an optional tactical assist, not a second game board. */
+/* Hints — minimal inline prompt */
 .hint-panel {
-  display: grid;
-  gap: 12px;
-  padding: 14px 0;
-  border-top: 1px solid var(--main-25);
-  border-bottom: 1px solid var(--main-25);
-  background: linear-gradient(90deg, var(--main-10), transparent 72%);
-}
-.hint-panel--revealed { background: linear-gradient(90deg, var(--main-15), transparent 78%); }
-.hint-panel__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  background: var(--main-10);
+}
+.hint-panel--revealed {
+  display: grid;
+  gap: 10px;
+  background: var(--main-10);
+}
+.hint-panel__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 .hint-panel__header h3 {
-  margin: 2px 0 0;
+  margin: 0;
   color: var(--text);
-  font-size: 0.95rem;
+  font-size: 0.82rem;
   font-weight: 600;
 }
 .hint-panel__kicker {
-  display: block;
-  color: var(--main);
-  font-size: 0.60rem;
-  font-weight: 700;
-  letter-spacing: 0.13em;
-  text-transform: uppercase;
+  display: none;
 }
-.hint-panel__action { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.hint-panel__action p,
-.hint-panel__help { margin: 0; color: var(--sub); font-size: 0.74rem; line-height: 1.5; }
-.hint-panel__action p { flex: 1 1 220px; }
+.hint-panel__action {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.hint-panel__action p { display: none; }
+.hint-panel__help { margin: 0; color: var(--sub); font-size: 0.68rem; }
 .hint-list { display: grid; gap: 8px; padding: 0; margin: 0; list-style: none; }
 .hint-clue {
   display: grid;
@@ -1314,7 +1303,6 @@ html[data-native-app="true"] .ui-dialog-backdrop {
   padding: 8px 0;
   background: transparent;
   border: none;
-  border-top: 1px solid var(--sub-2);
 }
 .words-header {
   display: flex;
@@ -1415,7 +1403,6 @@ html[data-native-app="true"] .ui-dialog-backdrop {
   padding: 14px 0;
   background: transparent;
   border: none;
-  border-top: 1px solid var(--sub-2);
   display: grid;
   gap: 10px;
 }
@@ -1908,15 +1895,16 @@ html[data-native-app="true"][data-keyboard-open="true"] .theme-toggle {
     font-size: 0.60rem;
   }
 
-  /* ── Hint panel: compact ── */
+  /* ── Hint panel: inline compact ── */
   .hint-panel {
-    padding: 10px 0;
+    padding: 8px 10px;
     gap: 8px;
   }
-  .hint-panel__kicker { font-size: 0.52rem; }
-  .hint-panel__header h3 { font-size: 0.80rem; }
-  .hint-panel__action p,
-  .hint-panel__help { font-size: 0.70rem; }
+  .hint-panel--revealed {
+    padding: 10px;
+  }
+  .hint-panel__header h3 { font-size: 0.75rem; }
+  .hint-panel .ui-btn { padding: 6px 10px; font-size: 0.70rem; }
   .hint-clue {
     grid-template-columns: 1fr;
     gap: 4px;

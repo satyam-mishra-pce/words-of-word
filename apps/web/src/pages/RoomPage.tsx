@@ -1091,27 +1091,19 @@ export default function RoomPage(): JSX.Element {
             {/* Private player hints */}
             {snapshot.settings.hintsEnabled && snapshot.phase === 'round' && !needsRejoin && (
               <section className={`hint-panel${hasUsedHint ? ' hint-panel--revealed' : ''}`} aria-labelledby="hint-panel-title" aria-live="polite">
-                <div className="hint-panel__header">
-                  <div>
-                    <span className="hint-panel__kicker">private assist</span>
-                    <h3 id="hint-panel-title">Need a nudge?</h3>
-                  </div>
-                  <Badge variant={hasUsedHint ? 'gold' : 'ink'}>−{HINT_COST} pts</Badge>
-                </div>
-
                 {hasUsedHint ? (
                   <>
+                    <div className="hint-panel__header">
+                      <h3 id="hint-panel-title">Hints</h3>
+                      <Badge variant="gold">−{HINT_COST}</Badge>
+                    </div>
                     <ol className="hint-list">
                       {activeHints.map((hint, hintIndex) => (
                         <li key={`hint-${hintIndex}`} className="hint-clue">
-                          <span className="hint-clue__label">Hint {hintIndex + 1} · {hint.letters.length} letters</span>
-                          <span
-                            className="hint-pattern"
-                            role="img"
-                            aria-label={`Hint ${hintIndex + 1}: a ${hint.letters.length}-letter word with ${hint.blanks} blank${hint.blanks === 1 ? '' : 's'}`}
-                          >
+                          <span className="hint-clue__label">{hint.letters.length} letters</span>
+                          <span className="hint-pattern" aria-label={`${hint.letters.length}-letter word`}>
                             {hint.letters.map((letter, letterIndex) => (
-                              <span key={`${hintIndex}-${letterIndex}`} className={`hint-letter${letter ? ' hint-letter--revealed' : ''}`} aria-hidden="true">
+                              <span key={`${hintIndex}-${letterIndex}`} className={`hint-letter${letter ? ' hint-letter--revealed' : ''}`}>
                                 {letter ?? ''}
                               </span>
                             ))}
@@ -1119,16 +1111,16 @@ export default function RoomPage(): JSX.Element {
                         </li>
                       ))}
                     </ol>
-                    <p className="hint-panel__help">These clues are private. Fill the blanks, then submit your guesses.</p>
                   </>
                 ) : (
-                  <div className="hint-panel__action">
-                    <p>Reveal {HINTS_PER_REQUEST} valid hidden words with enough blanks to solve them yourself.</p>
+                  <>
+                    <div className="hint-panel__header">
+                      <h3 id="hint-panel-title">Need a hint?</h3>
+                    </div>
                     <Button variant="outline" size="sm" onClick={requestHint} disabled={!canUseHint} isLoading={isRequestingHint}>
-                      Reveal {HINTS_PER_REQUEST} hints · −{HINT_COST} pts
+                      −{HINT_COST} pts
                     </Button>
-                    {!canUseHint && <span className="hint-panel__help">Hints are available while you are active in the round.</span>}
-                  </div>
+                  </>
                 )}
               </section>
             )}
