@@ -1270,6 +1270,7 @@ class GameRoomManager {
       room.bustWords.set(socketId, evaluation.normalizedWord);
     }
 
+    const scoreBeforeWord = player.score;
     playerWords.add(evaluation.normalizedWord);
     let acceptedMessage = room.settings.gameMode === 'commonWord'
       ? this.applyCommonWordScore(room, player, evaluation.normalizedWord)
@@ -1300,6 +1301,11 @@ class GameRoomManager {
         }
       }
     }
+    const hitSprintTarget = this.sprintTargetReached(room, player, playerWords);
+    if (hitSprintTarget) {
+      player.score += FASTEST_N_BONUS;
+    }
+
     this.analytics.recordWordAccepted(room, socketId);
 
     this.io.to(socketId).emit('wordAccepted', {
@@ -1307,7 +1313,8 @@ class GameRoomManager {
       word: evaluation.normalizedWord,
       words: Array.from(playerWords).sort(),
       message: acceptedMessage,
-      score: player.score
+      score: player.score,
+      scoreDelta: player.score - scoreBeforeWord
     } satisfies WordAcceptedPayload);
     this.emitScoresUpdated(room);
 
@@ -1317,8 +1324,7 @@ class GameRoomManager {
       this.io.to(room.id).emit('timeUpdate', { timeLeft: room.timeLeft, lightningTimeLeft: Object.fromEntries(room.lightningTimeLeft) });
     }
 
-    if (this.sprintTargetReached(room, player, playerWords)) {
-      player.score += FASTEST_N_BONUS;
+    if (hitSprintTarget) {
       const message = this.usesTeams(room.settings) && player.teamId
         ? `${TEAM_NAMES[player.teamId]} reached ${room.settings.fastestWordTarget} words first. ${player.name} earned a ${FASTEST_N_BONUS} point sprint bonus!`
         : `${player.name} reached ${room.settings.fastestWordTarget} words first and earned a ${FASTEST_N_BONUS} point bonus!`;

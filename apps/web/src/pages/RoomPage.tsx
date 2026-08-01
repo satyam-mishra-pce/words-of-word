@@ -6,6 +6,7 @@ import { loadUsername } from '../services/session';
 import { hapticError, hapticLight, hapticMedium, hapticSuccess, hapticWarning } from '../services/nativeFeedback';
 import { getRoomInviteUrl } from '../services/platform';
 import { copyTextToClipboard, shareRoomInvite } from '../services/nativeShare';
+import '../styles/game-score-feedback.css';
 import {
   Alert,
   Avatar,
@@ -105,6 +106,81 @@ interface NegativeMarkedWord {
   penalty: number;
 }
 
+interface ScoreBurst {
+  id: number;
+  delta: number;
+}
+
+interface PlayerFinalAward {
+  title: string;
+  meaning: string;
+}
+
+interface FinalPodiumProps {
+  players: FinalScore[];
+  currentPlayerId: string | undefined;
+  getAward: (player: FinalScore) => PlayerFinalAward;
+}
+
+function ordinal(value: number): string {
+  const remainder = value % 100;
+  if (remainder >= 11 && remainder <= 13) return `${value}th`;
+
+  switch (value % 10) {
+    case 1: return `${value}st`;
+    case 2: return `${value}nd`;
+    case 3: return `${value}rd`;
+    default: return `${value}th`;
+  }
+}
+
+function FinalPodium({ players, currentPlayerId, getAward }: FinalPodiumProps): JSX.Element | null {
+  const slots: Array<{ player: FinalScore; place: 1 | 2 | 3 }> = [];
+  const runnerUp = players[1];
+  const winner = players[0];
+  const thirdPlace = players[2];
+
+  if (runnerUp) slots.push({ player: runnerUp, place: 2 });
+  if (winner) slots.push({ player: winner, place: 1 });
+  if (thirdPlace) slots.push({ player: thirdPlace, place: 3 });
+  if (slots.length === 0) return null;
+
+  return (
+    <section className="final-podium" aria-label="Top three players">
+      <div className="final-podium__heading">
+        <span>Top players</span>
+        <span>Final score</span>
+      </div>
+      <div className="final-podium__stage">
+        {slots.map(({ player, place }) => {
+          const award = getAward(player);
+          const isCurrentPlayer = player.playerId === currentPlayerId;
+          return (
+            <article
+              key={player.playerId}
+              className={`podium-player podium-player--${place}${isCurrentPlayer ? ' podium-player--self' : ''}`}
+              data-rank={player.rank}
+              aria-label={`${ordinal(player.rank)}, ${player.playerName}, ${player.score} points`}
+            >
+              <div className="podium-player__profile">
+                <span className="podium-player__medal" aria-hidden="true">{RANK_ICONS[player.rank] ?? `#${player.rank}`}</span>
+                <Avatar name={player.playerName} colorIndex={place - 1} size="lg" className="podium-player__avatar" />
+                <div className="podium-player__identity">
+                  <strong title={player.playerName}>{player.playerName}</strong>
+                  <span>{isCurrentPlayer ? 'You · ' : ''}{ordinal(player.rank)}</span>
+                </div>
+                <span className="podium-player__award" title={award.meaning}>{award.title}</span>
+                <span className="podium-player__score"><strong>{player.score}</strong><small>pts</small></span>
+              </div>
+              <div className="podium-player__plinth" aria-hidden="true"><span>{player.rank}</span></div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 export default function RoomPage(): JSX.Element {
   const params = useParams();
   const navigate = useNavigate();
@@ -138,12 +214,15 @@ export default function RoomPage(): JSX.Element {
   const [draftSettings, setDraftSettings] = useState<GameSettings | undefined>();
   const [activeHints, setActiveHints] = useState<WordHint[]>([]);
   const [isRequestingHint, setIsRequestingHint] = useState(false);
+  const [scoreBursts, setScoreBursts] = useState<ScoreBurst[]>([]);
 
   // Keep a ref to the word input so we can restore focus after submit
   const inputRef = useRef<HTMLInputElement>(null);
   // Track the source word at round-end time for history labelling
   const currentWordRef = useRef('');
   const previousPhaseRef = useRef<RoomSnapshot['phase'] | undefined>();
+  const scoreBurstIdRef = useRef(0);
+  const scoreBurstTimersRef = useRef<Map<number, number>>(new Map());
 
   const currentPlayerId = socket.id;
   const currentPlayer = useMemo(
@@ -223,6 +302,28 @@ export default function RoomPage(): JSX.Element {
         return { ...team, rank: currentRank };
       });
   }, [finalTeamScores, snapshot]);
+  const finalPlayerStandings = useMemo<FinalScore[]>(() => {
+    if (finalScores.length > 0) return finalScores;
+    if (snapshot?.phase !== 'gameOver') return [];
+
+    let previousScore: number | undefined;
+    let currentRank = 0;
+    return [...snapshot.players]
+      .sort((left, right) => right.score - left.score)
+      .map((player) => {
+        if (previousScore === undefined || player.score !== previousScore) {
+          currentRank += 1;
+          previousScore = player.score;
+        }
+
+        return {
+          playerId: player.id,
+          playerName: player.name,
+          score: player.score,
+          rank: currentRank
+        };
+      });
+  }, [finalScores, snapshot]);
 
   function wordPoints(word: string): number {
     if (isBingoMode) {
@@ -362,6 +463,11 @@ export default function RoomPage(): JSX.Element {
     return () => window.clearTimeout(t);
   }, [bustFlash]);
 
+  useEffect(() => () => {
+    scoreBurstTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    scoreBurstTimersRef.current.clear();
+  }, []);
+
   /* ── socket setup ── */
   useEffect(() => {
     if (!roomId) return;
@@ -435,6 +541,7 @@ export default function RoomPage(): JSX.Element {
     });
     socket.on('wordAccepted', (p) => {
       setInputFeedback('success');
+      if (p.playerId === socket.id && typeof p.scoreDelta === 'number') queueScoreBurst(p.scoreDelta);
       void hapticLight();
       if (p.message) setNotice(p.message);
       if (p.message.includes('-3')) {
@@ -453,6 +560,7 @@ export default function RoomPage(): JSX.Element {
     });
     socket.on('wordRejected', (p) => {
       setInputFeedback('error');
+      if (p.penalty) queueScoreBurst(p.penalty);
       void hapticError();
       setNotice(p.message);
       if (p.penalty && p.penalty < 0) {
@@ -770,7 +878,28 @@ export default function RoomPage(): JSX.Element {
     });
   }
 
+  function queueScoreBurst(delta: number): void {
+    if (!Number.isFinite(delta) || delta === 0) return;
+
+    const id = scoreBurstIdRef.current;
+    scoreBurstIdRef.current += 1;
+    setScoreBursts((current) => [...current, { id, delta }].slice(-3));
+
+    const timer = window.setTimeout(() => {
+      scoreBurstTimersRef.current.delete(id);
+      setScoreBursts((current) => current.filter((burst) => burst.id !== id));
+    }, 1000);
+    scoreBurstTimersRef.current.set(id, timer);
+  }
+
+  function clearScoreBursts(): void {
+    scoreBurstTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    scoreBurstTimersRef.current.clear();
+    setScoreBursts([]);
+  }
+
   function resetClientGameState(): void {
+    clearScoreBursts();
     setRoundResults(undefined);
     setFinalScores([]);
     setFinalTeamScores([]);
@@ -1080,15 +1209,22 @@ export default function RoomPage(): JSX.Element {
           <div className="game-over-panel">
             <div>
               <p className="eyebrow">Game over</p>
-              <h2 style={{ fontSize: 'clamp(1.6rem,4vw,2.2rem)', lineHeight: 1, marginBottom: (isTeamsMode ? finalTeamStandings.length : finalScores.length) > 0 ? 4 : 0 }}>
+              <h2 style={{ fontSize: 'clamp(1.6rem,4vw,2.2rem)', lineHeight: 1, marginBottom: (isTeamsMode ? finalTeamStandings.length : finalPlayerStandings.length) > 0 ? 4 : 0 }}>
                 Final Standings
               </h2>
-              {(isTeamsMode ? finalTeamStandings.length : finalScores.length) > 0 && (
+              {(isTeamsMode ? finalTeamStandings.length : finalPlayerStandings.length) > 0 && (
                 <p className="muted" style={{ fontSize: '0.82rem', marginBottom: 16 }}>
-                  {isTeamsMode ? `${finalTeamStandings[0]?.teamName ?? 'A team'} takes the crown.` : `${finalScores[0]?.playerName ?? 'Someone'} takes the crown.`}
+                  {isTeamsMode ? `${finalTeamStandings[0]?.teamName ?? 'A team'} takes the crown.` : `${finalPlayerStandings[0]?.playerName ?? 'Someone'} takes the crown.`}
                 </p>
               )}
             </div>
+            {finalPlayerStandings.length > 0 && (
+              <FinalPodium
+                players={finalPlayerStandings}
+                currentPlayerId={currentPlayerId}
+                getAward={finalPlayerAward}
+              />
+            )}
             {isTeamsMode ? (
               finalTeamStandings.length > 0 ? (
                 <div className="standings-list">
@@ -1114,9 +1250,9 @@ export default function RoomPage(): JSX.Element {
               ) : (
                 <p className="muted">Waiting for team scores…</p>
               )
-            ) : finalScores.length > 0 ? (
+            ) : finalPlayerStandings.length > 0 ? (
               <div className="standings-list">
-                {finalScores.map((player) => (
+                {finalPlayerStandings.map((player) => (
                   <div key={player.playerId} className={`standing-row rank-${player.rank}`}>
                     <span className="standing-rank">{RANK_ICONS[player.rank] ?? `#${player.rank}`}</span>
                     <div>
@@ -1139,11 +1275,11 @@ export default function RoomPage(): JSX.Element {
             ) : (
               <p className="muted">Waiting for scores…</p>
             )}
-            {isTeamsMode && finalScores.length > 0 && (
+            {isTeamsMode && finalPlayerStandings.length > 0 && (
               <div className="player-awards">
                 <p className="eyebrow" style={{ marginBottom: 8 }}>Player titles</p>
                 <div className="standings-list">
-                  {finalScores.map((player) => (
+                  {finalPlayerStandings.map((player) => (
                     <div key={player.playerId} className="standing-row">
                       <span className="standing-rank">🏷️</span>
                       <div>
@@ -1467,24 +1603,37 @@ export default function RoomPage(): JSX.Element {
                       </Tooltip>
                     </div>
                     <form className="word-form" onSubmit={submitWord}>
-                      <Input
-                        ref={inputRef}
-                        type={isTypistMode ? 'password' : 'text'}
-                        value={inputWord}
-                        onChange={(e) => setInputWord(e.currentTarget.value)}
-                        onFocus={() => setIsWordInputFocused(true)}
-                        onBlur={() => setIsWordInputFocused(false)}
-                        placeholder={isCurrentPlayerBusted ? 'You are busted this round 💣' : canSubmit ? (isTypistMode ? 'Blind Type: hidden word' : 'Type a word…') : 'Rejoin to submit'}
-                        disabled={!canSubmit}
-                        hasError={inputFeedback === 'error'}
-                        hasSuccess={inputFeedback === 'success'}
-                        autoFocus
-                        autoComplete="off"
-                        autoCorrect="off"
-                        autoCapitalize="none"
-                        spellCheck={false}
-                        enterKeyHint="done"
-                      />
+                      <div className="word-form__input-wrap">
+                        <Input
+                          ref={inputRef}
+                          type={isTypistMode ? 'password' : 'text'}
+                          value={inputWord}
+                          onChange={(e) => setInputWord(e.currentTarget.value)}
+                          onFocus={() => setIsWordInputFocused(true)}
+                          onBlur={() => setIsWordInputFocused(false)}
+                          placeholder={isCurrentPlayerBusted ? 'You are busted this round 💣' : canSubmit ? (isTypistMode ? 'Blind Type: hidden word' : 'Type a word…') : 'Rejoin to submit'}
+                          disabled={!canSubmit}
+                          hasError={inputFeedback === 'error'}
+                          hasSuccess={inputFeedback === 'success'}
+                          autoFocus
+                          autoComplete="off"
+                          autoCorrect="off"
+                          autoCapitalize="none"
+                          spellCheck={false}
+                          enterKeyHint="done"
+                        />
+                        <span className="word-score-float-layer" aria-live="polite" aria-atomic="false">
+                          {scoreBursts.map((burst) => (
+                            <span
+                              key={burst.id}
+                              className={`word-score-float${burst.delta < 0 ? ' word-score-float--negative' : ''}`}
+                              aria-label={`${burst.delta > 0 ? 'plus' : 'minus'} ${Math.abs(burst.delta)} points`}
+                            >
+                              {burst.delta > 0 ? `+${burst.delta}` : `−${Math.abs(burst.delta)}`}
+                            </span>
+                          ))}
+                        </span>
+                      </div>
                       <Button
                         variant="primary"
                         type="submit"

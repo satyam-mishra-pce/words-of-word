@@ -1,0 +1,357 @@
+/* Immediate scoring feedback stays anchored to the entry field instead of
+   competing with the gameplay scroller or score sidebar. */
+.word-form__input-wrap {
+  position: relative;
+  min-width: 0;
+}
+
+.word-form__input-wrap > .ui-input-wrap,
+.word-form__input-wrap .ui-input {
+  min-width: 0;
+  width: 100%;
+}
+
+.word-score-float-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.word-score-float {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.65em;
+  padding: 0.2em 0.45em;
+  border: 1px solid color-mix(in srgb, var(--green) 58%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  box-shadow: 0 5px 22px color-mix(in srgb, var(--green) 28%, transparent);
+  color: var(--green);
+  font: 800 clamp(0.95rem, 2vw, 1.25rem) 'JetBrains Mono', monospace;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  text-shadow: 0 1px 10px color-mix(in srgb, var(--green) 45%, transparent);
+  transform: translate(-50%, -30%) scale(0.72);
+  animation: word-score-float-rise 1000ms var(--ease-out) both;
+}
+
+.word-score-float--negative {
+  border-color: color-mix(in srgb, var(--error) 60%, transparent);
+  box-shadow: 0 5px 22px color-mix(in srgb, var(--error) 25%, transparent);
+  color: var(--error);
+  text-shadow: 0 1px 10px color-mix(in srgb, var(--error) 42%, transparent);
+}
+
+@keyframes word-score-float-rise {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -20%) scale(0.72);
+  }
+  14% {
+    opacity: 1;
+    transform: translate(-50%, -58%) scale(1.08);
+  }
+  32% {
+    opacity: 1;
+    transform: translate(-50%, -78%) scale(0.98);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -190%) scale(1.04);
+  }
+}
+
+/* The final board borrows the playful physicality of a game-show podium: the
+   winner is literally elevated, while the detailed list below remains useful
+   for every player's full result. */
+.final-podium {
+  position: relative;
+  padding: 14px 12px 0;
+  border: 1px solid var(--sub-2);
+  border-radius: var(--r-lg);
+  background:
+    radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--main) 16%, transparent), transparent 57%),
+    linear-gradient(180deg, color-mix(in srgb, var(--bg-3) 55%, transparent), transparent);
+  overflow: hidden;
+}
+
+.final-podium::before {
+  position: absolute;
+  inset: auto 10% 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--main), transparent);
+  content: '';
+}
+
+.final-podium__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  color: var(--sub);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.final-podium__heading span:first-child { color: var(--main); }
+
+.final-podium__stage {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: end;
+  gap: clamp(5px, 1.5vw, 14px);
+  min-height: 248px;
+}
+
+.podium-player {
+  --podium-height: 84px;
+  --podium-color: var(--sub);
+  --podium-shadow: color-mix(in srgb, var(--sub) 25%, transparent);
+  display: grid;
+  grid-template-rows: auto var(--podium-height);
+  align-self: end;
+  min-width: 0;
+  animation: final-podium-arrive 460ms var(--ease-out) both;
+}
+
+.podium-player--1 {
+  grid-column: 2;
+  animation-delay: 100ms;
+}
+
+.podium-player--2 {
+  grid-column: 1;
+  animation-delay: 40ms;
+}
+
+.podium-player--3 {
+  grid-column: 3;
+  animation-delay: 180ms;
+}
+
+/* Placement controls the column; rank controls the tier. That keeps tied
+   players on the same podium height and with the same medal treatment. */
+.podium-player[data-rank='1'] {
+  --podium-height: 132px;
+  --podium-color: var(--main);
+  --podium-shadow: color-mix(in srgb, var(--main) 32%, transparent);
+}
+
+.podium-player[data-rank='2'] {
+  --podium-height: 100px;
+  --podium-color: #b7c1ca;
+  --podium-shadow: rgba(183, 193, 202, 0.26);
+}
+
+.podium-player[data-rank='3'] {
+  --podium-height: 78px;
+  --podium-color: #cf8e5b;
+  --podium-shadow: rgba(207, 142, 91, 0.25);
+}
+
+.podium-player__profile {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  min-width: 0;
+  margin-bottom: -1px;
+  padding: 15px 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--podium-color) 64%, var(--sub-2));
+  border-radius: var(--r-md) var(--r-md) var(--r-xs) var(--r-xs);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--podium-color) 21%, var(--bg-sub)), var(--bg));
+  box-shadow: 0 12px 26px var(--podium-shadow);
+}
+
+.podium-player--self .podium-player__profile {
+  outline: 2px solid color-mix(in srgb, var(--main) 68%, transparent);
+  outline-offset: 2px;
+}
+
+.podium-player__medal {
+  position: absolute;
+  top: -17px;
+  right: 5px;
+  display: grid;
+  width: 31px;
+  height: 31px;
+  place-items: center;
+  border: 1px solid var(--bg);
+  border-radius: 999px;
+  background: var(--bg-sub);
+  box-shadow: 0 4px 12px var(--podium-shadow);
+  font-size: 1rem;
+}
+
+.podium-player__avatar {
+  width: 44px;
+  height: 44px;
+  border: 3px solid var(--podium-color);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--podium-color) 16%, transparent);
+  font-size: 0.88rem;
+}
+
+.podium-player__identity {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+  line-height: 1.1;
+  text-align: center;
+}
+
+.podium-player__identity strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: clamp(0.68rem, 1.35vw, 0.84rem);
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.podium-player__identity span {
+  color: var(--sub);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.podium-player__award {
+  overflow: hidden;
+  width: 100%;
+  color: var(--podium-color);
+  font-size: 0.56rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.podium-player__score {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  color: var(--podium-color);
+  font-family: 'JetBrains Mono', monospace;
+  line-height: 1;
+}
+
+.podium-player__score strong {
+  font-size: clamp(0.85rem, 1.8vw, 1.1rem);
+  letter-spacing: -0.06em;
+}
+
+.podium-player__score small {
+  color: var(--sub);
+  font-family: inherit;
+  font-size: 0.52rem;
+  font-weight: 700;
+}
+
+.podium-player__plinth {
+  position: relative;
+  display: grid;
+  min-height: var(--podium-height);
+  place-items: start center;
+  padding-top: 15px;
+  border: 1px solid color-mix(in srgb, var(--podium-color) 70%, var(--sub-2));
+  border-radius: var(--r-xs) var(--r-xs) 0 0;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--podium-color) 42%, var(--bg-3)), color-mix(in srgb, var(--podium-color) 14%, var(--bg)));
+  box-shadow: inset 0 1px color-mix(in srgb, white 22%, transparent), 0 12px 28px var(--podium-shadow);
+}
+
+.podium-player__plinth::after {
+  position: absolute;
+  right: 10%;
+  bottom: 0;
+  left: 10%;
+  height: 1px;
+  background: color-mix(in srgb, var(--podium-color) 72%, transparent);
+  content: '';
+}
+
+.podium-player__plinth span {
+  color: color-mix(in srgb, var(--podium-color) 90%, var(--text));
+  font: 800 clamp(1.2rem, 3vw, 1.9rem) 'JetBrains Mono', monospace;
+  line-height: 1;
+}
+
+@keyframes final-podium-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 640px) {
+  .final-podium {
+    margin: 0 -2px;
+    padding: 11px 8px 0;
+    border-radius: var(--r-md);
+  }
+
+  .final-podium__heading {
+    margin-bottom: 8px;
+    font-size: 0.52rem;
+  }
+
+  .final-podium__stage {
+    gap: 4px;
+    min-height: 198px;
+  }
+
+  .podium-player[data-rank='1'] { --podium-height: 103px; }
+  .podium-player[data-rank='2'] { --podium-height: 79px; }
+  .podium-player[data-rank='3'] { --podium-height: 62px; }
+
+  .podium-player__profile {
+    gap: 4px;
+    padding: 13px 4px 7px;
+  }
+
+  .podium-player__medal {
+    top: -14px;
+    right: 2px;
+    width: 26px;
+    height: 26px;
+    font-size: 0.82rem;
+  }
+
+  .podium-player__avatar {
+    width: 34px;
+    height: 34px;
+    border-width: 2px;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--podium-color) 16%, transparent);
+    font-size: 0.65rem;
+  }
+
+  .podium-player__identity strong { font-size: 0.64rem; }
+  .podium-player__identity span { font-size: 0.5rem; }
+  .podium-player__award { font-size: 0.47rem; }
+  .podium-player__score strong { font-size: 0.8rem; }
+  .podium-player__score small { display: none; }
+  .podium-player__plinth { padding-top: 10px; }
+  .podium-player__plinth span { font-size: 1.2rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .word-score-float,
+  .podium-player {
+    animation: none;
+  }
+}

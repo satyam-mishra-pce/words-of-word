@@ -379,6 +379,8 @@ export interface WordAcceptedPayload {
   words: string[];
   message: string;
   score: number;
+  /** Points gained or lost by this submitted word. */
+  scoreDelta: number;
 }
 
 export interface WordRejectedPayload {
