@@ -18,7 +18,7 @@ import {
   Separator,
   Spinner,
   Textarea,
-  TimerRing,
+  Progress,
   Tooltip,
 } from '../components/ui';
 
@@ -135,6 +135,13 @@ export default function RoomPage(): JSX.Element {
   const canUseHint = Boolean(snapshot?.settings.hintsEnabled && canSubmit && currentPlayerId && snapshot?.acceptedWords[currentPlayerId]);
   const hasUsedHint = activeHints.length > 0;
   const isUrgent = Boolean(snapshot?.phase === 'round' && displayedTimeLeft <= 10);
+  const hasGameplayChrome = snapshot?.phase === 'round' || snapshot?.phase === 'betweenRounds';
+  const timerTotal = isLightningMode ? Math.max(10, displayedTimeLeft) : snapshot?.settings.timePerRound ?? 1;
+  const timerProgress = Math.max(0, Math.min(100, (displayedTimeLeft / Math.max(1, timerTotal)) * 100));
+  const timerLabel = displayedTimeLeft >= 60
+    ? `${Math.floor(displayedTimeLeft / 60)}:${(displayedTimeLeft % 60).toString().padStart(2, '0')}`
+    : String(displayedTimeLeft);
+  const timerState = isUrgent ? 'urgent' : displayedTimeLeft <= 20 ? 'warn' : 'ok';
   const currentBet = currentPlayerId && snapshot ? snapshot.bettingBets[currentPlayerId] : undefined;
   const minimumBet = currentPlayerId && snapshot ? snapshot.minimumBets[currentPlayerId] ?? 3 : 3;
   const finalTeamStandings = useMemo(() => {
@@ -758,7 +765,7 @@ export default function RoomPage(): JSX.Element {
 
   /* ── main game view ── */
   return (
-    <main className={`game-shell ${isWordInputFocused ? 'is-typing' : ''}`}>
+    <main className={`game-shell${hasGameplayChrome ? ' has-gameplay-chrome' : ''}${isWordInputFocused ? ' is-typing' : ''}`}>
       {bustFlash && (
         <div className={`bust-overlay ${bustFlash.playerId === currentPlayerId ? 'self' : ''}`} role="status" aria-live="assertive">
           <div className="bomb-blast" aria-hidden="true">💣</div>
@@ -892,7 +899,7 @@ export default function RoomPage(): JSX.Element {
       </aside>
 
       {/* ── CENTER: Word Stage ── */}
-      <section className={`word-stage glass-panel${isBingoMode ? ' bingo-stage' : ''}${snapshot.phase === 'round' ? ' word-stage--active' : ''}`}>
+      <section className={`word-stage glass-panel${isBingoMode ? ' bingo-stage' : ''}${hasGameplayChrome ? ' word-stage--active' : ''}`}>
 
         {/* Stage notice — fixed height, opacity-only, no layout jump */}
         <div className={`stage-notice-bar${notice ? ' active' : ''}`} aria-live="polite">
@@ -1047,25 +1054,7 @@ export default function RoomPage(): JSX.Element {
             {snapshot.phase !== 'betting' && (
               <div className="gameplay-layout">
                 <div className="gameplay-header">
-                  {stageCtas}
-                  {/* Round progress strip */}
-            <div className="round-strip">
-              <span>Round {Math.max(snapshot.currentRound, 1)} / {snapshot.totalRounds}</span>
-              <div className="round-dots" aria-label="Round progress">
-                {Array.from({ length: snapshot.totalRounds }, (_, i) => {
-                  const roundNum = i + 1;
-                  const current = Math.max(snapshot.currentRound, 1);
-                  const cls = roundNum < current
-                    ? 'round-dot round-dot-done'
-                    : roundNum === current
-                      ? 'round-dot round-dot-current'
-                      : 'round-dot';
-                  return <span key={i} className={cls} />;
-                })}
-              </div>
-            </div>
-
-            {/* Current word display */}
+                  {/* Current word display */}
             <div className="current-word-card">
               <span className="current-word-label">Current Word</span>
               {snapshot.currentWord
@@ -1082,17 +1071,40 @@ export default function RoomPage(): JSX.Element {
             {/* Timer */}
             {snapshot.phase === 'round' && (
               <div className={`timer-section ${isUrgent ? 'urgent' : ''}`}>
-                <TimerRing
-                  timeLeft={displayedTimeLeft}
-                  totalTime={isLightningMode ? Math.max(10, displayedTimeLeft) : snapshot.settings.timePerRound}
-                  size={72}
-                />
+                <div className="round-timer">
+                  <Progress
+                    value={timerProgress}
+                    state={timerState}
+                    aria-label="Round time remaining"
+                    aria-valuetext={`${timerLabel} remaining`}
+                  />
+                  <span className="round-timer__label" aria-hidden="true">{timerLabel}</span>
+                </div>
               </div>
             )}
 
                 </div>
 
                 <div className="gameplay-scroll">
+                  {stageCtas}
+
+                  {/* Round progress strip */}
+                  <div className="round-strip">
+                    <span>Round {Math.max(snapshot.currentRound, 1)} / {snapshot.totalRounds}</span>
+                    <div className="round-dots" aria-label="Round progress">
+                      {Array.from({ length: snapshot.totalRounds }, (_, i) => {
+                        const roundNum = i + 1;
+                        const current = Math.max(snapshot.currentRound, 1);
+                        const cls = roundNum < current
+                          ? 'round-dot round-dot-done'
+                          : roundNum === current
+                            ? 'round-dot round-dot-current'
+                            : 'round-dot';
+                        return <span key={i} className={cls} />;
+                      })}
+                    </div>
+                  </div>
+
             {/* Private player hints */}
             {snapshot.settings.hintsEnabled && snapshot.phase === 'round' && !needsRejoin && (
               <section className={`hint-panel${hasUsedHint ? ' hint-panel--revealed' : ''}`} aria-labelledby="hint-panel-title" aria-live="polite">
