@@ -113,6 +113,10 @@ export const RestartGamePayloadSchema = z.object({
   autoStart: z.boolean().default(true)
 });
 
+export const LeaveRoomPayloadSchema = z.object({
+  roomId: RoomIdSchema
+});
+
 export const PushPlatformSchema = z.enum(['android', 'ios']);
 
 export const RegisterPushTokenPayloadSchema = z.object({
@@ -144,6 +148,7 @@ export type RequestHintPayload = z.infer<typeof RequestHintPayloadSchema>;
 export type UpdateTeamPayload = z.infer<typeof UpdateTeamPayloadSchema>;
 export type UpdateBetPayload = z.infer<typeof UpdateBetPayloadSchema>;
 export type RestartGamePayload = z.infer<typeof RestartGamePayloadSchema>;
+export type LeaveRoomPayload = z.infer<typeof LeaveRoomPayloadSchema>;
 export type PushPlatform = z.infer<typeof PushPlatformSchema>;
 export type RegisterPushTokenPayload = z.infer<typeof RegisterPushTokenPayloadSchema>;
 export type SetAppActivityPayload = z.infer<typeof SetAppActivityPayloadSchema>;
@@ -406,6 +411,7 @@ export interface ClientToServerEvents {
   submitWord: (payload: SubmitWordPayload, ack?: Ack<EmptyResult>) => void;
   requestHint: (payload: RequestHintPayload, ack?: Ack<HintResult>) => void;
   restartGame: (payload: RestartGamePayload, ack?: Ack<EmptyResult>) => void;
+  leaveRoom: (payload: LeaveRoomPayload, ack?: Ack<EmptyResult>) => void;
   registerPushToken: (payload: RegisterPushTokenPayload, ack?: Ack<EmptyResult>) => void;
   setAppActivity: (payload: SetAppActivityPayload, ack?: Ack<EmptyResult>) => void;
 }

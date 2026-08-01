@@ -21,6 +21,7 @@ import {
   HINTS_PER_REQUEST,
   HintResult,
   BingoTask,
+  LeaveRoomPayloadSchema,
   HostChangedPayload,
   JoinRoomPayloadSchema,
   QuickJoinRoomPayloadSchema,
@@ -2338,10 +2339,10 @@ function roomLogContext(snapshot: RoomSnapshot): Record<string, unknown> {
   };
 }
 
-function detachSocketFromCurrentRoom(socket: TypedSocket): void {
+function detachSocketFromCurrentRoom(socket: TypedSocket): ServerAck<EmptyResult> {
   const previousRoomId = manager.findRoomIdForSocket(socket.id);
   if (!previousRoomId) {
-    return;
+    return { ok: true, data: { ok: true } };
   }
 
   fastify.log.info({ socketId: socket.id, previousRoomId }, 'socket leaving previous room before room change');
@@ -2349,7 +2350,7 @@ function detachSocketFromCurrentRoom(socket: TypedSocket): void {
   const removal = manager.removePlayer(socket.id);
   if (!removal.ok) {
     fastify.log.warn({ socketId: socket.id, previousRoomId, error: removal.error }, 'failed to remove socket from previous room');
-    return;
+    return { ok: false, error: removal.error };
   }
 
   const snapshot = removal.data.snapshot;
@@ -2361,21 +2362,21 @@ function detachSocketFromCurrentRoom(socket: TypedSocket): void {
     ...(snapshot ? roomLogContext(snapshot) : {})
   }, 'socket removed from previous room');
 
-  if (!snapshot) {
-    return;
-  }
-
-  io.to(removal.data.roomId).emit('playerLeft', {
-    playerId: socket.id,
-    snapshot
-  } satisfies PlayerLeftPayload);
-
-  if (removal.data.hostChanged) {
-    io.to(removal.data.roomId).emit('hostChanged', {
-      hostId: snapshot.hostId,
+  if (snapshot) {
+    io.to(removal.data.roomId).emit('playerLeft', {
+      playerId: socket.id,
       snapshot
-    } satisfies HostChangedPayload);
+    } satisfies PlayerLeftPayload);
+
+    if (removal.data.hostChanged) {
+      io.to(removal.data.roomId).emit('hostChanged', {
+        hostId: snapshot.hostId,
+        snapshot
+      } satisfies HostChangedPayload);
+    }
   }
+
+  return { ok: true, data: { ok: true } };
 }
 
 io.on('connection', (socket) => {
@@ -2590,6 +2591,30 @@ io.on('connection', (socket) => {
     }
 
     const result = manager.restartGame(socket.id, parsed.data.roomId, parsed.data.autoStart);
+    reply(ack, result);
+  });
+
+  socket.on('leaveRoom', (payload, ack) => {
+    const parsed = LeaveRoomPayloadSchema.safeParse(payload);
+    if (!parsed.success) {
+      reply(ack, { ok: false, error: validationMessage(parsed.error.message) });
+      return;
+    }
+
+    const currentRoomId = manager.findRoomIdForSocket(socket.id);
+    if (currentRoomId !== parsed.data.roomId) {
+      reply(ack, { ok: false, error: 'You are no longer in this room.' });
+      return;
+    }
+
+    const result = detachSocketFromCurrentRoom(socket);
+    if (result.ok && clientId) {
+      // Keep the live socket's reconnect session: this player may create or join
+      // another room without reconnecting first, and that later room still needs
+      // normal disconnect cleanup. A room-less disconnect clears it below.
+      clearReconnectRemoval(clientId);
+      inactiveClientIds.delete(clientId);
+    }
     reply(ack, result);
   });
 

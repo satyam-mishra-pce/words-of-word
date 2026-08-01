@@ -998,15 +998,40 @@ html[data-native-app="true"] .ui-dialog-backdrop {
 .game-header__right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-shrink: 0;
 }
-.game-header__icon-action {
+.game-header__action {
   width: 34px;
+  min-width: 34px;
   height: 34px;
   padding: 0;
+  gap: 5px;
+  color: var(--sub);
 }
-.game-header__stop-action { gap: 6px; }
+.game-header__action:hover:not(:disabled) { color: var(--text); background: var(--bg-3); }
+.game-header__action-label,
+.game-header__action-meta { display: none; }
+.game-header__action--hint { color: var(--main); }
+.game-header__action--hint:hover:not(:disabled) { color: var(--main); background: var(--main-10); }
+.game-header__action--used { color: var(--sub); }
+.game-header__action--stop { color: var(--error); }
+.game-header__action--stop:hover:not(:disabled) { color: var(--error); background: var(--error-10); }
+.game-header__action--exit {
+  margin-left: 2px;
+  box-shadow: inset 1px 0 var(--sub-2);
+}
+.game-header__right--labelled .game-header__action {
+  width: auto;
+  min-width: 34px;
+  padding-inline: 10px;
+}
+.game-header__right--labelled .game-header__action-label { display: inline; }
+.game-header__right--labelled .game-header__action-meta {
+  display: inline;
+  color: var(--main);
+  font-size: 0.60rem;
+}
 
 .mix-config-banner {
   grid-column: 1 / -1;
@@ -1246,32 +1271,6 @@ body:has(.game-shell.has-gameplay-chrome),
   margin: 0;
   padding: 8px 16px 10px;
 }
-.round-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
-  min-width: 0;
-  padding: 5px 16px;
-  border-bottom: 1px solid rgba(100,102,105,0.32);
-}
-.round-action {
-  min-height: 32px;
-  padding: 5px 9px;
-  gap: 5px;
-  border-radius: var(--r-sm);
-  color: var(--sub);
-  font-size: 0.66rem;
-  letter-spacing: 0.01em;
-}
-.round-action svg { flex: 0 0 auto; }
-.round-action:hover:not(:disabled) { color: var(--text); background: var(--bg-3); }
-.round-action--hint { color: var(--main); }
-.round-action--hint:hover:not(:disabled) { color: var(--main); background: var(--main-10); }
-.round-action--used { color: var(--sub); }
-.round-action__meta { color: var(--main); font-size: 0.58rem; }
-.round-action--stop { color: var(--error); }
-.round-action--stop:hover:not(:disabled) { color: var(--error); background: var(--error-10); }
 .game-shell.has-gameplay-chrome .gameplay-scroll .bingo-board {
   max-height: none;
   margin: 0;
@@ -2117,7 +2116,29 @@ html[data-native-app="true"][data-keyboard-open="true"] .theme-toggle {
   }
   .game-header__right { gap: 4px; }
   .game-header__right .ui-btn-mini { padding: 5px 8px; font-size: 0.65rem; }
-  .game-header__right .game-header__icon-action { width: 30px; height: 30px; padding: 0; }
+  .game-header__right .game-header__action {
+    width: 30px;
+    min-width: 30px;
+    height: 30px;
+    padding: 0;
+    gap: 0;
+  }
+  /* Between rounds there is no entry field competing for space, so expand the
+     persistent controls into compact, readable labels. */
+  .game-header__right--labelled .game-header__action {
+    width: auto;
+    min-width: 0;
+    height: 30px;
+    padding-inline: 5px;
+    gap: 3px;
+    font-size: 0.56rem;
+  }
+  .game-header__right--labelled .game-header__action svg { width: 15px; height: 15px; }
+  .game-header__right--labelled .game-header__action-label { display: inline; }
+  .game-header__right--labelled .game-header__action-meta { display: none; }
+  @media (max-width: 360px) {
+    .game-header:has(.game-header__right--labelled) .game-header__mode { display: none; }
+  }
 
   /* Mix details are available outside an active round; do not create a third
      shell row that can displace the fixed game chrome. */
@@ -2231,7 +2252,7 @@ html[data-native-app="true"][data-keyboard-open="true"] .theme-toggle {
     scrollbar-width: thin;
   }
 
-  /* The bottom dock keeps all frequently used controls within thumb reach. */
+  /* The bottom dock is intentionally just for word entry. */
   .gameplay-layout > .gameplay-footer {
     grid-row: 3;
     min-width: 0;
@@ -2239,19 +2260,6 @@ html[data-native-app="true"][data-keyboard-open="true"] .theme-toggle {
     background: var(--bg);
     border-top: 1px solid var(--sub-2);
   }
-  .round-actions {
-    justify-content: space-between;
-    min-height: 40px;
-    padding: 4px 12px;
-    gap: 2px;
-  }
-  .round-action {
-    min-height: 34px;
-    padding: 6px 7px;
-    gap: 4px;
-    font-size: 0.62rem;
-  }
-  .round-action__meta { font-size: 0.54rem; }
   .gameplay-footer .word-form {
     min-width: 0;
     margin: 0;
@@ -2371,15 +2379,6 @@ html[data-native-app="true"][data-keyboard-open="true"] .theme-toggle {
 
   /* A floating theme control over the bottom form is unusable during a round. */
   #root:has(.game-shell) .theme-toggle { display: none; }
-}
-
-@media (max-width: 360px) {
-  .round-action {
-    min-width: 34px;
-    justify-content: center;
-    padding-inline: 6px;
-  }
-  .round-action .round-action__label { display: none; }
 }
 
 /* Landscape phones and tablets sit above the 640px layout breakpoint, but
