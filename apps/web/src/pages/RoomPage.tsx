@@ -751,7 +751,7 @@ export default function RoomPage(): JSX.Element {
     } : prev);
   }
 
-  function saveSettings(autoStart: boolean): void {
+  function saveSettings(): void {
     if (!draftSettings) return;
     const playerCount = snapshot?.players.length ?? 0;
     if (draftSettings.maxPlayers < playerCount) {
@@ -767,7 +767,6 @@ export default function RoomPage(): JSX.Element {
       if (!r.ok) { setError(r.error); return; }
       setError('');
       setShowSettingsDialog(false);
-      if (autoStart) restartGame();
     });
   }
 
@@ -1420,7 +1419,7 @@ export default function RoomPage(): JSX.Element {
                   <div className="gameplay-footer">
                     <div className="mobile-entry-tools" aria-label="Quick game controls">
                       {!needsRejoin && currentPlayerStanding && (
-                        <Tooltip content="Open live leaderboard">
+                        <Tooltip content="Open live leaderboard" className="ui-tooltip-start">
                           <Button
                             variant="ghost"
                             size="sm"
@@ -1679,7 +1678,7 @@ export default function RoomPage(): JSX.Element {
       <Dialog open={showSettingsDialog} onClose={() => setShowSettingsDialog(false)} size="lg" ariaLabel="Change settings">
         <p className="eyebrow">same room, new rules</p>
         <h1 style={{ fontSize: 'clamp(1.8rem,5vw,3rem)', lineHeight: 0.9, marginBottom: 12 }}>Change Settings</h1>
-        <p className="muted" style={{ marginBottom: 18 }}>Everyone stays seated. Saving resets scores and returns the room to the lobby.</p>
+        <p className="muted" style={{ marginBottom: 18 }}>Everyone stays seated. Saving resets scores and returns the room to the lobby, where the host can start when everyone is ready.</p>
 
         {draftSettings && (
           <div className="settings-grid">
@@ -1810,8 +1809,7 @@ export default function RoomPage(): JSX.Element {
 
         <div className="button-row">
           <Button variant="secondary" onClick={() => setShowSettingsDialog(false)}>Cancel</Button>
-          <Button variant="secondary" onClick={() => saveSettings(false)}>Save to Lobby</Button>
-          <Button variant="primary" onClick={() => saveSettings(true)}>Save & Restart</Button>
+          <Button variant="primary" onClick={saveSettings}>Save settings</Button>
         </div>
       </Dialog>
 

@@ -998,6 +998,15 @@ html[data-native-app="true"] .ui-dialog-backdrop {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
 }
+/* Left-edge variant — keeps a leading control's tooltip within the viewport. */
+.ui-tooltip-start .ui-tooltip-box {
+  left: 0;
+  transform: translateX(0) translateY(4px);
+}
+.ui-tooltip-start:hover .ui-tooltip-box,
+.ui-tooltip-start:focus-within .ui-tooltip-box {
+  transform: translateX(0) translateY(0);
+}
 /* Right-edge variant — anchors tooltip to the right of the host */
 .ui-tooltip-end .ui-tooltip-box {
   left: auto;
