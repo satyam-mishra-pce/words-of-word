@@ -14,6 +14,8 @@ import {
   ClientToServerEvents,
   CreateRoomPayloadSchema,
   EmptyResult,
+  Emote,
+  EmotePlayedPayload,
   GameOverPayload,
   GameRestartedPayload,
   GameSettings,
@@ -40,6 +42,7 @@ import {
   RoundResultPlayer,
   RoundStartedPayload,
   RequestHintPayloadSchema,
+  SendEmotePayloadSchema,
   ServerAck,
   ScoresUpdatedPayload,
   ServerToClientEvents,
@@ -77,6 +80,7 @@ const BINGO_TASK_POINTS = 10;
 const BINGO_TASK_COUNT = 7;
 const BINGO_FULL_BOARD_BONUS = 100;
 const MIN_HINT_WORD_LENGTH = 3;
+const EMOTE_COOLDOWN_MS = 750;
 const TEAM_NAMES: Record<'red' | 'blue', string> = { red: 'Red Team', blue: 'Blue Team' };
 const EMPTY_ROOM_TTL_MS = 10 * 60 * 1000;
 const DEFAULT_MOBILE_RECONNECT_GRACE_MS = 90_000;
@@ -166,6 +170,7 @@ interface InternalRoom {
   bingoTasks: BingoTask[];
   bingoProgress: Map<string, Set<string>>;
   bingoCompletedBoards: Set<string>;
+  lastEmoteAt: Map<string, number>;
   tickTimer: NodeJS.Timeout | undefined;
   nextRoundTimer: NodeJS.Timeout | undefined;
   emptyCleanupTimer: NodeJS.Timeout | undefined;
@@ -778,6 +783,7 @@ class GameRoomManager {
     this.movePlayerMapEntry(room.currentBets, previousSocketId, nextSocketId);
     this.movePlayerMapEntry(room.bettingWordCounts, previousSocketId, nextSocketId);
     this.movePlayerMapEntry(room.bingoProgress, previousSocketId, nextSocketId);
+    this.movePlayerMapEntry(room.lastEmoteAt, previousSocketId, nextSocketId);
     this.movePlayerMapEntry(room.lightningTimeLeft, previousSocketId, nextSocketId);
     this.movePlayerSetEntry(room.bustedPlayers, previousSocketId, nextSocketId);
     this.movePlayerSetEntry(room.bingoCompletedBoards, previousSocketId, nextSocketId);
@@ -832,6 +838,7 @@ class GameRoomManager {
       bingoTasks: [],
       bingoProgress: new Map([[socketId, new Set<string>()]]),
       bingoCompletedBoards: new Set<string>(),
+      lastEmoteAt: new Map<string, number>(),
       tickTimer: undefined,
       nextRoundTimer: undefined,
       emptyCleanupTimer: undefined,
@@ -1091,6 +1098,7 @@ class GameRoomManager {
     room.bustedPlayers.delete(socketId);
     room.bingoProgress.delete(socketId);
     room.bingoCompletedBoards.delete(socketId);
+    room.lastEmoteAt.delete(socketId);
     room.lightningTimeLeft.delete(socketId);
 
     if (room.players.length === 0) {
@@ -1116,6 +1124,7 @@ class GameRoomManager {
       room.bingoTasks = [];
       room.bingoProgress.clear();
       room.bingoCompletedBoards.clear();
+      room.lastEmoteAt.clear();
       room.emptyCleanupTimer = setTimeout(() => {
         this.clearTimers(room);
         this.rooms.delete(roomId);
@@ -1331,6 +1340,42 @@ class GameRoomManager {
       this.io.to(room.id).emit('notice', { message });
       this.finishRound(room);
     }
+
+    return { ok: true, data: { ok: true } };
+  }
+
+  public sendEmote(socketId: string, roomId: string, emote: Emote): ManagerResult<EmptyResult> {
+    roomId = roomId.toUpperCase();
+    if (this.socketToRoom.get(socketId) !== roomId) {
+      return { ok: false, error: 'You are no longer in this room.' };
+    }
+
+    const room = this.rooms.get(roomId);
+    if (!room) {
+      return { ok: false, error: 'Room not found.' };
+    }
+
+    if (room.phase !== 'round') {
+      return { ok: false, error: 'Emotes are available during an active round.' };
+    }
+
+    const player = room.players.find((candidate) => candidate.id === socketId);
+    if (!player) {
+      return { ok: false, error: 'Player not found in this room.' };
+    }
+
+    const now = Date.now();
+    const lastEmoteAt = room.lastEmoteAt.get(socketId) ?? 0;
+    if (now - lastEmoteAt < EMOTE_COOLDOWN_MS) {
+      return { ok: false, error: 'Give your last emote a moment.' };
+    }
+
+    room.lastEmoteAt.set(socketId, now);
+    this.io.to(room.id).emit('emotePlayed', {
+      playerId: player.id,
+      playerName: player.name,
+      emote
+    } satisfies EmotePlayedPayload);
 
     return { ok: true, data: { ok: true } };
   }
@@ -1771,6 +1816,7 @@ class GameRoomManager {
     room.bingoTasks = [];
     room.bingoProgress = this.emptyBingoProgress(room);
     room.bingoCompletedBoards = new Set<string>();
+    room.lastEmoteAt = new Map<string, number>();
   }
 
   private emptyAcceptedWords(room: InternalRoom): Map<string, Set<string>> {
@@ -2578,6 +2624,17 @@ io.on('connection', (socket) => {
     }
 
     const result = manager.submitWord(socket.id, parsed.data.roomId, parsed.data.word);
+    reply(ack, result);
+  });
+
+  socket.on('sendEmote', (payload, ack) => {
+    const parsed = SendEmotePayloadSchema.safeParse(payload);
+    if (!parsed.success) {
+      reply(ack, { ok: false, error: validationMessage(parsed.error.message) });
+      return;
+    }
+
+    const result = manager.sendEmote(socket.id, parsed.data.roomId, parsed.data.emote);
     reply(ack, result);
   });
 

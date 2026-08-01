@@ -1,9 +1,9 @@
 import { CSSProperties, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { FinalScore, GameSettings, HINT_COST, HINTS_PER_REQUEST, type PlayerAvatar, RoomSnapshot, RoundResultPlayer, TeamScore, WordHint } from '@wow/shared';
+import { EMOTE_OPTIONS, FinalScore, GameSettings, HINT_COST, HINTS_PER_REQUEST, type EmotePlayedPayload, type PlayerAvatar, RoomSnapshot, RoundResultPlayer, TeamScore, WordHint } from '@wow/shared';
 import socket from '../services/socket';
 import { loadUsername } from '../services/session';
-import { hapticError, hapticLight, hapticMedium, hapticSuccess, hapticWarning } from '../services/nativeFeedback';
+import { hapticError, hapticLight, hapticMedium, hapticSelection, hapticSuccess, hapticWarning } from '../services/nativeFeedback';
 import { getRoomInviteUrl } from '../services/platform';
 import { copyTextToClipboard, shareRoomInvite } from '../services/nativeShare';
 import '../styles/game-score-feedback.css';
@@ -25,7 +25,7 @@ import {
 
 const RANK_ICONS: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉' };
 
-type GameActionIconName = 'hint' | 'share' | 'rules' | 'stop' | 'exit' | 'leaderboard' | 'link' | 'code' | 'check';
+type GameActionIconName = 'hint' | 'emote' | 'share' | 'rules' | 'stop' | 'exit' | 'leaderboard' | 'link' | 'code' | 'check';
 
 function GameActionIcon({ name }: { name: GameActionIconName }): JSX.Element {
   const svgProps = {
@@ -43,6 +43,8 @@ function GameActionIcon({ name }: { name: GameActionIconName }): JSX.Element {
   switch (name) {
     case 'hint':
       return <svg {...svgProps}><path d="m10 2.5 1.35 4.55 4.15 1.35-4.15 1.35L10 14.5 8.65 9.75 4.5 8.4l4.15-1.35L10 2.5Z" /><path d="m15.5 12 .65 2.15 2.15.65-2.15.65-.65 2.15-.65-2.15-2.15-.65 2.15-.65.65-2.15Z" /></svg>;
+    case 'emote':
+      return <svg {...svgProps}><circle cx="10" cy="9.5" r="6.25" /><path d="M7.5 8h.01M12.5 8h.01" /><path d="M7.3 11.5c.8 1.15 1.7 1.7 2.7 1.7s1.9-.55 2.7-1.7" /><path d="m6.3 14.6-2.7 2 .8-3.15" /></svg>;
     case 'share':
       return <svg {...svgProps}><path d="M10 11V2.5" /><path d="m6.5 6 3.5-3.5L13.5 6" /><path d="M4 10.5v5h12v-5" /></svg>;
     case 'rules':
@@ -109,6 +111,14 @@ interface NegativeMarkedWord {
 interface ScoreBurst {
   id: number;
   delta: number;
+}
+
+interface EmoteBurst {
+  id: number;
+  playerId: string;
+  playerName: string;
+  emoji: string;
+  label: string;
 }
 
 interface PlayerFinalAward {
@@ -216,14 +226,20 @@ export default function RoomPage(): JSX.Element {
   const [activeHints, setActiveHints] = useState<WordHint[]>([]);
   const [isRequestingHint, setIsRequestingHint] = useState(false);
   const [scoreBursts, setScoreBursts] = useState<ScoreBurst[]>([]);
+  const [showEmotePicker, setShowEmotePicker] = useState(false);
+  const [emoteBursts, setEmoteBursts] = useState<EmoteBurst[]>([]);
 
   // Keep a ref to the word input so we can restore focus after submit
   const inputRef = useRef<HTMLInputElement>(null);
+  const emotePickerRef = useRef<HTMLDivElement>(null);
+  const emoteTriggerRef = useRef<HTMLButtonElement>(null);
   // Track the source word at round-end time for history labelling
   const currentWordRef = useRef('');
   const previousPhaseRef = useRef<RoomSnapshot['phase'] | undefined>();
   const scoreBurstIdRef = useRef(0);
   const scoreBurstTimersRef = useRef<Map<number, number>>(new Map());
+  const emoteBurstIdRef = useRef(0);
+  const emoteBurstTimersRef = useRef<Map<number, number>>(new Map());
 
   const currentPlayerId = socket.id;
   const currentPlayer = useMemo(
@@ -468,9 +484,37 @@ export default function RoomPage(): JSX.Element {
     return () => window.clearTimeout(t);
   }, [bustFlash]);
 
+  useEffect(() => {
+    if (snapshot?.phase !== 'round') setShowEmotePicker(false);
+  }, [snapshot?.phase]);
+
+  useEffect(() => {
+    if (!showEmotePicker) return;
+
+    const closeOnOutsidePointer = (event: PointerEvent): void => {
+      if (event.target instanceof Node && emotePickerRef.current?.contains(event.target)) return;
+      setShowEmotePicker(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setShowEmotePicker(false);
+      requestAnimationFrame(() => emoteTriggerRef.current?.focus());
+    };
+
+    document.addEventListener('pointerdown', closeOnOutsidePointer);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePointer);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [showEmotePicker]);
+
   useEffect(() => () => {
     scoreBurstTimersRef.current.forEach((timer) => window.clearTimeout(timer));
     scoreBurstTimersRef.current.clear();
+    emoteBurstTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    emoteBurstTimersRef.current.clear();
   }, []);
 
   /* ── socket setup ── */
@@ -512,6 +556,8 @@ export default function RoomPage(): JSX.Element {
       currentWordRef.current = payload.snapshot.currentWord;
       setWaitingSeconds(payload.snapshot.waitingSeconds);
     };
+
+    const onEmotePlayed = (payload: EmotePlayedPayload): void => queueEmoteBurst(payload);
 
     socket.on('roomSnapshot', onSnapshot);
     socket.on('playerJoined', (p) => { setSnapshot(p.snapshot); setNotice(`${p.player.name} joined.`); });
@@ -651,6 +697,7 @@ export default function RoomPage(): JSX.Element {
       setBustFlash({ playerId: p.playerId, playerName: p.playerName, word: p.word, message: p.message });
       void hapticWarning();
     });
+    socket.on('emotePlayed', onEmotePlayed);
     socket.on('gameRestarted', (p) => {
       previousPhaseRef.current = p.snapshot.phase;
       setSnapshot(p.snapshot);
@@ -673,6 +720,7 @@ export default function RoomPage(): JSX.Element {
       socket.off('gameOver');
       socket.off('gameRestarted');
       socket.off('playerBusted');
+      socket.off('emotePlayed', onEmotePlayed);
       socket.off('notice');
     };
   }, []);
@@ -734,6 +782,22 @@ export default function RoomPage(): JSX.Element {
     });
     setInputWord('');
     // Keep the keyboard up — restore focus after React flushes the state update
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }
+
+  function toggleEmotePicker(): void {
+    setShowEmotePicker((isOpen) => !isOpen);
+  }
+
+  function sendEmote(emote: EmotePlayedPayload['emote']): void {
+    setShowEmotePicker(false);
+    socket.emit('sendEmote', { roomId, emote }, (response) => {
+      if (!response.ok) {
+        setNotice(response.error);
+        void hapticError();
+      }
+    });
+    void hapticSelection();
     requestAnimationFrame(() => inputRef.current?.focus());
   }
 
@@ -903,8 +967,34 @@ export default function RoomPage(): JSX.Element {
     setScoreBursts([]);
   }
 
+  function queueEmoteBurst(payload: EmotePlayedPayload): void {
+    const option = EMOTE_OPTIONS.find((candidate) => candidate.id === payload.emote);
+    if (!option) return;
+
+    const id = emoteBurstIdRef.current;
+    emoteBurstIdRef.current += 1;
+    setEmoteBursts((current) => [
+      ...current,
+      { id, playerId: payload.playerId, playerName: payload.playerName, emoji: option.emoji, label: option.label }
+    ].slice(-3));
+
+    const timer = window.setTimeout(() => {
+      emoteBurstTimersRef.current.delete(id);
+      setEmoteBursts((current) => current.filter((burst) => burst.id !== id));
+    }, 2200);
+    emoteBurstTimersRef.current.set(id, timer);
+  }
+
+  function clearEmoteBursts(): void {
+    emoteBurstTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    emoteBurstTimersRef.current.clear();
+    setEmoteBursts([]);
+  }
+
   function resetClientGameState(): void {
     clearScoreBursts();
+    clearEmoteBursts();
+    setShowEmotePicker(false);
     setRoundResults(undefined);
     setFinalScores([]);
     setFinalTeamScores([]);
@@ -1032,6 +1122,25 @@ export default function RoomPage(): JSX.Element {
   /* ── main game view ── */
   return (
     <main className={`game-shell${hasGameplayChrome ? ' has-gameplay-chrome' : ''}${isWordInputFocused ? ' is-typing' : ''}`}>
+      {emoteBursts.length > 0 && (
+        <div className="emote-burst-layer" aria-live="polite" aria-relevant="additions">
+          {emoteBursts.map((burst) => {
+            const senderName = burst.playerId === currentPlayerId ? 'You' : burst.playerName;
+            return (
+              <div
+                key={burst.id}
+                className={`emote-burst emote-burst--${burst.id % 3}`}
+                role="status"
+                aria-label={`${senderName} sent ${burst.label}`}
+              >
+                <span className="emote-burst__emoji" aria-hidden="true">{burst.emoji}</span>
+                <span className="emote-burst__sender">{senderName}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {bustFlash && (
         <div className={`bust-overlay ${bustFlash.playerId === currentPlayerId ? 'self' : ''}`} role="status" aria-live="assertive">
           <div className="bomb-blast" aria-hidden="true">💣</div>
@@ -1624,6 +1733,41 @@ export default function RoomPage(): JSX.Element {
                         </Button>
                       </Tooltip>
                     </div>
+                    {!needsRejoin && (
+                      <div className="emote-picker" ref={emotePickerRef}>
+                        <Tooltip content="Send an emote">
+                          <Button
+                            ref={emoteTriggerRef}
+                            variant="ghost"
+                            size="sm"
+                            type="button"
+                            className="emote-picker__trigger"
+                            onClick={toggleEmotePicker}
+                            aria-label={showEmotePicker ? 'Close emotes' : 'Open emotes'}
+                            aria-controls="emote-picker-menu"
+                            aria-expanded={showEmotePicker}
+                          >
+                            <GameActionIcon name="emote" />
+                          </Button>
+                        </Tooltip>
+                        {showEmotePicker && (
+                          <div id="emote-picker-menu" className="emote-picker__tray" role="group" aria-label="Choose an emote">
+                            {EMOTE_OPTIONS.map((option) => (
+                              <button
+                                key={option.id}
+                                className="emote-picker__choice"
+                                type="button"
+                                title={option.label}
+                                aria-label={`Send ${option.label} emote`}
+                                onClick={() => sendEmote(option.id)}
+                              >
+                                <span aria-hidden="true">{option.emoji}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <form className="word-form" onSubmit={submitWord}>
                       <div className="word-form__input-wrap">
                         <Input

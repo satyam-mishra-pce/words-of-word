@@ -141,6 +141,22 @@ export const SubmitWordPayloadSchema = z.object({
   word: z.string().trim().min(1).max(40)
 });
 
+export const EmoteSchema = z.enum(['fire', 'clap', 'mindBlown', 'laugh', 'sweat', 'party']);
+
+export const EMOTE_OPTIONS = [
+  { id: 'fire', emoji: '🔥', label: 'Fire' },
+  { id: 'clap', emoji: '👏', label: 'Applause' },
+  { id: 'mindBlown', emoji: '🤯', label: 'Mind blown' },
+  { id: 'laugh', emoji: '😂', label: 'Laugh' },
+  { id: 'sweat', emoji: '😅', label: 'Phew' },
+  { id: 'party', emoji: '🎉', label: 'Celebrate' }
+] as const;
+
+export const SendEmotePayloadSchema = z.object({
+  roomId: RoomIdSchema,
+  emote: EmoteSchema
+});
+
 export const RequestHintPayloadSchema = z.object({
   roomId: RoomIdSchema
 });
@@ -192,6 +208,8 @@ export type JoinRoomPayload = z.infer<typeof JoinRoomPayloadSchema>;
 export type QuickJoinRoomPayload = z.infer<typeof QuickJoinRoomPayloadSchema>;
 export type StartGamePayload = z.infer<typeof StartGamePayloadSchema>;
 export type SubmitWordPayload = z.infer<typeof SubmitWordPayloadSchema>;
+export type Emote = z.infer<typeof EmoteSchema>;
+export type SendEmotePayload = z.infer<typeof SendEmotePayloadSchema>;
 export type RequestHintPayload = z.infer<typeof RequestHintPayloadSchema>;
 export type UpdateTeamPayload = z.infer<typeof UpdateTeamPayloadSchema>;
 export type UpdateBetPayload = z.infer<typeof UpdateBetPayloadSchema>;
@@ -432,6 +450,13 @@ export interface PlayerBustedPayload {
   snapshot: RoomSnapshot;
 }
 
+/** A transient room-wide reaction, relayed by the server without altering game state. */
+export interface EmotePlayedPayload {
+  playerId: string;
+  playerName: string;
+  emote: Emote;
+}
+
 export interface ServerToClientEvents {
   roomSnapshot: (payload: RoomSnapshotPayload) => void;
   playerJoined: (payload: PlayerJoinedPayload) => void;
@@ -446,6 +471,7 @@ export interface ServerToClientEvents {
   gameOver: (payload: GameOverPayload) => void;
   gameRestarted: (payload: GameRestartedPayload) => void;
   playerBusted: (payload: PlayerBustedPayload) => void;
+  emotePlayed: (payload: EmotePlayedPayload) => void;
   notice: (payload: NoticePayload) => void;
 }
 
@@ -460,6 +486,7 @@ export interface ClientToServerEvents {
   updateSettings: (payload: UpdateSettingsPayload, ack?: Ack<EmptyResult>) => void;
   startGame: (payload: StartGamePayload, ack?: Ack<EmptyResult>) => void;
   submitWord: (payload: SubmitWordPayload, ack?: Ack<EmptyResult>) => void;
+  sendEmote: (payload: SendEmotePayload, ack?: Ack<EmptyResult>) => void;
   requestHint: (payload: RequestHintPayload, ack?: Ack<HintResult>) => void;
   restartGame: (payload: RestartGamePayload, ack?: Ack<EmptyResult>) => void;
   leaveRoom: (payload: LeaveRoomPayload, ack?: Ack<EmptyResult>) => void;
