@@ -1808,13 +1808,14 @@ html[data-native-app="true"][data-keyboard-open="true"] .theme-toggle {
 
 /* ============================================================
    MOBILE GAME LAYOUT — Complete redesign for phones
-   Fixed header (word+timer) + scrollable content + fixed input
+   Sticky top (word+timer), scrollable middle, sticky bottom (input)
    ============================================================ */
 @media (max-width: 640px) {
-  /* ── Base layout: fixed header/footer, scrollable middle ── */
+  /* ── Base layout ── */
   .game-shell {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr auto;
     min-height: 100dvh;
     max-height: 100dvh;
     padding: 0;
@@ -1822,33 +1823,73 @@ html[data-native-app="true"][data-keyboard-open="true"] .theme-toggle {
     overflow: hidden;
   }
 
-  /* ── Header: compact room info ── */
+  /* ── Row 1: Header ── */
   .game-header {
-    flex-shrink: 0;
-    padding: 8px 12px;
-    border-bottom: 1px solid var(--sub-2);
+    grid-row: 1;
+    padding: 6px 12px;
     background: var(--bg);
+    border-bottom: 1px solid var(--sub-2);
   }
-  .game-header__left { gap: 6px; }
-  .game-header__label { font-size: 0.55rem; }
+  .game-header__left { gap: 4px; }
+  .game-header__label { display: none; }
   .game-header__roomid { font-size: 0.72rem; }
+  .game-header__dot { display: none; }
   .game-header__mode { font-size: 0.62rem; padding: 2px 6px; }
-  .game-header__count { font-size: 0.60rem; }
+  .game-header__count { display: none; }
   .game-header__right { gap: 4px; }
   .game-header__right .ui-btn-mini { padding: 5px 8px; font-size: 0.65rem; }
 
-  /* ── Word stage: scrollable content area ── */
+  /* ── Row 2: Word stage (scrollable) ── */
   .word-stage {
-    flex: 1;
+    grid-row: 2;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: 12px;
-    gap: 12px;
+    padding: 0 12px;
+    gap: 8px;
     -webkit-overflow-scrolling: touch;
   }
   .word-stage.glass-panel {
     border-radius: 0;
     background: var(--bg);
+  }
+
+  /* ── Row 3: Players panel (hidden on mobile during game) ── */
+  .players-panel {
+    display: none;
+  }
+
+  /* ── Top sticky inside word-stage: word + timer ── */
+  .round-strip {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--bg);
+    padding: 8px 0 4px;
+    font-size: 0.62rem;
+  }
+  .current-word-card {
+    position: sticky;
+    top: 24px;
+    z-index: 9;
+    background: var(--bg);
+    padding: 4px 0;
+  }
+  .timer-section {
+    position: sticky;
+    top: 80px;
+    z-index: 8;
+    background: var(--bg);
+    padding: 4px 0 8px;
+  }
+
+  /* ── Bottom sticky inside word-stage: input ── */
+  .word-form {
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
+    background: var(--bg);
+    padding: 10px 0;
+    margin-top: auto;
   }
 
   /* ── Source word: compact, no letter-spacing ── */

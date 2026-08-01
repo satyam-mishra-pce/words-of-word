@@ -1161,37 +1161,6 @@ export default function RoomPage(): JSX.Element {
               </div>
             )}
 
-            {/* Word submit form */}
-            {snapshot.phase === 'round' && (
-              <form className="word-form" onSubmit={submitWord}>
-                <Input
-                  ref={inputRef}
-                  type={isTypistMode ? 'password' : 'text'}
-                  value={inputWord}
-                  onChange={(e) => setInputWord(e.currentTarget.value)}
-                  onFocus={() => setIsWordInputFocused(true)}
-                  onBlur={() => setIsWordInputFocused(false)}
-                  placeholder={isCurrentPlayerBusted ? 'You are busted this round 💣' : canSubmit ? (isTypistMode ? 'Blind Type: hidden word' : 'Type a word and press Enter') : 'Rejoin to submit words'}
-                  disabled={!canSubmit}
-                  hasError={inputFeedback === 'error'}
-                  hasSuccess={inputFeedback === 'success'}
-                  autoFocus
-                  autoComplete="off"
-                  autoCorrect="off"
-                  autoCapitalize="none"
-                  spellCheck={false}
-                  enterKeyHint="done"
-                />
-                <Button
-                  variant="primary"
-                  type="submit"
-                  disabled={!canSubmit || !inputWord.trim()}
-                >
-                  Submit
-                </Button>
-              </form>
-            )}
-
             {/* Your words */}
             <div className="words-card">
               <div className="words-header">
@@ -1269,6 +1238,37 @@ export default function RoomPage(): JSX.Element {
                   </article>
                 ))}
               </div>
+            )}
+
+            {/* Word submit form - at the end for sticky bottom on mobile */}
+            {snapshot.phase === 'round' && (
+              <form className="word-form" onSubmit={submitWord}>
+                <Input
+                  ref={inputRef}
+                  type={isTypistMode ? 'password' : 'text'}
+                  value={inputWord}
+                  onChange={(e) => setInputWord(e.currentTarget.value)}
+                  onFocus={() => setIsWordInputFocused(true)}
+                  onBlur={() => setIsWordInputFocused(false)}
+                  placeholder={isCurrentPlayerBusted ? 'You are busted this round 💣' : canSubmit ? (isTypistMode ? 'Blind Type: hidden word' : 'Type a word…') : 'Rejoin to submit'}
+                  disabled={!canSubmit}
+                  hasError={inputFeedback === 'error'}
+                  hasSuccess={inputFeedback === 'success'}
+                  autoFocus
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  enterKeyHint="done"
+                />
+                <Button
+                  variant="primary"
+                  type="submit"
+                  disabled={!canSubmit || !inputWord.trim()}
+                >
+                  Go
+                </Button>
+              </form>
             )}
               </>
             )}
