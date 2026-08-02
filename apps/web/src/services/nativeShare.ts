@@ -10,11 +10,6 @@ interface ShareContent {
   dialogTitle?: string;
 }
 
-interface ShareRoomInviteOptions {
-  roomId: string;
-  url: string;
-}
-
 export async function copyTextToClipboard(value: string): Promise<boolean> {
   if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
     try {
@@ -66,13 +61,4 @@ export async function shareContent({ title, text, url, dialogTitle }: ShareConte
   }
 
   return (await copyTextToClipboard(`${text} ${url}`.trim())) ? 'clipboard' : 'unavailable';
-}
-
-export function shareRoomInvite({ roomId, url }: ShareRoomInviteOptions): Promise<ShareMethod> {
-  return shareContent({
-    title: 'Join my Words of Word room',
-    text: `Join my Words of Word room ${roomId}.`,
-    url,
-    dialogTitle: 'Invite players'
-  });
 }

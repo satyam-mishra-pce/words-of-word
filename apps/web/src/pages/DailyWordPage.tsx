@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Alert, Badge, Button, Input, Label, Separator, TimerRing } from '../components/ui';
+import { Badge, Button, Input, Label, Progress } from '../components/ui';
 import { readStoredValue, writeStoredValue } from '../services/storage';
 import { getDailyChallengeUrl } from '../services/platform';
 import { shareContent } from '../services/nativeShare';
@@ -109,7 +109,7 @@ export default function DailyWordPage(): JSX.Element {
       ? initialFinished
         ? 'Your daily run is complete. Share it and challenge a friend.'
         : 'Daily run in progress. Keep going!'
-      : 'Press start, then make as many words as possible in 30 seconds. You can resubmit for a better score.'
+      : 'Press Start to begin your daily run.'
   );
   const [shareStatus, setShareStatus] = useState('');
   const [isWordInputFocused, setIsWordInputFocused] = useState(false);
@@ -237,23 +237,53 @@ export default function DailyWordPage(): JSX.Element {
     setShareStatus(method === 'clipboard' ? 'Challenge copied. Paste it anywhere.' : 'Shared!');
   }
 
+  const timerProgress = Math.max(0, Math.min(100, (timeLeft / DAILY_SECONDS) * 100));
+  const timerState = timeLeft <= 5 ? 'urgent' : timeLeft <= 10 ? 'warn' : 'ok';
+
   return (
-    <main className={`page-shell daily-shell ${isWordInputFocused ? 'is-typing' : ''}`}>
-      <section className="panel-card">
-        <p className="eyebrow">daily word</p>
-        <h1>Daily Word</h1>
-        <p className="muted">Everyone gets the same daily source word. You get 30 seconds. Resubmit to chase a better score.</p>
+    <main className={`game-shell daily-shell${isWordInputFocused ? ' is-typing' : ''}`}>
+      <header className="game-header daily-game-header">
+        <div className="game-header__left">
+          <span className="game-header__label">daily</span>
+          <span className="game-header__roomid">daily word</span>
+          <span className="game-header__dot">·</span>
+          <span className="game-header__count">new word every day</span>
+        </div>
+        <div className="game-header__right">
+          <Link to="/"><Button variant="mini" size="sm" type="button" className="game-header__action daily-game-header__home">Home</Button></Link>
+        </div>
+      </header>
 
-        <div className="current-word-card" style={{ margin: '18px 0' }}>
+      <aside className="players-panel glass-panel daily-run-panel">
+        <p className="eyebrow">Today&apos;s run</p>
+        <div className="daily-run-panel__metric">
+          <strong>{words.length}</strong>
+          <span>{pluralizeWords(words.length)}</span>
+        </div>
+        <p className="daily-run-panel__copy">{isFinished ? 'Final result saved for today.' : isRunning ? 'Clock is running.' : 'Thirty seconds. One source word.'}</p>
+      </aside>
+
+      <section className="word-stage glass-panel daily-stage">
+        <div className="stage-notice-bar active" aria-live="polite">{shareStatus || message}</div>
+
+        <div className="current-word-card">
           <span className="current-word-label">Today&apos;s word</span>
-          <span className="current-word-text">{sourceWord}</span>
+          <span className="current-word-text" title={sourceWord}>{sourceWord}</span>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 18 }}>
-          <TimerRing timeLeft={timeLeft} totalTime={DAILY_SECONDS} size={72} />
+        <div className={`timer-section${timeLeft <= 5 && isRunning ? ' urgent' : ''}`}>
+          <div className="round-timer">
+            <Progress
+              value={timerProgress}
+              state={timerState}
+              aria-label="Daily run time remaining"
+              aria-valuetext={`${timeLeft} seconds remaining`}
+            />
+            <span className="round-timer__label" aria-hidden="true">{timeLeft}</span>
+          </div>
         </div>
 
-        <form className="word-form" onSubmit={submitWord}>
+        <form className="word-form daily-word-form" onSubmit={submitWord}>
           <div>
             <Label htmlFor="daily-word-input">Your word</Label>
             <Input
@@ -263,7 +293,7 @@ export default function DailyWordPage(): JSX.Element {
               onChange={(e) => setInputWord(e.currentTarget.value)}
               onFocus={() => setIsWordInputFocused(true)}
               onBlur={() => setIsWordInputFocused(false)}
-              placeholder={isRunning ? 'Type and press Enter' : 'Start the timer first'}
+              placeholder={isRunning ? 'Type a word…' : 'Start the timer first'}
               disabled={!isRunning}
               autoComplete="off"
               autoCorrect="off"
@@ -272,18 +302,12 @@ export default function DailyWordPage(): JSX.Element {
               enterKeyHint="done"
             />
           </div>
-          <Button variant="primary" type="submit" disabled={!isRunning || !inputWord.trim()}>Submit</Button>
+          <Button variant="primary" type="submit" disabled={!isRunning || !inputWord.trim()}>Go</Button>
         </form>
 
-        <Alert variant={isFinished ? 'success' : 'notice'} style={{ marginTop: 16 }}>{message}</Alert>
-
-        {shareStatus && <Alert variant="notice" style={{ marginTop: 10 }}>{shareStatus}</Alert>}
-
-        <Separator style={{ margin: '18px 0' }} />
-
-        <div className="words-card">
+        <div className="words-card daily-result-card">
           <div className="words-header">
-            <h3>Your Daily Result</h3>
+            <h3>Your Words</h3>
             <span className="words-count">{pluralizeWords(words.length)}</span>
           </div>
           <div className="word-chip-list">
@@ -298,8 +322,7 @@ export default function DailyWordPage(): JSX.Element {
           </div>
         )}
 
-        <div className="button-row" style={{ marginTop: 20 }}>
-          <Link to="/"><Button variant="secondary">← Home</Button></Link>
+        <div className="button-row daily-stage__actions">
           {isFinished && <Button variant="secondary" onClick={start}>Try Again</Button>}
           {isFinished ? (
             <Button variant="primary" onClick={shareScore}>Share Challenge</Button>
@@ -310,6 +333,17 @@ export default function DailyWordPage(): JSX.Element {
           )}
         </div>
       </section>
+
+      <aside className="info-panel glass-panel daily-info-panel">
+        <p className="eyebrow">How it works</p>
+        <h2>Make words from the big word.</h2>
+        <ul>
+          <li>Everyone gets the same source word.</li>
+          <li>Use each letter no more than it appears.</li>
+          <li>Find as many words as you can in 30 seconds.</li>
+          <li>Resubmit anytime to beat your score.</li>
+        </ul>
+      </aside>
     </main>
   );
 }

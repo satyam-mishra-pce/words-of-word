@@ -1,11 +1,11 @@
 import { CSSProperties, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { EMOTE_OPTIONS, FinalScore, GameSettings, HINT_COST, HINTS_PER_REQUEST, type EmotePlayedPayload, type PlayerAvatar, RoomSnapshot, RoundResultPlayer, TeamScore, WordHint } from '@wow/shared';
+import { EMOTE_OPTIONS, FinalScore, GameSettings, type EmotePlayedPayload, type PlayerAvatar, RoomSnapshot, RoundResultPlayer, TeamScore } from '@wow/shared';
 import socket from '../services/socket';
 import { loadUsername } from '../services/session';
 import { hapticError, hapticLight, hapticMedium, hapticSelection, hapticSuccess, hapticWarning } from '../services/nativeFeedback';
 import { getRoomInviteUrl } from '../services/platform';
-import { copyTextToClipboard, shareRoomInvite } from '../services/nativeShare';
+import { copyTextToClipboard } from '../services/nativeShare';
 import '../styles/game-score-feedback.css';
 import {
   Alert,
@@ -25,7 +25,7 @@ import {
 
 const RANK_ICONS: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉' };
 
-type GameActionIconName = 'hint' | 'emote' | 'share' | 'rules' | 'stop' | 'exit' | 'leaderboard' | 'link' | 'code' | 'check';
+type GameActionIconName = 'share' | 'rules' | 'stop' | 'exit';
 
 function GameActionIcon({ name }: { name: GameActionIconName }): JSX.Element {
   const svgProps = {
@@ -41,10 +41,6 @@ function GameActionIcon({ name }: { name: GameActionIconName }): JSX.Element {
   };
 
   switch (name) {
-    case 'hint':
-      return <svg {...svgProps}><path d="m10 2.5 1.35 4.55 4.15 1.35-4.15 1.35L10 14.5 8.65 9.75 4.5 8.4l4.15-1.35L10 2.5Z" /><path d="m15.5 12 .65 2.15 2.15.65-2.15.65-.65 2.15-.65-2.15-2.15-.65 2.15-.65.65-2.15Z" /></svg>;
-    case 'emote':
-      return <svg {...svgProps}><circle cx="10" cy="9.5" r="6.25" /><path d="M7.5 8h.01M12.5 8h.01" /><path d="M7.3 11.5c.8 1.15 1.7 1.7 2.7 1.7s1.9-.55 2.7-1.7" /><path d="m6.3 14.6-2.7 2 .8-3.15" /></svg>;
     case 'share':
       return <svg {...svgProps}><path d="M10 11V2.5" /><path d="m6.5 6 3.5-3.5L13.5 6" /><path d="M4 10.5v5h12v-5" /></svg>;
     case 'rules':
@@ -53,14 +49,6 @@ function GameActionIcon({ name }: { name: GameActionIconName }): JSX.Element {
       return <svg {...svgProps}><rect x="5" y="5" width="10" height="10" rx="1.5" /></svg>;
     case 'exit':
       return <svg {...svgProps}><path d="M8 3H4v14h4" /><path d="m11 6 4 4-4 4" /><path d="M7 10h8" /></svg>;
-    case 'leaderboard':
-      return <svg {...svgProps}><path d="M3.5 16.5h13" /><path d="M5 14V9.5h3V14" /><path d="M8.5 14V5.5h3V14" /><path d="M12 14V7.5h3V14" /></svg>;
-    case 'link':
-      return <svg {...svgProps}><path d="M8.1 11.9a3 3 0 0 0 4.25.05l2-2a3 3 0 0 0-4.25-4.25l-1.15 1.15" /><path d="M11.9 8.1a3 3 0 0 0-4.25-.05l-2 2a3 3 0 0 0 4.25 4.25l1.15-1.15" /></svg>;
-    case 'code':
-      return <svg {...svgProps}><path d="m7.5 5-5 5 5 5" /><path d="m12.5 5 5 5-5 5" /><path d="m11.5 3.5-3 13" /></svg>;
-    case 'check':
-      return <svg {...svgProps}><path d="m4 10 3.5 3.5L16 5" /></svg>;
   }
 }
 
@@ -202,15 +190,11 @@ export default function RoomPage(): JSX.Element {
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [inputFeedback, setInputFeedback] = useState<'success' | 'error' | null>(null);
-  const [showInviteMenu, setShowInviteMenu] = useState(false);
-  const [inviteFeedback, setInviteFeedback] = useState<{ message: string; tone: 'success' | 'error' }>();
-  const [isSharingInvite, setIsSharingInvite] = useState(false);
   const [roundResults, setRoundResults] = useState<RoundResultPlayer[] | undefined>();
   const [finalScores, setFinalScores] = useState<FinalScore[]>([]);
   const [finalTeamScores, setFinalTeamScores] = useState<TeamScore[]>([]);
   const [showRoundHistory, setShowRoundHistory] = useState(false);
   const [showHowToPlay, setShowHowToPlay] = useState(false);
-  const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showStopConfirmation, setShowStopConfirmation] = useState(false);
   const [isStoppingGame, setIsStoppingGame] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
@@ -223,16 +207,11 @@ export default function RoomPage(): JSX.Element {
   const [bustFlash, setBustFlash] = useState<{ playerId: string; playerName: string; word: string; message: string } | undefined>();
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
   const [draftSettings, setDraftSettings] = useState<GameSettings | undefined>();
-  const [activeHints, setActiveHints] = useState<WordHint[]>([]);
-  const [isRequestingHint, setIsRequestingHint] = useState(false);
   const [scoreBursts, setScoreBursts] = useState<ScoreBurst[]>([]);
-  const [showEmotePicker, setShowEmotePicker] = useState(false);
   const [emoteBursts, setEmoteBursts] = useState<EmoteBurst[]>([]);
 
   // Keep a ref to the word input so we can restore focus after submit
   const inputRef = useRef<HTMLInputElement>(null);
-  const emotePickerRef = useRef<HTMLDivElement>(null);
-  const emoteTriggerRef = useRef<HTMLButtonElement>(null);
   // Track the source word at round-end time for history labelling
   const currentWordRef = useRef('');
   const previousPhaseRef = useRef<RoomSnapshot['phase'] | undefined>();
@@ -259,7 +238,6 @@ export default function RoomPage(): JSX.Element {
       return { ...player, rank };
     });
   }, [snapshot?.players]);
-  const currentPlayerStanding = liveLeaderboard.find((player) => player.id === currentPlayerId);
   const avatarsByPlayerId = useMemo<ReadonlyMap<string, PlayerAvatar>>(
     () => new Map((snapshot?.players ?? []).map((player) => [player.id, player.avatar])),
     [snapshot?.players]
@@ -289,11 +267,9 @@ export default function RoomPage(): JSX.Element {
     ? snapshot.lightningTimeLeft[currentPlayerId] ?? 0
     : snapshot?.timeLeft ?? 0;
   const canSubmit = snapshot?.phase === 'round' && Boolean(currentPlayer) && !currentPlayer?.isEliminated && !isCurrentPlayerBusted && (!isLightningMode || displayedTimeLeft > 0);
-  const canUseHint = Boolean(snapshot?.settings.hintsEnabled && canSubmit && currentPlayerId && snapshot?.acceptedWords[currentPlayerId]);
-  const hasUsedHint = activeHints.length > 0;
   const isUrgent = Boolean(snapshot?.phase === 'round' && displayedTimeLeft <= 10);
   const hasGameplayChrome = snapshot?.phase === 'round' || snapshot?.phase === 'betweenRounds';
-  const hasVisibleEntryInput = snapshot?.phase === 'round' || snapshot?.phase === 'betting';
+  const hasVisibleEntryInput = snapshot?.phase === 'round' || snapshot?.phase === 'betweenRounds' || snapshot?.phase === 'betting';
   const timerTotal = isLightningMode ? Math.max(10, displayedTimeLeft) : snapshot?.settings.timePerRound ?? 1;
   const timerProgress = Math.max(0, Math.min(100, (displayedTimeLeft / Math.max(1, timerTotal)) * 100));
   const timerLabel = displayedTimeLeft >= 60
@@ -484,32 +460,6 @@ export default function RoomPage(): JSX.Element {
     return () => window.clearTimeout(t);
   }, [bustFlash]);
 
-  useEffect(() => {
-    if (snapshot?.phase !== 'round') setShowEmotePicker(false);
-  }, [snapshot?.phase]);
-
-  useEffect(() => {
-    if (!showEmotePicker) return;
-
-    const closeOnOutsidePointer = (event: PointerEvent): void => {
-      if (event.target instanceof Node && emotePickerRef.current?.contains(event.target)) return;
-      setShowEmotePicker(false);
-    };
-    const closeOnEscape = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      setShowEmotePicker(false);
-      requestAnimationFrame(() => emoteTriggerRef.current?.focus());
-    };
-
-    document.addEventListener('pointerdown', closeOnOutsidePointer);
-    document.addEventListener('keydown', closeOnEscape);
-    return () => {
-      document.removeEventListener('pointerdown', closeOnOutsidePointer);
-      document.removeEventListener('keydown', closeOnEscape);
-    };
-  }, [showEmotePicker]);
-
   useEffect(() => () => {
     scoreBurstTimersRef.current.forEach((timer) => window.clearTimeout(timer));
     scoreBurstTimersRef.current.clear();
@@ -529,7 +479,6 @@ export default function RoomPage(): JSX.Element {
           return;
         }
         setSnapshot(response.data.snapshot);
-        setActiveHints(response.data.snapshot.personalHints ?? []);
         previousPhaseRef.current = response.data.snapshot.phase;
         currentWordRef.current = response.data.snapshot.currentWord;
         setWaitingSeconds(response.data.snapshot.waitingSeconds);
@@ -552,7 +501,6 @@ export default function RoomPage(): JSX.Element {
       }
       previousPhaseRef.current = payload.snapshot.phase;
       setSnapshot(payload.snapshot);
-      if (payload.snapshot.personalHints) setActiveHints(payload.snapshot.personalHints);
       currentWordRef.current = payload.snapshot.currentWord;
       setWaitingSeconds(payload.snapshot.waitingSeconds);
     };
@@ -579,8 +527,6 @@ export default function RoomPage(): JSX.Element {
       setWaitingSeconds(0);
       setValidWordCount(0);
       setNegativeMarkedWords([]);
-      setActiveHints([]);
-      setIsRequestingHint(false);
       setBetInput('');
       setBustFlash(undefined);
       void hapticMedium();
@@ -734,35 +680,16 @@ export default function RoomPage(): JSX.Element {
   }, [waitingSeconds]);
 
   /* ── actions ── */
-  async function shareInvite(): Promise<void> {
-    if (isSharingInvite) return;
-
-    setIsSharingInvite(true);
-    const method = await shareRoomInvite({ roomId, url: getRoomInviteUrl(roomId) });
-    setIsSharingInvite(false);
-
-    if (method === 'unavailable') {
-      setInviteFeedback({ message: 'Sharing is unavailable on this device.', tone: 'error' });
-      void hapticError();
-      return;
-    }
-
-    setInviteFeedback({
-      message: method === 'clipboard' ? 'Sharing is unavailable — invite text copied instead.' : 'Invite shared.',
-      tone: 'success'
-    });
-    void hapticLight();
-  }
-
-  async function copyInviteValue(value: string, label: string): Promise<void> {
-    const copied = await copyTextToClipboard(value);
+  async function copyInvite(): Promise<void> {
+    inputRef.current?.blur();
+    const copied = await copyTextToClipboard(getRoomInviteUrl(roomId));
     if (!copied) {
-      setInviteFeedback({ message: `Could not copy the ${label.toLowerCase()}.`, tone: 'error' });
+      setNotice('Could not copy the invite link.');
       void hapticError();
       return;
     }
 
-    setInviteFeedback({ message: `${label} copied.`, tone: 'success' });
+    setNotice('Invite link copied.');
     void hapticLight();
   }
 
@@ -785,42 +712,17 @@ export default function RoomPage(): JSX.Element {
     requestAnimationFrame(() => inputRef.current?.focus());
   }
 
-  function toggleEmotePicker(): void {
-    setShowEmotePicker((isOpen) => !isOpen);
-  }
-
   function sendEmote(emote: EmotePlayedPayload['emote']): void {
-    setShowEmotePicker(false);
     socket.emit('sendEmote', { roomId, emote }, (response) => {
-      if (!response.ok) {
-        setNotice(response.error);
-        void hapticError();
-      }
-    });
-    void hapticSelection();
-    requestAnimationFrame(() => inputRef.current?.focus());
-  }
-
-  function requestHint(): void {
-    if (!canUseHint || isRequestingHint) return;
-
-    setIsRequestingHint(true);
-    socket.emit('requestHint', { roomId }, (response) => {
-      setIsRequestingHint(false);
       if (!response.ok) {
         setNotice(response.error);
         void hapticError();
         return;
       }
 
-      setActiveHints(response.data.hints);
-      setSnapshot((current) => current ? {
-        ...current,
-        players: current.players.map((player) => player.id === socket.id ? { ...player, score: response.data.score } : player)
-      } : current);
-      setNotice(`${HINTS_PER_REQUEST} private hints unlocked. −${response.data.cost} points.`);
-      void hapticWarning();
+      void hapticSelection();
     });
+    if (canSubmit) requestAnimationFrame(() => inputRef.current?.focus());
   }
 
   function submitBet(event: FormEvent<HTMLFormElement>): void {
@@ -839,25 +741,9 @@ export default function RoomPage(): JSX.Element {
     });
   }
 
-  function openInvite(): void {
-    inputRef.current?.blur();
-    setInviteFeedback(undefined);
-    setShowInviteMenu(true);
-  }
-
-  function closeInviteMenu(): void {
-    setShowInviteMenu(false);
-    setInviteFeedback(undefined);
-  }
-
   function openHowToPlay(): void {
     inputRef.current?.blur();
     setShowHowToPlay(true);
-  }
-
-  function openLeaderboard(): void {
-    inputRef.current?.blur();
-    setShowLeaderboard(true);
   }
 
   function openStopConfirmation(): void {
@@ -994,7 +880,6 @@ export default function RoomPage(): JSX.Element {
   function resetClientGameState(): void {
     clearScoreBursts();
     clearEmoteBursts();
-    setShowEmotePicker(false);
     setRoundResults(undefined);
     setFinalScores([]);
     setFinalTeamScores([]);
@@ -1003,8 +888,6 @@ export default function RoomPage(): JSX.Element {
     setWaitingSeconds(0);
     setValidWordCount(0);
     setNegativeMarkedWords([]);
-    setActiveHints([]);
-    setIsRequestingHint(false);
     setInputWord('');
     setBetInput('');
     setBustFlash(undefined);
@@ -1067,8 +950,7 @@ export default function RoomPage(): JSX.Element {
       snapshot.settings.mixModifiers.claim && 'Claim: words are global',
       snapshot.settings.mixModifiers.busted && 'Busted',
       snapshot.settings.mixModifiers.intuition && 'Intuition reveal',
-      snapshot.settings.mixModifiers.lightning && 'Lightning: +1s per word',
-      snapshot.settings.hintsEnabled && `Hints: ${HINTS_PER_REQUEST} clues / round (−${HINT_COST})`
+      snapshot.settings.mixModifiers.lightning && 'Lightning: +1s per word'
     ].filter((label): label is string => Boolean(label))
     : [];
   const mixScoringLabel = snapshot.settings.mixScoringMode === 'arcade' ? 'Score Attack' : 'Classic';
@@ -1167,34 +1049,14 @@ export default function RoomPage(): JSX.Element {
           </span>
         </div>
         <div className={`game-header__right${hasVisibleEntryInput ? '' : ' game-header__right--labelled'}`}>
-          {snapshot.settings.hintsEnabled && snapshot.phase === 'round' && !needsRejoin && (
-            <Tooltip content={hasUsedHint ? 'Hint already used this round' : canUseHint ? `Reveal ${HINTS_PER_REQUEST} private clues for −${HINT_COST} points` : 'Find an accepted word to unlock a hint'} className="ui-tooltip-down">
-              <Button
-                variant="mini"
-                size="sm"
-                type="button"
-                className={`game-header__action game-header__action--hint${hasUsedHint ? ' game-header__action--used' : ''}`}
-                onClick={requestHint}
-                disabled={!canUseHint || hasUsedHint || isRequestingHint}
-                aria-busy={isRequestingHint}
-                aria-label={hasUsedHint ? 'Hint already used this round' : `Reveal ${HINTS_PER_REQUEST} private hints for ${HINT_COST} points`}
-              >
-                <GameActionIcon name="hint" />
-                <span className="game-header__action-label">Hint</span>
-                {!hasUsedHint && <span className="game-header__action-meta">−{HINT_COST}</span>}
-              </Button>
-            </Tooltip>
-          )}
-          <Tooltip content="Invite players" className="ui-tooltip-down">
+          <Tooltip content="Copy invite link" className="ui-tooltip-down">
             <Button
               variant="mini"
               size="sm"
               type="button"
               className="game-header__action"
-              onClick={openInvite}
-              aria-label="Invite players"
-              aria-haspopup="dialog"
-              aria-expanded={showInviteMenu}
+              onClick={() => { void copyInvite(); }}
+              aria-label="Copy invite link"
             >
               <GameActionIcon name="share" />
               <span className="game-header__action-label">Invite</span>
@@ -1494,7 +1356,7 @@ export default function RoomPage(): JSX.Element {
                 : <span className="current-word-waiting">Waiting to start…</span>
               }
               {isIntuitionMode && snapshot.phase === 'round' && snapshot.currentWord && (
-                <span className="intuition-unlock-hint">
+                <span className="intuition-unlock-note">
                   Unlocking randomly: one letter every {(snapshot.settings.timePerRound / snapshot.currentWord.length).toFixed(1)}s
                 </span>
               )}
@@ -1537,32 +1399,41 @@ export default function RoomPage(): JSX.Element {
                     </div>
                   </div>
 
-            {/* Revealed private hints stay with the round content. The control itself
-                lives beside the word input so it remains easy to reach. */}
-            {snapshot.settings.hintsEnabled && snapshot.phase === 'round' && !needsRejoin && hasUsedHint && (
-              <section className="hint-panel hint-panel--revealed" aria-labelledby="hint-panel-title" aria-live="polite">
-                <div className="hint-panel__header">
-                  <h3 id="hint-panel-title">Hints</h3>
-                  <Badge variant="gold">−{HINT_COST}</Badge>
-                </div>
-                <ol className="hint-list">
-                  {activeHints.map((hint, hintIndex) => (
-                    <li key={`hint-${hintIndex}`} className="hint-clue">
-                      <span className="hint-clue__label">{hint.letters.length} letters</span>
-                      <span className="hint-pattern" aria-label={`${hint.letters.length}-letter word`}>
-                        {hint.letters.map((letter, letterIndex) => (
-                          <span key={`${hintIndex}-${letterIndex}`} className={`hint-letter${letter ? ' hint-letter--revealed' : ''}`}>
-                            {letter ?? ''}
-                          </span>
+                  <section className="mobile-live-leaderboard" aria-label="Live leaderboard">
+                    <div className="mobile-live-leaderboard__header">
+                      <p className="eyebrow">Live leaderboard</p>
+                      <span>{liveLeaderboard.length} player{liveLeaderboard.length === 1 ? '' : 's'}</span>
+                    </div>
+                    <div className="mobile-leaderboard-list">
+                      {liveLeaderboard.map((player, index) => (
+                        <div key={player.id} className={`mobile-leaderboard-row${player.id === currentPlayerId ? ' mobile-leaderboard-row--self' : ''}`}>
+                          <span className="mobile-leaderboard-row__rank">#{player.rank}</span>
+                          <Avatar name={player.name} avatar={player.avatar} colorIndex={index} size="sm" />
+                          <div className="mobile-leaderboard-row__identity">
+                            <strong>{player.name}{player.id === currentPlayerId ? ' (You)' : ''}</strong>
+                            <span>{player.isHost ? 'Host' : player.teamId ? `${player.teamId === 'red' ? 'Red' : 'Blue'} team` : 'Player'}</span>
+                          </div>
+                          <div className="mobile-leaderboard-row__score">
+                            <strong>{player.score}</strong>
+                            <span>pts</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {isTeamsMode && snapshot.teamScores.length > 0 && (
+                      <section className="mobile-team-scores" aria-label="Team scores">
+                        <p className="eyebrow">Team scores</p>
+                        {snapshot.teamScores.map((team) => (
+                          <div key={team.teamId}>
+                            <span>{team.teamName}</span>
+                            <strong>{team.score} pts</strong>
+                          </div>
                         ))}
-                      </span>
-                    </li>
-                  ))}
-                </ol>
-              </section>
-            )}
+                      </section>
+                    )}
+                  </section>
 
-            {/* Bingo board */}
+                  {/* Bingo board */}
             {isBingoMode && snapshot.bingoTasks.length > 0 && (
               <div className="words-card bingo-board">
                 <div className="words-header bingo-board__header">
@@ -1581,7 +1452,7 @@ export default function RoomPage(): JSX.Element {
                     );
                   })}
                 </div>
-                <p className="muted bingo-board__hint">Full board: +100. Source word does not count. After bingo, extras are +3.</p>
+                <p className="muted bingo-board__note">Full board: +100. Source word does not count. After bingo, extras are +3.</p>
               </div>
             )}
 
@@ -1591,7 +1462,7 @@ export default function RoomPage(): JSX.Element {
                 <span className="between-rounds__label">Next round in</span>
                 <span className="between-rounds__countdown">{waitingSeconds}</span>
                 {validWordCount > 0 && (
-                  <span className="between-rounds__hint">
+                  <span className="between-rounds__note">
                     {validWordCount} possible words were hiding in there.
                   </span>
                 )}
@@ -1655,7 +1526,6 @@ export default function RoomPage(): JSX.Element {
                             bet {result.bettingBet} · {result.words.length}/{result.bettingBet} {result.bettingHit ? 'hit' : 'miss'}
                           </Badge>
                         )}
-                        {result.hintPenalty && <Badge variant="ink" style={{ marginRight: 8 }}>hint {result.hintPenalty} pts</Badge>}
                         {result.score} pts
                       </span>
                     </div>
@@ -1682,92 +1552,31 @@ export default function RoomPage(): JSX.Element {
 
                 </div>
 
-                {snapshot.phase === 'round' && (
+                {hasGameplayChrome && (
                   <div className="gameplay-footer">
-                    <div className="mobile-entry-tools" aria-label="Quick game controls">
-                      {!needsRejoin && currentPlayerStanding && (
-                        <Tooltip content="Open live leaderboard" className="ui-tooltip-start">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            type="button"
-                            className="mobile-standing-trigger"
-                            onClick={openLeaderboard}
-                            aria-label={`Open live leaderboard. Rank ${currentPlayerStanding.rank}; score ${currentPlayerStanding.score} points.`}
-                          >
-                            <GameActionIcon name="leaderboard" />
-                            <span className="mobile-standing-trigger__metric">
-                              <span>Rank</span>
-                              <strong>#{currentPlayerStanding.rank}</strong>
-                            </span>
-                            <span className="mobile-standing-trigger__divider" aria-hidden="true" />
-                            <span className="mobile-standing-trigger__metric">
-                              <span>Score</span>
-                              <strong>{currentPlayerStanding.score} pts</strong>
-                            </span>
-                          </Button>
-                        </Tooltip>
-                      )}
-                      {snapshot.settings.hintsEnabled && !needsRejoin && (
-                        <Tooltip content={hasUsedHint ? 'Hint already used this round' : canUseHint ? `Reveal ${HINTS_PER_REQUEST} private clues for −${HINT_COST} points` : 'Find an accepted word to unlock a hint'}>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            type="button"
-                            className={`mobile-entry-tool mobile-entry-tool--hint${hasUsedHint ? ' mobile-entry-tool--used' : ''}`}
-                            onClick={requestHint}
-                            disabled={!canUseHint || hasUsedHint || isRequestingHint}
-                            aria-busy={isRequestingHint}
-                            aria-label={hasUsedHint ? 'Hint already used this round' : `Reveal ${HINTS_PER_REQUEST} private hints for ${HINT_COST} points`}
-                          >
-                            <GameActionIcon name="hint" />
-                            <span>Hint</span>
-                            {!hasUsedHint && <small>−{HINT_COST}</small>}
-                          </Button>
-                        </Tooltip>
-                      )}
-                      <Tooltip content="How to play">
-                        <Button variant="ghost" size="sm" type="button" className="mobile-entry-tool" onClick={openHowToPlay} aria-label="How to play">
+                    <div className="mobile-entry-tools" aria-label="Game tools and emotes">
+                      <Tooltip content="How to play" className="ui-tooltip-start">
+                        <Button variant="ghost" size="sm" type="button" className="mobile-entry-tool mobile-entry-tool--rules" onClick={openHowToPlay} aria-label="How to play">
                           <GameActionIcon name="rules" />
                           <span>Rules</span>
                         </Button>
                       </Tooltip>
-                    </div>
-                    {!needsRejoin && (
-                      <div className="emote-picker" ref={emotePickerRef}>
-                        <Tooltip content="Send an emote">
+                      {!needsRejoin && EMOTE_OPTIONS.map((option) => (
+                        <Tooltip key={option.id} content={`Send ${option.label}`}>
                           <Button
-                            ref={emoteTriggerRef}
                             variant="ghost"
                             size="sm"
                             type="button"
-                            className="emote-picker__trigger"
-                            onClick={toggleEmotePicker}
-                            aria-label={showEmotePicker ? 'Close emotes' : 'Open emotes'}
-                            aria-controls="emote-picker-menu"
-                            aria-expanded={showEmotePicker}
+                            className="mobile-entry-tool mobile-entry-tool--emote"
+                            title={option.label}
+                            aria-label={`Send ${option.label} emote`}
+                            onClick={() => sendEmote(option.id)}
                           >
-                            <GameActionIcon name="emote" />
+                            <span aria-hidden="true">{option.emoji}</span>
                           </Button>
                         </Tooltip>
-                        {showEmotePicker && (
-                          <div id="emote-picker-menu" className="emote-picker__tray" role="group" aria-label="Choose an emote">
-                            {EMOTE_OPTIONS.map((option) => (
-                              <button
-                                key={option.id}
-                                className="emote-picker__choice"
-                                type="button"
-                                title={option.label}
-                                aria-label={`Send ${option.label} emote`}
-                                onClick={() => sendEmote(option.id)}
-                              >
-                                <span aria-hidden="true">{option.emoji}</span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
+                      ))}
+                    </div>
                     <form className="word-form" onSubmit={submitWord}>
                       <div className="word-form__input-wrap">
                         <Input
@@ -1777,7 +1586,7 @@ export default function RoomPage(): JSX.Element {
                           onChange={(e) => setInputWord(e.currentTarget.value)}
                           onFocus={() => setIsWordInputFocused(true)}
                           onBlur={() => setIsWordInputFocused(false)}
-                          placeholder={isCurrentPlayerBusted ? 'You are busted this round 💣' : canSubmit ? (isTypistMode ? 'Blind Type: hidden word' : 'Type a word…') : 'Rejoin to submit'}
+                          placeholder={isCurrentPlayerBusted ? 'You are busted this round 💣' : canSubmit ? (isTypistMode ? 'Blind Type: hidden word' : 'Type a word…') : needsRejoin ? 'Rejoin to submit' : snapshot.phase === 'betweenRounds' ? `Next round in ${waitingSeconds}s` : 'Waiting for the round'}
                           disabled={!canSubmit}
                           hasError={inputFeedback === 'error'}
                           hasSuccess={inputFeedback === 'success'}
@@ -1827,7 +1636,6 @@ export default function RoomPage(): JSX.Element {
           <li>{isTeamsMode ? <>Teams: choose Red or Blue in the lobby. Individual points add into the cumulative team score.</> : isPrecisionMode ? <>Precision scores <strong>3 + word length</strong>, wrong words cost <strong>-(3 + word length)</strong>, duplicates cost <strong>-3</strong>.</> : isArcadeMode ? <>Score Attack scores <strong>3 + word length</strong>.</> : isBettingMode ? <>Betting: lock a word-count bet before the word appears. Hit it for <strong>bet × 10</strong>, extra words give <strong>3</strong>, miss it and lose <strong>bet × 10</strong>.</> : isBustedMode ? <>Busted: your first accepted word becomes your bust word. Type someone else’s bust word and your round score becomes <strong>0</strong>. Same first words are safe.</> : isCommonWordMode ? <>Common Word: unique words score <strong>+3</strong>, rare unique words with <strong>5+ letters</strong> score <strong>+5</strong>. If another player also makes that word, every player who used it gets <strong>-3</strong> for it.</> : isLightningMode ? <>Lightning Mode gives each player their own <strong>10 seconds</strong>. Your valid words add <strong>1 second</strong> to your timer; when your timer hits zero, you are out for that round.</> : isBingoMode ? <>Bingo Board gives everyone the same <strong>7 Pictureka-style word hunt tasks</strong> from the source word. Each task is <strong>+10</strong>; finish all 7 for <strong>+100</strong>. The source word itself does not count for bingo tasks; then extra valid words score <strong>+3</strong>.</> : isIntuitionMode ? <>Intuition Mode unlocks the source word letter by letter over the round. You can still guess hidden words early.</> : snapshot.settings.gameMode === 'fastestNWords' ? <>Word Sprint: first to <strong>{snapshot.settings.fastestWordTarget} words</strong> ends the round and gets a highlighted <strong>10 point bonus</strong>.</> : snapshot.settings.gameMode === 'battleRoyale' ? <>Knockout: lowest scoring <strong>{snapshot.settings.eliminationsPerRound}</strong> player(s) are eliminated each round.</> : snapshot.settings.gameMode === 'typist' ? <>Blind Type hides your input until you submit.</> : snapshot.settings.gameMode === 'oneWordForAll' ? <>Claim Mode: once any player finds a word, nobody else can use it. If it is taken, you will be told clearly.</> : <>Each accepted word scores <strong>3 points</strong>.</>}</li>
           <li>Letters must come from the source word.</li>
           <li>No reusing the same word in a round.</li>
-          {snapshot.settings.hintsEnabled && <li>Hints: once per round, spend <strong>{HINT_COST} points</strong> to reveal <strong>{HINTS_PER_REQUEST} private partial words</strong>. Scores may go below zero.</li>}
           <li>The host controls start and restart.</li>
           <li>Rooms close when everyone leaves.</li>
         </ul>
@@ -1859,113 +1667,6 @@ export default function RoomPage(): JSX.Element {
         </div>
       </Dialog>
 
-      {/* ── INVITE OPTIONS ── */}
-      <Dialog
-        open={showInviteMenu}
-        onClose={closeInviteMenu}
-        size="sm"
-        ariaLabel="Invite players"
-        className="invite-dialog"
-      >
-        <p className="eyebrow">Invite players</p>
-        <h1 style={{ fontSize: 'clamp(1.6rem,5vw,2.35rem)', lineHeight: 0.96, marginBottom: 10 }}>
-          Bring someone in.
-        </h1>
-        <p className="invite-dialog__intro">
-          Share the join link or hand over room code <code>{snapshot.roomId}</code>.
-        </p>
-        <div className="invite-dialog__options">
-          <button
-            type="button"
-            className="invite-dialog__option"
-            onClick={() => { void shareInvite(); }}
-            disabled={isSharingInvite}
-          >
-            <span className="invite-dialog__option-icon"><GameActionIcon name="share" /></span>
-            <span className="invite-dialog__option-copy">
-              <strong>{isSharingInvite ? 'Opening share…' : 'Share'}</strong>
-              <small>Send an invite with your device</small>
-            </span>
-            <span className="invite-dialog__option-arrow" aria-hidden="true">→</span>
-          </button>
-          <button
-            type="button"
-            className="invite-dialog__option"
-            onClick={() => { void copyInviteValue(getRoomInviteUrl(roomId), 'Room link'); }}
-          >
-            <span className="invite-dialog__option-icon"><GameActionIcon name="link" /></span>
-            <span className="invite-dialog__option-copy">
-              <strong>Copy room link</strong>
-              <small>Copy the direct join link</small>
-            </span>
-            <span className="invite-dialog__option-arrow" aria-hidden="true">→</span>
-          </button>
-          <button
-            type="button"
-            className="invite-dialog__option"
-            onClick={() => { void copyInviteValue(snapshot.roomId, 'Room code'); }}
-          >
-            <span className="invite-dialog__option-icon"><GameActionIcon name="code" /></span>
-            <span className="invite-dialog__option-copy">
-              <strong>Copy room code</strong>
-              <small>{snapshot.roomId}</small>
-            </span>
-            <span className="invite-dialog__option-arrow" aria-hidden="true">→</span>
-          </button>
-        </div>
-        {inviteFeedback && (
-          <p
-            className={`invite-dialog__feedback invite-dialog__feedback--${inviteFeedback.tone}`}
-            role={inviteFeedback.tone === 'error' ? 'alert' : 'status'}
-          >
-            {inviteFeedback.tone === 'success' && <GameActionIcon name="check" />}
-            {inviteFeedback.message}
-          </p>
-        )}
-      </Dialog>
-
-      {/* ── MOBILE LIVE LEADERBOARD ── */}
-      <Dialog
-        open={showLeaderboard}
-        onClose={() => setShowLeaderboard(false)}
-        size="sm"
-        ariaLabel="Live leaderboard"
-        className="mobile-leaderboard-dialog"
-      >
-        <p className="eyebrow">Live room</p>
-        <h1 style={{ fontSize: 'clamp(1.6rem,5vw,2.35rem)', lineHeight: 0.96, marginBottom: 16 }}>
-          Leaderboard
-        </h1>
-        <div className="mobile-leaderboard-list">
-          {liveLeaderboard.map((player, index) => (
-            <div key={player.id} className={`mobile-leaderboard-row${player.id === currentPlayerId ? ' mobile-leaderboard-row--self' : ''}`}>
-              <span className="mobile-leaderboard-row__rank">#{player.rank}</span>
-              <Avatar name={player.name} avatar={player.avatar} colorIndex={index} size="sm" />
-              <div className="mobile-leaderboard-row__identity">
-                <strong>{player.name}{player.id === currentPlayerId ? ' (You)' : ''}</strong>
-                <span>{player.isHost ? 'Host' : player.teamId ? `${player.teamId === 'red' ? 'Red' : 'Blue'} team` : 'Player'}</span>
-              </div>
-              <div className="mobile-leaderboard-row__score">
-                <strong>{player.score}</strong>
-                <span>pts</span>
-              </div>
-            </div>
-          ))}
-        </div>
-        {isTeamsMode && snapshot.teamScores.length > 0 && (
-          <section className="mobile-team-scores" aria-label="Team scores">
-            <p className="eyebrow">Team scores</p>
-            {snapshot.teamScores.map((team) => (
-              <div key={team.teamId}>
-                <span>{team.teamName}</span>
-                <strong>{team.score} pts</strong>
-              </div>
-            ))}
-          </section>
-        )}
-        <Button variant="secondary" fullWidth onClick={() => setShowLeaderboard(false)}>Back to game</Button>
-      </Dialog>
-
       {/* ── HOW TO PLAY MODAL ── */}
       <Dialog
         open={showHowToPlay}
@@ -1982,7 +1683,6 @@ export default function RoomPage(): JSX.Element {
           <li>{isTeamsMode ? <>Teams: choose Red or Blue in the lobby. Individual points add into the cumulative team score.</> : isPrecisionMode ? <>Precision scores <strong style={{ color: 'var(--text)' }}>3 + word length</strong>, wrong words cost <strong style={{ color: 'var(--text)' }}>-(3 + word length)</strong>, duplicates cost <strong style={{ color: 'var(--text)' }}>-3</strong>.</> : isArcadeMode ? <>Score Attack scores <strong style={{ color: 'var(--text)' }}>3 + word length</strong>.</> : isBettingMode ? <>Betting: lock a word-count bet before the word appears. Hit it for <strong style={{ color: 'var(--text)' }}>bet × 10</strong>, extra words give <strong style={{ color: 'var(--text)' }}>3</strong>, miss it and lose <strong style={{ color: 'var(--text)' }}>bet × 10</strong>.</> : isBustedMode ? <>Busted: your first word is your bust word. Type someone else’s bust word and your round score becomes <strong style={{ color: 'var(--text)' }}>0</strong>. Matching first words are safe.</> : isCommonWordMode ? <>Common Word: unique words score <strong style={{ color: 'var(--text)' }}>+3</strong>, rare unique words with <strong style={{ color: 'var(--text)' }}>5+ letters</strong> score <strong style={{ color: 'var(--text)' }}>+5</strong>. Shared words score <strong style={{ color: 'var(--text)' }}>-3</strong> for everyone who used them.</> : isLightningMode ? <>Lightning Mode gives every player their own <strong style={{ color: 'var(--text)' }}>10 seconds</strong>. Your valid words add <strong style={{ color: 'var(--text)' }}>1 second</strong> to your timer; hit zero and you are out for that round.</> : isBingoMode ? <>Bingo Board gives everyone the same <strong style={{ color: 'var(--text)' }}>7 Pictureka-style word hunt tasks</strong> generated from the source word. Tasks give <strong style={{ color: 'var(--text)' }}>+10</strong>; full board gives <strong style={{ color: 'var(--text)' }}>+100</strong>. The source word itself does not count for bingo tasks; after bingo, extra valid words give <strong style={{ color: 'var(--text)' }}>+3</strong>.</> : isIntuitionMode ? <>Intuition Mode reveals the source word evenly over time. Guess from hidden letters whenever your gut says go.</> : snapshot.settings.gameMode === 'fastestNWords' ? <>Word Sprint: first to <strong style={{ color: 'var(--text)' }}>{snapshot.settings.fastestWordTarget} words</strong> ends the round and gets a highlighted <strong style={{ color: 'var(--text)' }}>10 point bonus</strong>.</> : snapshot.settings.gameMode === 'battleRoyale' ? <>Knockout: lowest scoring <strong style={{ color: 'var(--text)' }}>{snapshot.settings.eliminationsPerRound}</strong> player(s) are eliminated each round.</> : snapshot.settings.gameMode === 'typist' ? <>Blind Type hides your input until you submit.</> : snapshot.settings.gameMode === 'oneWordForAll' ? <>Claim Mode: once any player finds a word, nobody else can use it. If it is taken, you will be told clearly.</> : <>Each accepted word scores <strong style={{ color: 'var(--text)' }}>3 points</strong>.</>}</li>
           <li>Letters must come from the source word.</li>
           <li>No reusing the same word in a round.</li>
-          {snapshot.settings.hintsEnabled && <li>Hints: once per round, spend <strong style={{ color: 'var(--text)' }}>{HINT_COST} points</strong> to reveal <strong style={{ color: 'var(--text)' }}>{HINTS_PER_REQUEST} private partial words</strong>. Scores may go below zero.</li>}
           <li>The host controls start and restart.</li>
           <li>Rooms close when everyone leaves.</li>
         </ul>
@@ -2034,22 +1734,6 @@ export default function RoomPage(): JSX.Element {
                 </div>
               </>
             )}
-
-            <div className="setting-group setting-group--full">
-              <Label htmlFor="room-hints-enabled">Hints</Label>
-              <label className="hint-setting" htmlFor="room-hints-enabled">
-                <input
-                  id="room-hints-enabled"
-                  type="checkbox"
-                  checked={draftSettings.hintsEnabled}
-                  onChange={(e) => setDraft('hintsEnabled', e.currentTarget.checked)}
-                />
-                <span>
-                  <strong>Allow player hints</strong>
-                  <small>Once per round, each player can spend {HINT_COST} points to reveal {HINTS_PER_REQUEST} partially blanked hidden words. Scores can go below zero.</small>
-                </span>
-              </label>
-            </div>
 
             {(draftSettings.gameMode === 'fastestNWords' || (draftSettings.gameMode === 'mix' && draftSettings.mixModifiers.wordSprint)) && (
               <div className="setting-group">
@@ -2110,7 +1794,7 @@ export default function RoomPage(): JSX.Element {
             <div className="setting-group">
               <Label htmlFor="room-word-length">Source word length</Label>
               <Select id="room-word-length" value={draftSettings.minWordLength} onChange={(e) => setDraft('minWordLength', Number(e.currentTarget.value))}>
-                {[7, 8, 9, 10, 11, 12, 13].map((n) => <option key={n} value={n}>{n}+ letters</option>)}
+                {[5, 6, 7, 8, 9, 10, 11, 12, 13].map((n) => <option key={n} value={n}>{n}+ letters</option>)}
               </Select>
             </div>
             <div className="setting-group">
@@ -2164,7 +1848,6 @@ export default function RoomPage(): JSX.Element {
                           bet {result.bettingBet} · {result.words.length}/{result.bettingBet} {result.bettingHit ? 'hit' : 'miss'}
                         </Badge>
                       )}
-                      {result.hintPenalty && <Badge variant="ink" style={{ marginRight: 8 }}>hint {result.hintPenalty} pts</Badge>}
                       {result.score} pts
                     </span>
                   </div>

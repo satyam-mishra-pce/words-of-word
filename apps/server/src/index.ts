@@ -19,9 +19,6 @@ import {
   GameOverPayload,
   GameRestartedPayload,
   GameSettings,
-  HINT_COST,
-  HINTS_PER_REQUEST,
-  HintResult,
   BingoTask,
   LeaveRoomPayloadSchema,
   HostChangedPayload,
@@ -41,7 +38,6 @@ import {
   RoundEndedPayload,
   RoundResultPlayer,
   RoundStartedPayload,
-  RequestHintPayloadSchema,
   SendEmotePayloadSchema,
   ServerAck,
   ScoresUpdatedPayload,
@@ -52,7 +48,6 @@ import {
   UpdateSettingsPayloadSchema,
   UpdateTeamPayloadSchema,
   WordAcceptedPayload,
-  WordHint,
   WordRejectedPayload
 } from '@wow/shared';
 import {
@@ -79,7 +74,6 @@ const COMMON_RARE_WORD_MIN_LENGTH = 5;
 const BINGO_TASK_POINTS = 10;
 const BINGO_TASK_COUNT = 7;
 const BINGO_FULL_BOARD_BONUS = 100;
-const MIN_HINT_WORD_LENGTH = 3;
 const EMOTE_COOLDOWN_MS = 750;
 const TEAM_NAMES: Record<'red' | 'blue', string> = { red: 'Red Team', blue: 'Blue Team' };
 const EMPTY_ROOM_TTL_MS = 10 * 60 * 1000;
@@ -103,7 +97,7 @@ const PUSH_RELAY_TOKEN = process.env.PUSH_RELAY_TOKEN;
 const PUBLIC_WEB_URL = process.env.PUBLIC_WEB_URL?.replace(/\/+$/, '');
 const ClientIdSchema = z.string().uuid();
 const ONLINE_ROOM_SETTINGS: GameSettings = {
-  minWordLength: 7,
+  minWordLength: 5,
   timePerRound: 30,
   rounds: 5,
   maxPlayers: 10,
@@ -121,8 +115,7 @@ const ONLINE_ROOM_SETTINGS: GameSettings = {
     busted: false,
     intuition: false,
     lightning: false
-  },
-  hintsEnabled: false
+  }
 };
 const CATEGORY_WORDS: Record<string, string[]> = {
   genz: ['aesthetic', 'maincharacter', 'delulu', 'bussin', 'cringe', 'glowup', 'stan', 'vibing', 'rizzler', 'brainrot'],
@@ -160,8 +153,6 @@ interface InternalRoom {
   validWords: Set<string>;
   acceptedWords: Map<string, Set<string>>;
   roundPenalties: Map<string, number>;
-  hintPenalties: Map<string, number>;
-  playerHints: Map<string, WordHint[]>;
   negativeWords: Map<string, Array<{ word: string; penalty: number }>>;
   bustWords: Map<string, string>;
   bustedPlayers: Set<string>;
@@ -776,8 +767,6 @@ class GameRoomManager {
 
     this.movePlayerMapEntry(room.acceptedWords, previousSocketId, nextSocketId);
     this.movePlayerMapEntry(room.roundPenalties, previousSocketId, nextSocketId);
-    this.movePlayerMapEntry(room.hintPenalties, previousSocketId, nextSocketId);
-    this.movePlayerMapEntry(room.playerHints, previousSocketId, nextSocketId);
     this.movePlayerMapEntry(room.negativeWords, previousSocketId, nextSocketId);
     this.movePlayerMapEntry(room.bustWords, previousSocketId, nextSocketId);
     this.movePlayerMapEntry(room.currentBets, previousSocketId, nextSocketId);
@@ -828,8 +817,6 @@ class GameRoomManager {
       validWords: new Set<string>(),
       acceptedWords: new Map([[socketId, new Set<string>()]]),
       roundPenalties: new Map([[socketId, 0]]),
-      hintPenalties: new Map([[socketId, 0]]),
-      playerHints: new Map<string, WordHint[]>(),
       negativeWords: new Map([[socketId, []]]),
       bustWords: new Map<string, string>(),
       bustedPlayers: new Set<string>(),
@@ -871,12 +858,12 @@ class GameRoomManager {
       }));
   }
 
-  public checkRoom(roomId: string, viewerId?: string): RoomSnapshot | undefined {
+  public checkRoom(roomId: string): RoomSnapshot | undefined {
     const room = this.rooms.get(roomId.toUpperCase());
     if (!room) {
       return undefined;
     }
-    return this.toSnapshot(room, viewerId);
+    return this.toSnapshot(room);
   }
 
   private findOpenOnlineRoom(): InternalRoom | undefined {
@@ -950,7 +937,6 @@ class GameRoomManager {
     if (room.phase !== 'round') {
       room.acceptedWords.set(socketId, new Set<string>());
       room.roundPenalties.set(socketId, 0);
-      room.hintPenalties.set(socketId, 0);
       room.negativeWords.set(socketId, []);
       room.bingoProgress.set(socketId, new Set<string>());
     }
@@ -1091,8 +1077,6 @@ class GameRoomManager {
     room.players = room.players.filter((player) => player.id !== socketId);
     room.acceptedWords.delete(socketId);
     room.roundPenalties.delete(socketId);
-    room.hintPenalties.delete(socketId);
-    room.playerHints.delete(socketId);
     room.negativeWords.delete(socketId);
     room.bustWords.delete(socketId);
     room.bustedPlayers.delete(socketId);
@@ -1116,8 +1100,6 @@ class GameRoomManager {
       room.validWords.clear();
       room.acceptedWords.clear();
       room.roundPenalties.clear();
-      room.hintPenalties.clear();
-      room.playerHints.clear();
       room.negativeWords.clear();
       room.bustWords.clear();
       room.bustedPlayers.clear();
@@ -1355,8 +1337,8 @@ class GameRoomManager {
       return { ok: false, error: 'Room not found.' };
     }
 
-    if (room.phase !== 'round') {
-      return { ok: false, error: 'Emotes are available during an active round.' };
+    if (room.phase !== 'round' && room.phase !== 'betweenRounds') {
+      return { ok: false, error: 'Emotes are available while a game is in progress.' };
     }
 
     const player = room.players.find((candidate) => candidate.id === socketId);
@@ -1378,65 +1360,6 @@ class GameRoomManager {
     } satisfies EmotePlayedPayload);
 
     return { ok: true, data: { ok: true } };
-  }
-
-  public requestHint(socketId: string, roomId: string): ManagerResult<HintResult> {
-    roomId = roomId.toUpperCase();
-    const room = this.rooms.get(roomId);
-    if (!room) {
-      return { ok: false, error: 'Room not found.' };
-    }
-
-    if (!room.settings.hintsEnabled) {
-      return { ok: false, error: 'Hints are not enabled for this game.' };
-    }
-
-    if (room.phase !== 'round') {
-      return { ok: false, error: 'Hints are only available during an active round.' };
-    }
-
-    const player = room.players.find((candidate) => candidate.id === socketId);
-    if (!player || player.isEliminated) {
-      return { ok: false, error: 'You cannot use a hint in this round.' };
-    }
-
-    if (this.usesBusted(room.settings) && room.bustedPlayers.has(socketId)) {
-      return { ok: false, error: 'You are busted for this round.' };
-    }
-
-    const playerWords = room.acceptedWords.get(socketId);
-    if (!playerWords) {
-      return { ok: false, error: 'You joined during this round and can use a hint next round.' };
-    }
-
-    if (this.usesLightning(room.settings) && (room.lightningTimeLeft.get(socketId) ?? 0) <= 0) {
-      return { ok: false, error: 'Your lightning timer is out for this round.' };
-    }
-
-    if (room.playerHints.has(socketId)) {
-      return { ok: false, error: 'You have already used your hint for this round.' };
-    }
-
-    const hintWords = this.selectHintWords(room, socketId, playerWords);
-    if (hintWords.length < HINTS_PER_REQUEST) {
-      return { ok: false, error: 'This source word does not have enough unused words for a fair hint.' };
-    }
-
-    const hints = hintWords.map((word) => this.createWordHint(word));
-    const penalty = -HINT_COST;
-    room.playerHints.set(socketId, hints);
-    room.hintPenalties.set(socketId, (room.hintPenalties.get(socketId) ?? 0) + penalty);
-    player.score += penalty;
-    this.emitScoresUpdated(room);
-
-    return {
-      ok: true,
-      data: {
-        hints,
-        cost: HINT_COST,
-        score: player.score
-      }
-    };
   }
 
   public restartGame(socketId: string, roomId: string, autoStart: boolean): ManagerResult<EmptyResult> {
@@ -1545,8 +1468,6 @@ class GameRoomManager {
     room.bingoCompletedBoards = new Set<string>();
     room.acceptedWords = this.emptyAcceptedWords(room);
     room.roundPenalties = this.emptyRoundPenalties(room);
-    room.hintPenalties = this.emptyHintPenalties(room);
-    room.playerHints = new Map<string, WordHint[]>();
     room.negativeWords = this.emptyNegativeWords(room);
     room.bustWords = new Map<string, string>();
     room.bustedPlayers = new Set<string>();
@@ -1602,8 +1523,6 @@ class GameRoomManager {
     room.waitingSeconds = 0;
     room.acceptedWords = this.emptyAcceptedWords(room);
     room.roundPenalties = this.emptyRoundPenalties(room);
-    room.hintPenalties = this.emptyHintPenalties(room);
-    room.playerHints = new Map<string, WordHint[]>();
     room.negativeWords = this.emptyNegativeWords(room);
     room.bustWords = new Map<string, string>();
     room.bustedPlayers = new Set<string>();
@@ -1650,55 +1569,6 @@ class GameRoomManager {
         this.finishRound(room);
       }
     }, 1000);
-  }
-
-  private selectHintWords(room: InternalRoom, playerId: string, playerWords: ReadonlySet<string>): string[] {
-    const candidates = Array.from(room.validWords).filter((word) => {
-      if (word === room.currentWord || word.length < MIN_HINT_WORD_LENGTH || playerWords.has(word)) {
-        return false;
-      }
-      if (this.usesClaim(room.settings) && this.wordWasTakenByAnotherPlayer(room, playerId, word)) {
-        return false;
-      }
-      return !this.usesBusted(room.settings) || !this.wordBustsPlayer(room, playerId, word);
-    });
-    const preferredWords = candidates.filter((word) => word.length >= 4);
-    const pool = preferredWords.length >= HINTS_PER_REQUEST ? preferredWords : candidates;
-    const shuffled = [...pool];
-
-    for (let index = shuffled.length - 1; index > 0; index -= 1) {
-      const swapIndex = Math.floor(Math.random() * (index + 1));
-      const current = shuffled[index];
-      const swap = shuffled[swapIndex];
-      if (current === undefined || swap === undefined) continue;
-      shuffled[index] = swap;
-      shuffled[swapIndex] = current;
-    }
-
-    return shuffled.slice(0, HINTS_PER_REQUEST);
-  }
-
-  private createWordHint(word: string): WordHint {
-    const revealCount = Math.max(1, Math.floor(word.length / 2));
-    const revealOrder = [
-      0,
-      word.length - 1,
-      Math.floor(word.length / 2),
-      Math.floor(word.length / 3),
-      Math.floor((word.length * 2) / 3),
-      ...Array.from({ length: word.length }, (_, index) => index)
-    ];
-    const revealed = new Set<number>();
-
-    for (const index of revealOrder) {
-      if (revealed.size >= revealCount) break;
-      if (index >= 0 && index < word.length) revealed.add(index);
-    }
-
-    return {
-      letters: Array.from(word, (letter, index) => revealed.has(index) ? letter : null),
-      blanks: word.length - revealed.size
-    };
   }
 
   private finishRound(room: InternalRoom): void {
@@ -1806,8 +1676,6 @@ class GameRoomManager {
     }));
     room.acceptedWords = this.emptyAcceptedWords(room);
     room.roundPenalties = this.emptyRoundPenalties(room);
-    room.hintPenalties = this.emptyHintPenalties(room);
-    room.playerHints = new Map<string, WordHint[]>();
     room.negativeWords = this.emptyNegativeWords(room);
     room.bustWords = new Map<string, string>();
     room.bustedPlayers = new Set<string>();
@@ -1828,10 +1696,6 @@ class GameRoomManager {
   }
 
   private emptyRoundPenalties(room: InternalRoom): Map<string, number> {
-    return new Map(room.players.map((player) => [player.id, 0]));
-  }
-
-  private emptyHintPenalties(room: InternalRoom): Map<string, number> {
     return new Map(room.players.map((player) => [player.id, 0]));
   }
 
@@ -1956,12 +1820,11 @@ class GameRoomManager {
     }
   }
 
-  private toSnapshot(room: InternalRoom, viewerId?: string): RoomSnapshot {
+  private toSnapshot(room: InternalRoom): RoomSnapshot {
     const players = room.players.map((player) => ({
       ...player,
       isHost: player.id === room.hostId
     }));
-    const personalHints = viewerId ? room.playerHints.get(viewerId) : undefined;
 
     return {
       roomId: room.id,
@@ -1989,8 +1852,7 @@ class GameRoomManager {
       bustWords: Object.fromEntries(room.bustWords),
       bustedPlayers: Object.fromEntries(room.players.map((player) => [player.id, room.bustedPlayers.has(player.id)])),
       bingoTasks: room.bingoTasks,
-      bingoProgress: Object.fromEntries(Array.from(room.bingoProgress.entries()).map(([playerId, tasks]) => [playerId, Array.from(tasks)])),
-      ...(personalHints ? { personalHints } : {})
+      bingoProgress: Object.fromEntries(Array.from(room.bingoProgress.entries()).map(([playerId, tasks]) => [playerId, Array.from(tasks)]))
     };
   }
 
@@ -2062,16 +1924,14 @@ class GameRoomManager {
       const precisionPenalty = room.settings.gameMode === 'precision'
         ? room.roundPenalties.get(player.id) ?? 0
         : 0;
-      const hintPenalty = room.hintPenalties.get(player.id) ?? 0;
       const showNegativeWords = room.settings.gameMode === 'precision' || room.settings.gameMode === 'commonWord';
 
       return {
         playerId: player.id,
         playerName: player.name,
-        score: (bustedScoreOverride ? 0 : wordScore + fastestBonus + precisionPenalty) + hintPenalty,
+        score: bustedScoreOverride ? 0 : wordScore + fastestBonus + precisionPenalty,
         words,
         negativeWords: showNegativeWords ? room.negativeWords.get(player.id) ?? [] : [],
-        ...(hintPenalty ? { hintPenalty } : {}),
         ...(room.settings.gameMode === 'betting' ? {
           bettingBet: bet,
           bettingHit: words.length >= bet
@@ -2484,7 +2344,7 @@ io.on('connection', (socket) => {
       return;
     }
 
-    const snapshot = manager.checkRoom(parsed.data.roomId, socket.id);
+    const snapshot = manager.checkRoom(parsed.data.roomId);
     if (!snapshot) {
       reply(ack, { ok: true, data: { exists: false } });
       return;
@@ -2635,17 +2495,6 @@ io.on('connection', (socket) => {
     }
 
     const result = manager.sendEmote(socket.id, parsed.data.roomId, parsed.data.emote);
-    reply(ack, result);
-  });
-
-  socket.on('requestHint', (payload, ack) => {
-    const parsed = RequestHintPayloadSchema.safeParse(payload);
-    if (!parsed.success) {
-      reply(ack, { ok: false, error: validationMessage(parsed.error.message) });
-      return;
-    }
-
-    const result = manager.requestHint(socket.id, parsed.data.roomId);
     reply(ack, result);
   });
 
