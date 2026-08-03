@@ -1184,33 +1184,36 @@ export default function RoomPage(): JSX.Element {
   /* ── main game view ── */
   return (
     <main className={`game-shell${hasGameplayChrome ? ' has-gameplay-chrome' : ''}${isWordInputFocused ? ' is-typing' : ''}`}>
-      {emoteBursts.length > 0 && (
-        <div className="emote-burst-layer" aria-live="polite" aria-relevant="additions">
-          <AnimatePresence initial={false}>
-            {emoteBursts.map((burst) => {
-              const senderName = burst.playerId === currentPlayerId ? 'You' : burst.playerName;
-              return (
-                <motion.div
-                  key={burst.id}
-                  className={`emote-burst-slot emote-burst-slot--${burst.id % 3}`}
-                  role="status"
-                  aria-label={`${senderName} sent ${burst.label}`}
-                  style={{ transformOrigin: '0 50%' }}
-                  initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.46, y: 28, rotate: -7 }}
-                  animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0, rotate: 0 }}
-                  exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.62, y: -64, rotate: 6 }}
-                  transition={shouldReduceMotion ? { duration: 0.12 } : { type: 'spring', stiffness: 420, damping: 29, mass: 0.7 }}
-                >
-                  <div className="emote-burst">
-                    <span className="emote-burst__emoji" aria-hidden="true">{burst.emoji}</span>
-                    <span className="emote-burst__sender">{senderName}</span>
-                  </div>
-                </motion.div>
-              );
-            })}
-          </AnimatePresence>
-        </div>
-      )}
+      <div className="emote-burst-layer" aria-live="polite" aria-relevant="additions">
+        <AnimatePresence initial={false}>
+          {emoteBursts.map((burst) => {
+            const senderName = burst.playerId === currentPlayerId ? 'You' : burst.playerName;
+            return (
+              <motion.div
+                key={burst.id}
+                className={`emote-burst-slot emote-burst-slot--${burst.id % 3}`}
+                role="status"
+                aria-label={`${senderName} sent ${burst.label}`}
+                style={{ transformOrigin: '0 50%' }}
+                initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.46, y: 30, rotate: -7 }}
+                animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: -50, rotate: 0 }}
+                exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.62, y: -92, rotate: 6, transition: { duration: 0.28, ease: 'easeIn' } }}
+                transition={shouldReduceMotion ? { duration: 0.12 } : {
+                  opacity: { duration: 0.18, ease: 'easeOut' },
+                  scale: { type: 'spring', stiffness: 420, damping: 29, mass: 0.7 },
+                  y: { duration: 2.1, ease: 'linear' },
+                  rotate: { type: 'spring', stiffness: 420, damping: 29, mass: 0.7 }
+                }}
+              >
+                <div className="emote-burst">
+                  <span className="emote-burst__emoji" aria-hidden="true">{burst.emoji}</span>
+                  <span className="emote-burst__sender">{senderName}</span>
+                </div>
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
+      </div>
 
       {bustFlash && (
         <div className={`bust-overlay ${bustFlash.playerId === currentPlayerId ? 'self' : ''}`} role="status" aria-live="assertive">
