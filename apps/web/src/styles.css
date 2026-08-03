@@ -1452,7 +1452,7 @@ body:has(.game-shell.has-gameplay-chrome),
 .round-timer {
   position: relative;
   width: 100%;
-  height: 42px;
+  height: 38px;
 }
 .round-timer .ui-progress {
   position: absolute;
@@ -1467,13 +1467,12 @@ body:has(.game-shell.has-gameplay-chrome),
   left: 50%;
   z-index: 1;
   display: grid;
-  width: 42px;
-  height: 42px;
+  width: 38px;
+  height: 38px;
   place-items: center;
   transform: translate(-50%, -50%);
-  border: 1px solid var(--main-25);
   border-radius: 50%;
-  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  background: color-mix(in srgb, var(--bg) 52%, transparent);
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
   color: var(--main);
@@ -1483,10 +1482,7 @@ body:has(.game-shell.has-gameplay-chrome),
   letter-spacing: 0.02em;
   pointer-events: none;
 }
-.timer-section.urgent .round-timer__label {
-  color: var(--error);
-  border-color: color-mix(in srgb, var(--error) 42%, transparent);
-}
+.timer-section.urgent .round-timer__label { color: var(--error); }
 .timer-section.urgent .timer-meta { color: var(--error); }
 .timer-meta { display: none; }
 
