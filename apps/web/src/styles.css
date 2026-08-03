@@ -143,6 +143,7 @@ html[data-native-app="true"] body::after {
   color: var(--main);
   font: 700 clamp(3.3rem, 18vw, 6rem) 'JetBrains Mono', monospace;
   letter-spacing: -0.12em;
+  text-transform: none;
 }
 .app-boot i {
   display: block;
@@ -436,24 +437,6 @@ html[data-native-app="true"] .ui-dialog-backdrop {
 .settings-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; margin: 20px 0; }
 .setting-group { display: grid; gap: 7px; }
 .setting-group--full { grid-column: 1 / -1; }
-.hint-setting {
-  display: flex;
-  align-items: flex-start;
-  gap: 11px;
-  padding: 12px 13px;
-  border: 1px solid var(--sub-2);
-  border-radius: var(--r-sm);
-  background: var(--main-10);
-  color: var(--text);
-  cursor: pointer;
-  transition: border-color 150ms ease, background 150ms ease;
-}
-.hint-setting:hover { border-color: var(--main-25); background: var(--main-15); }
-.hint-setting:focus-within { outline: 2px solid var(--main); outline-offset: 2px; }
-.hint-setting input { accent-color: var(--main); margin: 3px 0 0; flex: 0 0 auto; }
-.hint-setting > span { display: grid; gap: 3px; min-width: 0; }
-.hint-setting strong { font-size: 0.80rem; font-weight: 600; }
-.hint-setting small { color: var(--sub); font-size: 0.70rem; line-height: 1.5; }
 .button-stack  { display: flex; flex-direction: column; gap: 10px; }
 .button-row    { display: flex; gap: 10px; justify-content: space-between; align-items: center; flex-wrap: wrap; }
 
@@ -796,128 +779,7 @@ html[data-native-app="true"] .ui-dialog-backdrop {
   padding-inline: 12px;
 }
 
-.invite-dialog__intro {
-  margin: 0 0 18px;
-  color: var(--sub);
-  font-size: 0.82rem;
-  line-height: 1.6;
-}
-.invite-dialog__intro code {
-  display: inline-block;
-  padding: 1px 5px;
-  border-radius: 3px;
-  background: var(--main-10);
-  color: var(--main);
-  font: 600 0.78rem 'JetBrains Mono', monospace;
-  letter-spacing: 0.05em;
-}
-.invite-dialog__options {
-  display: grid;
-  gap: 6px;
-}
-.invite-dialog__option {
-  display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 10px;
-  border: 1px solid var(--sub-2);
-  border-radius: var(--r-sm);
-  background: var(--bg-3);
-  color: var(--text);
-  font-family: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: border-color 150ms ease, background 150ms ease, transform 100ms ease;
-}
-.invite-dialog__option:hover:not(:disabled) {
-  border-color: var(--main-25);
-  background: var(--main-10);
-}
-.invite-dialog__option:active:not(:disabled) { transform: scale(0.99); }
-.invite-dialog__option:focus-visible {
-  outline: 2px solid var(--main);
-  outline-offset: 3px;
-}
-.invite-dialog__option:disabled { cursor: wait; opacity: 0.55; }
-.invite-dialog__option-icon {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: var(--bg);
-  color: var(--main);
-}
-.invite-dialog__option-icon svg { width: 17px; height: 17px; }
-.invite-dialog__option-copy { min-width: 0; }
-.invite-dialog__option-copy strong,
-.invite-dialog__option-copy small { display: block; }
-.invite-dialog__option-copy strong { font-size: 0.78rem; font-weight: 600; }
-.invite-dialog__option-copy small {
-  margin-top: 3px;
-  overflow: hidden;
-  color: var(--sub);
-  font: 0.64rem 'JetBrains Mono', monospace;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.invite-dialog__option-arrow { color: var(--sub); font-size: 1rem; }
-.invite-dialog__option:hover:not(:disabled) .invite-dialog__option-arrow { color: var(--main); }
-.invite-dialog__feedback {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin: 12px 0 0;
-  font-size: 0.72rem;
-  line-height: 1.4;
-}
-.invite-dialog__feedback svg { width: 15px; height: 15px; flex: 0 0 auto; }
-.invite-dialog__feedback--success { color: var(--main); }
-.invite-dialog__feedback--error { color: var(--error); }
-
-.mobile-leaderboard-list {
-  display: grid;
-  gap: 4px;
-  margin-bottom: 18px;
-}
-.mobile-leaderboard-row {
-  display: grid;
-  grid-template-columns: 30px auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 9px;
-  padding: 9px 10px;
-  border-radius: var(--r-sm);
-  background: var(--bg-3);
-}
-.mobile-leaderboard-row--self { background: var(--main-10); }
-.mobile-leaderboard-row__rank { color: var(--sub); font-size: 0.72rem; }
-.mobile-leaderboard-row__identity { min-width: 0; }
-.mobile-leaderboard-row__identity strong {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text);
-  font-size: 0.78rem;
-}
-.mobile-leaderboard-row--self .mobile-leaderboard-row__identity strong { color: var(--main); }
-.mobile-leaderboard-row__identity span { display: block; margin-top: 2px; color: var(--sub); font-size: 0.60rem; }
-.mobile-leaderboard-row__score { min-width: 34px; text-align: right; }
-.mobile-leaderboard-row__score strong { display: block; color: var(--main); font-size: 0.86rem; }
-.mobile-leaderboard-row__score span { display: block; color: var(--sub); font-size: 0.56rem; }
-.mobile-team-scores {
-  display: grid;
-  gap: 4px;
-  margin: 0 0 18px;
-  padding: 12px;
-  border-radius: var(--r-sm);
-  background: var(--bg-3);
-}
-.mobile-team-scores .eyebrow { margin-bottom: 3px; }
-.mobile-team-scores > div { display: flex; justify-content: space-between; gap: 12px; color: var(--sub); font-size: 0.72rem; }
-.mobile-team-scores strong { color: var(--main); }
+.mobile-players-panel { display: none; }
 
 /* --- Progress --- */
 .ui-progress {
@@ -1156,9 +1018,6 @@ html[data-native-app="true"] .ui-dialog-backdrop {
 .game-header__action:hover:not(:disabled) { color: var(--text); background: var(--bg-3); }
 .game-header__action-label,
 .game-header__action-meta { display: none; }
-.game-header__action--hint { color: var(--main); }
-.game-header__action--hint:hover:not(:disabled) { color: var(--main); background: var(--main-10); }
-.game-header__action--used { color: var(--sub); }
 .game-header__action--stop { color: var(--error); }
 .game-header__action--stop:hover:not(:disabled) { color: var(--error); background: var(--error-10); }
 .game-header__action--exit {
@@ -1382,7 +1241,7 @@ body:has(.game-shell.has-gameplay-chrome),
   overflow-wrap: anywhere;
 }
 .game-shell.has-gameplay-chrome .gameplay-header .current-word-waiting { font-size: 1rem; }
-.game-shell.has-gameplay-chrome .gameplay-header .intuition-unlock-hint {
+.game-shell.has-gameplay-chrome .gameplay-header .intuition-unlock-note {
   margin-top: 5px;
   font-size: 0.62rem;
   line-height: 1.35;
@@ -1416,7 +1275,62 @@ body:has(.game-shell.has-gameplay-chrome),
   margin: 0;
   padding: 8px 16px 10px;
 }
-.mobile-entry-tools { display: none; }
+.room-footer-slot {
+  grid-column: 2;
+  min-width: 0;
+}
+.room-footer-slot .gameplay-footer {
+  min-width: 0;
+  margin: 0;
+  background: var(--bg);
+  border-top: 1px solid var(--sub-2);
+}
+.room-footer-slot .gameplay-footer .word-form {
+  min-width: 0;
+  margin: 0;
+  padding: 8px 16px 10px;
+}
+@media (min-width: 1181px) {
+  .game-shell:not(.has-gameplay-chrome) .info-panel {
+    grid-column: 3;
+    grid-row: span 2;
+    align-self: stretch;
+    position: static;
+  }
+}
+.game-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 38px;
+  padding: 3px 16px;
+}
+.game-tools .ui-tooltip-host { display: flex; flex: 0 0 auto; }
+.game-tool {
+  min-width: 30px;
+  min-height: 30px;
+  padding: 5px 6px;
+  color: var(--sub);
+  font-size: 0.7rem;
+}
+.game-tool--emote { font-size: 1rem; line-height: 1; }
+.game-tool:hover:not(:disabled) { color: var(--text); background: var(--bg-3); }
+.word-form--entry { grid-template-columns: minmax(0, 1fr); }
+.word-entry-input {
+  min-height: 50px;
+  border-color: var(--main-40);
+  background: linear-gradient(90deg, var(--main-10), var(--bg-sub) 32%);
+  box-shadow: inset 0 0 0 1px var(--main-10);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.word-entry-input::placeholder { color: var(--sub); font-weight: 500; }
+.word-entry-input:not(:disabled):hover { border-color: var(--main); }
+.word-entry-input:focus {
+  border-color: var(--main);
+  box-shadow: 0 0 0 3px var(--main-10), inset 0 0 0 1px var(--main-25);
+}
+.word-entry-input:disabled { background: var(--bg-sub); }
 .game-shell.has-gameplay-chrome .gameplay-scroll .bingo-board {
   max-height: none;
   margin: 0;
@@ -1508,7 +1422,7 @@ body:has(.game-shell.has-gameplay-chrome),
   color: var(--sub-2);
   opacity: 0.55;
 }
-.intuition-unlock-hint {
+.intuition-unlock-note {
   display: block;
   margin-top: 16px;
   color: var(--sub);
@@ -1577,7 +1491,7 @@ body:has(.game-shell.has-gameplay-chrome),
   letter-spacing: -0.02em;
 }
 .between-rounds__label { color: var(--sub); font-size: 0.68rem; letter-spacing: 0.10em; }
-.between-rounds__hint  { color: var(--sub); font-size: 0.78rem; }
+.between-rounds__note  { color: var(--sub); font-size: 0.78rem; }
 
 /* Stage notice bar — fixed height, opacity-only transition, no layout jump */
 .stage-notice-bar {
@@ -1607,67 +1521,6 @@ body:has(.game-shell.has-gameplay-chrome),
   grid-template-columns: 1fr auto;
   gap: 10px;
 }
-
-/* Hints — minimal inline prompt */
-.hint-panel {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
-  border-radius: var(--r-sm);
-  background: var(--main-10);
-}
-.hint-panel--revealed {
-  display: grid;
-  gap: 10px;
-  background: var(--main-10);
-}
-.hint-panel__header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.hint-panel__header h3 {
-  margin: 0;
-  color: var(--text);
-  font-size: 0.82rem;
-  font-weight: 600;
-}
-.hint-panel__kicker {
-  display: none;
-}
-.hint-panel__action {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.hint-panel__action p { display: none; }
-.hint-panel__help { margin: 0; color: var(--sub); font-size: 0.68rem; }
-.hint-list { display: grid; gap: 8px; padding: 0; margin: 0; list-style: none; }
-.hint-clue {
-  display: grid;
-  grid-template-columns: minmax(104px, 0.7fr) 1fr;
-  align-items: center;
-  gap: 12px;
-  padding: 9px 10px;
-  border-radius: var(--r-sm);
-  background: var(--bg-sub);
-}
-.hint-clue__label { color: var(--sub); font-size: 0.68rem; letter-spacing: 0.03em; }
-.hint-pattern { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
-.hint-letter {
-  display: inline-grid;
-  place-items: center;
-  width: 1.72em;
-  height: 1.95em;
-  border-bottom: 2px solid var(--sub-2);
-  color: transparent;
-  font-size: clamp(0.92rem, 2.5vw, 1.08rem);
-  font-weight: 700;
-  line-height: 1;
-}
-.hint-letter--revealed { border-bottom-color: var(--main); color: var(--main); }
 
 /* Words card — transparent, flowing word display */
 .words-card {
@@ -1747,7 +1600,7 @@ body:has(.game-shell.has-gameplay-chrome),
   color: var(--main);
   font-size: 0.76rem;
 }
-.bingo-board__hint {
+.bingo-board__note {
   margin-top: 8px;
   margin-bottom: 0;
   font-size: 0.74rem;
@@ -2298,6 +2151,7 @@ body:has(.game-shell.has-gameplay-chrome),
     background: var(--bg);
   }
   .word-stage--active { overflow: hidden; }
+  .game-shell:not(.has-gameplay-chrome) .word-stage { padding-bottom: 112px; }
   /* The room header already carries this metadata; keep announcements for
      assistive tech without inserting visual content above the source word. */
   .word-stage > .stage-notice-bar {
@@ -2354,7 +2208,7 @@ body:has(.game-shell.has-gameplay-chrome),
     overflow-wrap: anywhere;
   }
   .gameplay-header .current-word-waiting { font-size: 0.9rem; }
-  .gameplay-header .intuition-unlock-hint {
+  .gameplay-header .intuition-unlock-note {
     margin-top: 4px;
     font-size: 0.58rem;
     line-height: 1.35;
@@ -2384,8 +2238,15 @@ body:has(.game-shell.has-gameplay-chrome),
     -webkit-overflow-scrolling: touch;
     scrollbar-width: thin;
   }
+  .mobile-players-panel {
+    display: block;
+    min-width: 0;
+    margin-top: 4px;
+  }
+  .mobile-players-panel .room-status { margin-bottom: 0; }
+  .game-shell:not(.has-gameplay-chrome) .gameplay-scroll { padding-bottom: 112px; }
 
-  /* The bottom dock is intentionally just for word entry. */
+  /* The bottom dock keeps emotes and the disabled word input available in every phase. */
   .gameplay-layout > .gameplay-footer {
     grid-row: 3;
     min-width: 0;
@@ -2393,68 +2254,38 @@ body:has(.game-shell.has-gameplay-chrome),
     background: var(--bg);
     border-top: 1px solid var(--sub-2);
   }
-  .mobile-entry-tools {
-    display: flex;
-    align-items: center;
+  .room-footer-slot {
+    position: fixed;
+    right: var(--safe-right);
+    bottom: 0;
+    left: var(--safe-left);
+    z-index: 30;
+    margin: 0;
+    background: var(--bg);
+    border-top: 1px solid var(--sub-2);
+  }
+  .room-footer-slot .gameplay-footer { border-top: 0; }
+  .room-footer-slot .gameplay-footer .word-form { padding-bottom: calc(10px + var(--safe-bottom)); }
+  .game-tools {
     gap: 4px;
     min-height: 38px;
     padding: 3px 12px;
-    border-bottom: 1px solid rgba(100,102,105,0.32);
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
   }
-  .mobile-entry-tools .ui-tooltip-host { display: flex; }
-  .mobile-standing-trigger {
-    display: grid;
-    grid-template-columns: auto auto 1px auto;
-    align-items: center;
-    min-height: 32px;
-    padding: 3px 7px;
-    gap: 5px;
-    border: 1px solid var(--sub-2);
-    border-radius: var(--r-sm);
-    background: var(--bg-3);
-    color: var(--text);
-    white-space: nowrap;
-  }
-  .mobile-standing-trigger:hover:not(:disabled) {
-    border-color: var(--main-25);
-    background: var(--main-10);
-    color: var(--text);
-  }
-  .mobile-standing-trigger svg { width: 14px; height: 14px; color: var(--main); }
-  .mobile-standing-trigger__metric {
-    display: grid;
-    gap: 1px;
-    text-align: left;
-    line-height: 1;
-  }
-  .mobile-standing-trigger__metric > span {
-    color: var(--sub);
-    font-size: 0.47rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-  .mobile-standing-trigger__metric strong {
-    color: var(--main);
-    font: 600 0.66rem 'JetBrains Mono', monospace;
-  }
-  .mobile-standing-trigger__divider {
-    width: 1px;
-    height: 18px;
-    background: var(--sub-2);
-  }
-  .mobile-entry-tool {
+  .game-tools::-webkit-scrollbar { display: none; }
+  .game-tools .ui-tooltip-host { display: flex; flex: 0 0 auto; }
+  .game-tool {
+    min-width: 30px;
     min-height: 30px;
-    padding: 5px 8px;
+    padding: 5px 6px;
     gap: 4px;
     color: var(--sub);
     font-size: 0.62rem;
   }
-  .mobile-entry-tool:hover:not(:disabled) { color: var(--text); background: var(--bg-3); }
-  .mobile-entry-tool--hint { color: var(--main); }
-  .mobile-entry-tool--hint:hover:not(:disabled) { color: var(--main); background: var(--main-10); }
-  .mobile-entry-tool--used { color: var(--sub); }
-  .mobile-entry-tool small { color: var(--main); font-size: 0.54rem; }
+  .game-tool--emote { font-size: 1rem; line-height: 1; }
+  .game-tool:hover:not(:disabled) { color: var(--text); background: var(--bg-3); }
   .gameplay-footer .word-form {
     min-width: 0;
     margin: 0;
@@ -2463,35 +2294,13 @@ body:has(.game-shell.has-gameplay-chrome),
     grid-template-columns: minmax(0, 1fr) auto;
     background: var(--bg);
   }
+  .gameplay-footer .word-form--entry { grid-template-columns: minmax(0, 1fr); }
   .word-form .ui-input {
     min-width: 0;
     padding: 10px 12px;
     font-size: 16px;
   }
   .word-form .ui-btn { padding: 10px 16px; font-size: 0.78rem; }
-
-  /* Hints stay a quiet utility until a player has actually revealed them. */
-  .gameplay-scroll .hint-panel {
-    padding: 4px 0;
-    gap: 8px;
-    background: transparent;
-    border-radius: 0;
-  }
-  .gameplay-scroll .hint-panel--revealed {
-    padding: 8px;
-    background: var(--main-10);
-    border-radius: var(--r-sm);
-  }
-  .gameplay-scroll .hint-panel__header h3 {
-    color: var(--sub);
-    font-size: 0.70rem;
-    font-weight: 400;
-  }
-  .gameplay-scroll .hint-panel .ui-btn { padding: 5px 9px; font-size: 0.66rem; }
-  .hint-clue { grid-template-columns: 1fr; gap: 4px; padding: 6px 8px; }
-  .hint-clue__label { font-size: 0.58rem; }
-  .hint-pattern { justify-content: flex-start; gap: 2px; }
-  .hint-letter { width: 1.4em; height: 1.6em; font-size: 0.85rem; }
 
   /* Bingo belongs to the shared middle scroller — never create a nested one. */
   .bingo-stage { gap: 0; }
@@ -2513,7 +2322,7 @@ body:has(.game-shell.has-gameplay-chrome),
   .bingo-task { padding: 6px 8px; font-size: 0.72rem; gap: 6px; }
   .bingo-task__check { width: 16px; flex: 0 0 16px; font-size: 0.85rem; }
   .bingo-task__points { font-size: 0.65rem; }
-  .bingo-board__hint { font-size: 0.65rem; margin-top: 6px; }
+  .bingo-board__note { font-size: 0.65rem; margin-top: 6px; }
 
   .words-card { padding: 8px 0; }
   .words-header { margin-bottom: 6px; }
@@ -2526,7 +2335,7 @@ body:has(.game-shell.has-gameplay-chrome),
   .between-rounds { padding: 12px 0; gap: 4px; }
   .between-rounds__countdown { font-size: 2.5rem; }
   .between-rounds__label { font-size: 0.58rem; }
-  .between-rounds__hint { font-size: 0.68rem; }
+  .between-rounds__note { font-size: 0.68rem; }
 
   .results-card { padding: 8px 0; gap: 6px; }
   .results-card h2 { font-size: 0.95rem; }
@@ -4258,4 +4067,128 @@ body:has(.game-shell.has-gameplay-chrome),
   .starter-primary-action { min-height: 44px; padding-block: 8px; }
   .starter-private-actions { gap: 6px; }
   .starter-private-actions .ui-btn { min-height: 38px; padding-block: 6px; }
+}
+
+/* Daily Word uses the same restrained game stage as a live room. */
+.daily-game-header__home {
+  width: auto;
+  min-width: 0;
+  padding-inline: 10px;
+  color: var(--sub);
+}
+.daily-stage {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+}
+.daily-stage .stage-notice-bar {
+  width: 100%;
+  opacity: 1;
+}
+.daily-stage .current-word-card {
+  padding: clamp(18px, 4vw, 38px) 0 10px;
+}
+.daily-stage .current-word-text {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  color: var(--main);
+  font-size: clamp(1.35rem, 7vw, 4rem);
+  letter-spacing: 0.025em;
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
+  scrollbar-width: none;
+}
+.daily-stage .current-word-text::-webkit-scrollbar { display: none; }
+.daily-stage .timer-section {
+  width: min(340px, 100%);
+  justify-self: center;
+  padding: 0;
+}
+.daily-word-form { margin-top: 2px; }
+.daily-result-card { margin-top: 2px; }
+.daily-stage__actions {
+  justify-content: flex-end;
+  margin-top: 2px;
+}
+.daily-run-panel { display: grid; align-content: start; gap: 10px; }
+.daily-run-panel .eyebrow { margin: 0; }
+.daily-run-panel__metric { display: grid; gap: 2px; }
+.daily-run-panel__metric strong { color: var(--main); font-size: 2rem; line-height: 1; }
+.daily-run-panel__metric span,
+.daily-run-panel__copy { color: var(--sub); font-size: 0.7rem; line-height: 1.55; }
+.daily-run-panel__copy { margin: 0; }
+.daily-info-panel h2 { margin-bottom: 14px; font-size: 1.1rem; line-height: 1.3; }
+.daily-info-panel ul {
+  margin: 0;
+  padding-left: 14px;
+  color: var(--sub);
+  font-size: 0.8rem;
+  line-height: 2;
+}
+
+/* Give Daily Word a clear, compact affordance in the launcher header. */
+.starter-daily-link {
+  height: 32px;
+  gap: 7px;
+  padding: 0 9px 0 6px;
+  border: 1px solid var(--main-25);
+  border-radius: var(--r-sm);
+  background: var(--main-10);
+  color: var(--main);
+  font-weight: 700;
+}
+.starter-daily-link:hover {
+  border-color: var(--main);
+  background: var(--main-15);
+  color: var(--main);
+}
+.starter-daily-link__icon {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: var(--r-xs);
+  background: var(--main-16);
+}
+.starter-daily-link__icon svg { width: 14px; height: 14px; }
+
+@media (max-width: 640px) {
+  .word-stage > .stage-notice-bar.active {
+    position: static;
+    width: auto;
+    height: 20px;
+    margin: 0;
+    padding: 0 12px;
+    overflow: hidden;
+    clip: auto;
+    clip-path: none;
+    white-space: nowrap;
+    border: 0;
+  }
+  .daily-run-panel,
+  .daily-info-panel { display: none; }
+  .daily-stage {
+    display: grid;
+    gap: 12px;
+    padding: 14px 12px 18px;
+  }
+  .daily-stage .current-word-card { padding: 8px 0 2px; }
+  .daily-stage .current-word-label { margin-bottom: 6px; }
+  .daily-stage .current-word-text { font-size: clamp(1.2rem, 6.5vw, 1.8rem); }
+  .daily-stage .timer-section { width: min(260px, 100%); }
+  .daily-stage__actions { justify-content: stretch; }
+  .daily-stage__actions .ui-btn { flex: 1 1 auto; }
+  .starter-daily-link { height: 30px; padding-right: 7px; }
+}
+
+@media (max-width: 390px) {
+  .starter-daily-link { gap: 5px; padding-right: 6px; }
+  .starter-daily-link em { display: none; }
+}
+
+@media (max-width: 360px) {
+  .game-tools { gap: 2px; padding-inline: 8px; }
 }

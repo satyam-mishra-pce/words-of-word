@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { GameSettings, HINT_COST, HINTS_PER_REQUEST } from '@wow/shared';
+import { GameSettings } from '@wow/shared';
 import socket from '../services/socket';
 import { loadPlayerAvatar, loadUsername } from '../services/session';
 import { Alert, Button, Dialog, Label, Select, Textarea } from '../components/ui';
 
 const DEFAULT_SETTINGS: GameSettings = {
-  minWordLength: 7,
+  minWordLength: 5,
   timePerRound: 30,
   rounds: 5,
   maxPlayers: 4,
@@ -24,8 +24,7 @@ const DEFAULT_SETTINGS: GameSettings = {
     busted: false,
     intuition: false,
     lightning: false
-  },
-  hintsEnabled: false
+  }
 };
 
 const GAME_MODE_INFO: Array<{ value: GameSettings['gameMode']; label: string; description: string }> = [
@@ -217,22 +216,6 @@ export default function SettingsPage(): JSX.Element {
             </>
           )}
 
-          <div className="setting-group setting-group--full">
-            <Label htmlFor="hints-enabled">Hints</Label>
-            <label className="hint-setting" htmlFor="hints-enabled">
-              <input
-                id="hints-enabled"
-                type="checkbox"
-                checked={settings.hintsEnabled}
-                onChange={(e) => set('hintsEnabled', e.currentTarget.checked)}
-              />
-              <span>
-                <strong>Allow player hints</strong>
-                <small>Once per round, each player can spend {HINT_COST} points to reveal {HINTS_PER_REQUEST} partially blanked hidden words. Scores can go below zero.</small>
-              </span>
-            </label>
-          </div>
-
           {usesWordSprint && (
             <div className="setting-group">
               <Label htmlFor="fastest-target">Words to win</Label>
@@ -334,7 +317,7 @@ export default function SettingsPage(): JSX.Element {
               value={settings.minWordLength}
               onChange={(e) => set('minWordLength', Number(e.currentTarget.value))}
             >
-              {[7, 8, 9, 10, 11, 12, 13].map((n) => (
+              {[5, 6, 7, 8, 9, 10, 11, 12, 13].map((n) => (
                 <option key={n} value={n}>{n}+ letters</option>
               ))}
             </Select>

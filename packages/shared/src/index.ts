@@ -92,7 +92,7 @@ export const MixModifiersSchema = z.object({
 });
 
 export const GameSettingsSchema = z.object({
-  minWordLength: z.number().int().min(4).max(18),
+  minWordLength: z.number().int().min(5).max(18),
   timePerRound: z.number().int().min(5).max(300),
   rounds: z.number().int().min(1).max(20),
   maxPlayers: z.number().int().min(2).max(50),
@@ -102,13 +102,8 @@ export const GameSettingsSchema = z.object({
   wordCategory: WordCategorySchema.default('general'),
   customWordList: z.string().max(2000).default(''),
   mixScoringMode: MixScoringModeSchema.default('classic'),
-  mixModifiers: MixModifiersSchema.default({}),
-  hintsEnabled: z.boolean().default(false)
+  mixModifiers: MixModifiersSchema.default({})
 });
-
-/** One hint costs more than a standard word, so it remains a tactical choice. */
-export const HINT_COST = 5;
-export const HINTS_PER_REQUEST = 2;
 
 export const CreateRoomPayloadSchema = z.object({
   username: UsernameSchema,
@@ -141,24 +136,24 @@ export const SubmitWordPayloadSchema = z.object({
   word: z.string().trim().min(1).max(40)
 });
 
-export const EmoteSchema = z.enum(['fire', 'clap', 'mindBlown', 'laugh', 'sweat', 'party']);
+export const EmoteSchema = z.enum(['fire', 'clap', 'mindBlown', 'laugh', 'sweat', 'party', 'sideEye', 'taunt']);
 
+// These legacy transport IDs stay stable so the visual tray can evolve without
+// changing socket validation.
 export const EMOTE_OPTIONS = [
-  { id: 'fire', emoji: '🔥', label: 'Fire' },
-  { id: 'clap', emoji: '👏', label: 'Applause' },
-  { id: 'mindBlown', emoji: '🤯', label: 'Mind blown' },
-  { id: 'laugh', emoji: '😂', label: 'Laugh' },
-  { id: 'sweat', emoji: '😅', label: 'Phew' },
-  { id: 'party', emoji: '🎉', label: 'Celebrate' }
+  { id: 'fire', emoji: '🔥', label: 'On fire' },
+  { id: 'clap', emoji: '🧠', label: 'Big brain' },
+  { id: 'mindBlown', emoji: '👀', label: 'Watching' },
+  { id: 'laugh', emoji: '💀', label: 'Dead' },
+  { id: 'sweat', emoji: '😈', label: 'Menace' },
+  { id: 'party', emoji: '🤡', label: 'Clown' },
+  { id: 'sideEye', emoji: '🐐', label: 'GOAT' },
+  { id: 'taunt', emoji: '🫡', label: 'Respect' }
 ] as const;
 
 export const SendEmotePayloadSchema = z.object({
   roomId: RoomIdSchema,
   emote: EmoteSchema
-});
-
-export const RequestHintPayloadSchema = z.object({
-  roomId: RoomIdSchema
 });
 
 export const UpdateTeamPayloadSchema = z.object({
@@ -210,7 +205,6 @@ export type StartGamePayload = z.infer<typeof StartGamePayloadSchema>;
 export type SubmitWordPayload = z.infer<typeof SubmitWordPayloadSchema>;
 export type Emote = z.infer<typeof EmoteSchema>;
 export type SendEmotePayload = z.infer<typeof SendEmotePayloadSchema>;
-export type RequestHintPayload = z.infer<typeof RequestHintPayloadSchema>;
 export type UpdateTeamPayload = z.infer<typeof UpdateTeamPayloadSchema>;
 export type UpdateBetPayload = z.infer<typeof UpdateBetPayloadSchema>;
 export type RestartGamePayload = z.infer<typeof RestartGamePayloadSchema>;
@@ -251,12 +245,6 @@ export interface BingoTask {
   label: string;
 }
 
-export interface WordHint {
-  /** Individual characters are null when the player must fill in that blank. */
-  letters: Array<string | null>;
-  blanks: number;
-}
-
 export interface RoomSnapshot {
   roomId: string;
   players: Player[];
@@ -279,8 +267,6 @@ export interface RoomSnapshot {
   bustedPlayers: Record<string, boolean>;
   bingoTasks: BingoTask[];
   bingoProgress: Record<string, string[]>;
-  /** Present only in a snapshot sent directly to the player who unlocked them. */
-  personalHints?: WordHint[];
 }
 
 export interface NegativeMarkedWord {
@@ -294,7 +280,6 @@ export interface RoundResultPlayer {
   score: number;
   words: string[];
   negativeWords: NegativeMarkedWord[];
-  hintPenalty?: number;
   bettingBet?: number;
   bettingHit?: boolean;
 }
@@ -345,12 +330,6 @@ export interface ListOnlineRoomsResult {
 
 export interface EmptyResult {
   ok: true;
-}
-
-export interface HintResult {
-  hints: WordHint[];
-  cost: number;
-  score: number;
 }
 
 export type ServerAck<T> =
@@ -487,7 +466,6 @@ export interface ClientToServerEvents {
   startGame: (payload: StartGamePayload, ack?: Ack<EmptyResult>) => void;
   submitWord: (payload: SubmitWordPayload, ack?: Ack<EmptyResult>) => void;
   sendEmote: (payload: SendEmotePayload, ack?: Ack<EmptyResult>) => void;
-  requestHint: (payload: RequestHintPayload, ack?: Ack<HintResult>) => void;
   restartGame: (payload: RestartGamePayload, ack?: Ack<EmptyResult>) => void;
   leaveRoom: (payload: LeaveRoomPayload, ack?: Ack<EmptyResult>) => void;
   registerPushToken: (payload: RegisterPushTokenPayload, ack?: Ack<EmptyResult>) => void;

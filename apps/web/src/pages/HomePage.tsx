@@ -34,6 +34,16 @@ function EditIcon(): JSX.Element {
   );
 }
 
+function DailyWordIcon(): JSX.Element {
+  return (
+    <svg viewBox="0 0 18 18" aria-hidden="true">
+      <rect x="3" y="3.5" width="12" height="11.5" rx="2" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M6 2v3M12 2v3M3.5 7h11" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5" />
+      <path d="m9 9 .55 1.45L11 11l-1.45.55L9 13l-.55-1.45L7 11l1.45-.55L9 9Z" fill="currentColor" />
+    </svg>
+  );
+}
+
 export default function HomePage(): JSX.Element {
   const navigate = useNavigate();
   const [username, setUsername] = useState(loadUsername());
@@ -112,7 +122,8 @@ export default function HomePage(): JSX.Element {
               <i /> {stats.activePlayers} playing
             </span>
           )}
-          <button type="button" className="starter-daily-link" onClick={() => navigate('/daily')} aria-label="Daily word">
+          <button type="button" className="starter-daily-link" onClick={() => navigate('/daily')} aria-label="Play the Daily Word challenge">
+            <span className="starter-daily-link__icon"><DailyWordIcon /></span>
             <span><b>Daily</b> <em>word</em></span>
             <ArrowIcon />
           </button>
