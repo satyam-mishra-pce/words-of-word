@@ -1301,9 +1301,16 @@ body:has(.game-shell.has-gameplay-chrome),
 .game-tools {
   display: flex;
   align-items: center;
-  gap: 4px;
   min-height: 38px;
   padding: 3px 16px;
+}
+.game-tools__emotes {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  width: max-content;
+  margin-inline: auto;
 }
 .game-tools .ui-tooltip-host { display: flex; flex: 0 0 auto; }
 .game-tool {
@@ -2267,7 +2274,6 @@ body:has(.game-shell.has-gameplay-chrome),
   .room-footer-slot .gameplay-footer { border-top: 0; }
   .room-footer-slot .gameplay-footer .word-form { padding-bottom: calc(10px + var(--safe-bottom)); }
   .game-tools {
-    gap: 4px;
     min-height: 38px;
     padding: 3px 12px;
     overflow-x: auto;
@@ -4190,5 +4196,6 @@ body:has(.game-shell.has-gameplay-chrome),
 }
 
 @media (max-width: 360px) {
-  .game-tools { gap: 2px; padding-inline: 8px; }
+  .game-tools { padding-inline: 8px; }
+  .game-tools__emotes { gap: 2px; }
 }
