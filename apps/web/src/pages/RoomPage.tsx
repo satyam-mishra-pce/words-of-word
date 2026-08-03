@@ -840,7 +840,6 @@ export default function RoomPage(): JSX.Element {
   function sendEmote(emote: EmotePlayedPayload['emote']): void {
     socket.emit('sendEmote', { roomId, emote }, (response) => {
       if (!response.ok) {
-        setNotice(response.error);
         void hapticError();
         return;
       }
