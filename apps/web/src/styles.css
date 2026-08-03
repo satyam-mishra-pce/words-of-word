@@ -1469,7 +1469,9 @@ body:has(.game-shell.has-gameplay-chrome),
   min-width: 3.2em;
   padding: 0 7px;
   transform: translate(-50%, -50%);
-  background: var(--bg);
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
   color: var(--main);
   font: 600 0.78rem 'JetBrains Mono', monospace;
   line-height: 1.5;
