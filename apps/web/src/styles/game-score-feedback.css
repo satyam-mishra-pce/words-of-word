@@ -387,8 +387,8 @@
   white-space: nowrap;
 }
 
-/* Emotes sit alongside the game tools; reactions stay transient and never
-   block gameplay input. */
+/* Framer Motion owns reaction movement; the CSS only positions uncontained
+   emoji and keeps reactions out of the input's hit area. */
 .emote-burst-layer {
   position: fixed;
   z-index: 45;
@@ -397,82 +397,57 @@
   pointer-events: none;
 }
 
-.emote-burst {
+.emote-burst-slot {
   position: absolute;
   top: clamp(104px, 29vh, 280px);
   left: 50%;
   display: grid;
+  width: max-content;
+  max-width: 132px;
   justify-items: center;
-  gap: 5px;
-  min-width: 72px;
-  animation: emote-burst-pop 2200ms var(--ease-out) both;
+  will-change: transform, opacity;
 }
+.emote-burst-slot--0 { margin-left: -108px; }
+.emote-burst-slot--1 { margin-left: 0; }
+.emote-burst-slot--2 { margin-left: 108px; }
 
-.emote-burst--0 { margin-left: -108px; }
-.emote-burst--1 { margin-left: 0; }
-.emote-burst--2 { margin-left: 108px; }
-
-.emote-burst__emoji {
+.emote-burst {
   display: grid;
-  width: 66px;
-  height: 66px;
-  place-items: center;
-  border: 1px solid color-mix(in srgb, var(--main) 55%, var(--sub-2));
-  border-radius: 50%;
-  background:
-    radial-gradient(circle at 34% 26%, color-mix(in srgb, white 26%, transparent), transparent 30%),
-    color-mix(in srgb, var(--bg-sub) 90%, var(--main));
-  box-shadow: 0 12px 30px color-mix(in srgb, var(--main) 24%, transparent), inset 0 1px rgba(255, 255, 255, 0.14);
-  font-size: 2.35rem;
-  line-height: 1;
-  text-shadow: 0 3px 12px rgba(0, 0, 0, 0.25);
+  justify-items: center;
+  gap: 3px;
+  transform: translateX(-50%);
 }
-
+.emote-burst__emoji {
+  display: block;
+  font-size: clamp(2.8rem, 5vw, 4.3rem);
+  line-height: 0.92;
+  filter: drop-shadow(0 10px 16px rgba(0, 0, 0, 0.34));
+}
 .emote-burst__sender {
   max-width: 132px;
   overflow: hidden;
-  padding: 3px 8px;
-  border: 1px solid color-mix(in srgb, var(--main) 36%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--bg) 90%, transparent);
   color: var(--text);
-  font-size: 0.66rem;
+  font-size: 0.62rem;
   font-weight: 800;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.06em;
+  text-align: center;
   text-overflow: ellipsis;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
   text-transform: uppercase;
   white-space: nowrap;
 }
 
-@keyframes emote-burst-pop {
-  0% { opacity: 0; transform: translate(-50%, 28px) scale(0.58) rotate(-8deg); }
-  12% { opacity: 1; transform: translate(-50%, -2px) scale(1.14) rotate(3deg); }
-  28% { opacity: 1; transform: translate(-50%, -18px) scale(0.98) rotate(-1deg); }
-  70% { opacity: 1; transform: translate(-50%, -66px) scale(1.02) rotate(2deg); }
-  100% { opacity: 0; transform: translate(-50%, -110px) scale(0.92) rotate(4deg); }
-}
-
 @media (max-width: 640px) {
-  .emote-burst {
-    top: max(92px, 24vh);
-    gap: 4px;
-  }
-
-  .emote-burst--0 { margin-left: -78px; }
-  .emote-burst--2 { margin-left: 78px; }
-  .emote-burst__emoji { width: 56px; height: 56px; font-size: 2rem; }
-  .emote-burst__sender { max-width: 96px; font-size: 0.58rem; }
+  .emote-burst-slot { top: max(92px, 24vh); }
+  .emote-burst-slot--0 { margin-left: -78px; }
+  .emote-burst-slot--2 { margin-left: 78px; }
+  .emote-burst__emoji { font-size: 3rem; }
+  .emote-burst__sender { max-width: 96px; font-size: 0.56rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .word-score-float,
-  .podium-player,
-  .emote-burst {
+  .podium-player {
     animation: none;
-  }
-
-  .emote-burst {
-    opacity: 1;
-    transform: translate(-50%, -42px) scale(1);
   }
 }

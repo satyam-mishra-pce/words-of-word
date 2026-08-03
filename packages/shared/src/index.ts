@@ -138,15 +138,17 @@ export const SubmitWordPayloadSchema = z.object({
 
 export const EmoteSchema = z.enum(['fire', 'clap', 'mindBlown', 'laugh', 'sweat', 'party', 'sideEye', 'taunt']);
 
+// These legacy transport IDs stay stable so the visual tray can evolve without
+// changing socket validation.
 export const EMOTE_OPTIONS = [
-  { id: 'fire', emoji: '🔥', label: 'Fire' },
-  { id: 'clap', emoji: '👏', label: 'Applause' },
-  { id: 'mindBlown', emoji: '🤯', label: 'Mind blown' },
-  { id: 'laugh', emoji: '😂', label: 'Laugh' },
-  { id: 'sweat', emoji: '😅', label: 'Phew' },
-  { id: 'party', emoji: '🎉', label: 'Celebrate' },
-  { id: 'sideEye', emoji: '👀', label: 'Side eye' },
-  { id: 'taunt', emoji: '😈', label: 'Tease' }
+  { id: 'fire', emoji: '🔥', label: 'On fire' },
+  { id: 'clap', emoji: '🧠', label: 'Big brain' },
+  { id: 'mindBlown', emoji: '👀', label: 'Watching' },
+  { id: 'laugh', emoji: '💀', label: 'Dead' },
+  { id: 'sweat', emoji: '😈', label: 'Menace' },
+  { id: 'party', emoji: '🤡', label: 'Clown' },
+  { id: 'sideEye', emoji: '🐐', label: 'GOAT' },
+  { id: 'taunt', emoji: '🫡', label: 'Respect' }
 ] as const;
 
 export const SendEmotePayloadSchema = z.object({

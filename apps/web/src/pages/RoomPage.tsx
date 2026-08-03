@@ -1,4 +1,5 @@
 import { CSSProperties, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { EMOTE_OPTIONS, FinalScore, GameSettings, type EmotePlayedPayload, type PlayerAvatar, RoomSnapshot, RoundResultPlayer, TeamScore } from '@wow/shared';
 import socket from '../services/socket';
@@ -282,19 +283,12 @@ function PlayersPanel({
 
 interface GameToolsProps {
   className?: string;
-  onOpenRules: () => void;
   onSendEmote: (emote: EmotePlayedPayload['emote']) => void;
 }
 
-function GameTools({ className, onOpenRules, onSendEmote }: GameToolsProps): JSX.Element {
+function GameTools({ className, onSendEmote }: GameToolsProps): JSX.Element {
   return (
-    <div className={`game-tools${className ? ` ${className}` : ''}`} aria-label="Game tools and emotes">
-      <Tooltip content="How to play" className="ui-tooltip-start">
-        <Button variant="ghost" size="sm" type="button" className="game-tool game-tool--rules" onClick={onOpenRules} aria-label="How to play">
-          <GameActionIcon name="rules" />
-          <span>Rules</span>
-        </Button>
-      </Tooltip>
+    <div className={`game-tools${className ? ` ${className}` : ''}`} aria-label="Emotes">
       {EMOTE_OPTIONS.map((option) => (
         <Tooltip key={option.id} content={`Send ${option.label}`}>
           <Button
@@ -344,6 +338,7 @@ export default function RoomPage(): JSX.Element {
   const [scoreBursts, setScoreBursts] = useState<ScoreBurst[]>([]);
   const [emoteBursts, setEmoteBursts] = useState<EmoteBurst[]>([]);
   const [isInviteCopied, setIsInviteCopied] = useState(false);
+  const shouldReduceMotion = useReducedMotion();
 
   // Keep a ref to the word input so we can restore focus after submit
   const inputRef = useRef<HTMLInputElement>(null);
@@ -1146,12 +1141,14 @@ export default function RoomPage(): JSX.Element {
   function renderGameFooter(): JSX.Element {
     return (
       <div className="gameplay-footer">
-        {!needsRejoin && <GameTools className="game-tools--footer" onOpenRules={openHowToPlay} onSendEmote={sendEmote} />}
-        <form className="word-form" onSubmit={submitWord}>
+        {!needsRejoin && <GameTools onSendEmote={sendEmote} />}
+        <form className="word-form word-form--entry" onSubmit={submitWord}>
           <div className="word-form__input-wrap">
             <Input
               ref={inputRef}
               type={isTypistMode ? 'password' : 'text'}
+              className="word-entry-input"
+              aria-label="Word entry"
               value={inputWord}
               onChange={(e) => setInputWord(e.currentTarget.value)}
               onFocus={() => setIsWordInputFocused(true)}
@@ -1179,13 +1176,6 @@ export default function RoomPage(): JSX.Element {
               ))}
             </span>
           </div>
-          <Button
-            variant="primary"
-            type="submit"
-            disabled={!canSubmit || !inputWord.trim()}
-          >
-            Go
-          </Button>
         </form>
       </div>
     );
@@ -1196,20 +1186,29 @@ export default function RoomPage(): JSX.Element {
     <main className={`game-shell${hasGameplayChrome ? ' has-gameplay-chrome' : ''}${isWordInputFocused ? ' is-typing' : ''}`}>
       {emoteBursts.length > 0 && (
         <div className="emote-burst-layer" aria-live="polite" aria-relevant="additions">
-          {emoteBursts.map((burst) => {
-            const senderName = burst.playerId === currentPlayerId ? 'You' : burst.playerName;
-            return (
-              <div
-                key={burst.id}
-                className={`emote-burst emote-burst--${burst.id % 3}`}
-                role="status"
-                aria-label={`${senderName} sent ${burst.label}`}
-              >
-                <span className="emote-burst__emoji" aria-hidden="true">{burst.emoji}</span>
-                <span className="emote-burst__sender">{senderName}</span>
-              </div>
-            );
-          })}
+          <AnimatePresence initial={false}>
+            {emoteBursts.map((burst) => {
+              const senderName = burst.playerId === currentPlayerId ? 'You' : burst.playerName;
+              return (
+                <motion.div
+                  key={burst.id}
+                  className={`emote-burst-slot emote-burst-slot--${burst.id % 3}`}
+                  role="status"
+                  aria-label={`${senderName} sent ${burst.label}`}
+                  style={{ transformOrigin: '0 50%' }}
+                  initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.46, y: 28, rotate: -7 }}
+                  animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0, rotate: 0 }}
+                  exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.62, y: -64, rotate: 6 }}
+                  transition={shouldReduceMotion ? { duration: 0.12 } : { type: 'spring', stiffness: 420, damping: 29, mass: 0.7 }}
+                >
+                  <div className="emote-burst">
+                    <span className="emote-burst__emoji" aria-hidden="true">{burst.emoji}</span>
+                    <span className="emote-burst__sender">{senderName}</span>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
         </div>
       )}
 
@@ -1660,12 +1659,6 @@ export default function RoomPage(): JSX.Element {
         )}
       </section>
 
-      {!hasGameplayChrome && (
-        <div className="room-footer-slot">
-          {renderGameFooter()}
-        </div>
-      )}
-
       {/* ── RIGHT: Info panel ── */}
       <aside className="info-panel glass-panel">
         <p className="eyebrow">How to play</p>
@@ -1681,6 +1674,12 @@ export default function RoomPage(): JSX.Element {
           <li>Rooms close when everyone leaves.</li>
         </ul>
       </aside>
+
+      {!hasGameplayChrome && (
+        <div className="room-footer-slot">
+          {renderGameFooter()}
+        </div>
+      )}
 
       {/* ── STOP GAME CONFIRMATION ── */}
       <Dialog

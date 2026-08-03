@@ -1290,6 +1290,14 @@ body:has(.game-shell.has-gameplay-chrome),
   margin: 0;
   padding: 8px 16px 10px;
 }
+@media (min-width: 1181px) {
+  .game-shell:not(.has-gameplay-chrome) .info-panel {
+    grid-column: 3;
+    grid-row: span 2;
+    align-self: stretch;
+    position: static;
+  }
+}
 .game-tools {
   display: flex;
   align-items: center;
@@ -1297,7 +1305,6 @@ body:has(.game-shell.has-gameplay-chrome),
   min-height: 38px;
   padding: 3px 16px;
 }
-.game-tools--footer { border-bottom: 1px solid rgba(100, 102, 105, 0.32); }
 .game-tools .ui-tooltip-host { display: flex; flex: 0 0 auto; }
 .game-tool {
   min-width: 30px;
@@ -1306,9 +1313,24 @@ body:has(.game-shell.has-gameplay-chrome),
   color: var(--sub);
   font-size: 0.7rem;
 }
-.game-tool--rules { min-width: auto; padding-inline: 8px; }
 .game-tool--emote { font-size: 1rem; line-height: 1; }
 .game-tool:hover:not(:disabled) { color: var(--text); background: var(--bg-3); }
+.word-form--entry { grid-template-columns: minmax(0, 1fr); }
+.word-entry-input {
+  min-height: 50px;
+  border-color: var(--main-40);
+  background: linear-gradient(90deg, var(--main-10), var(--bg-sub) 32%);
+  box-shadow: inset 0 0 0 1px var(--main-10);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.word-entry-input::placeholder { color: var(--sub); font-weight: 500; }
+.word-entry-input:not(:disabled):hover { border-color: var(--main); }
+.word-entry-input:focus {
+  border-color: var(--main);
+  box-shadow: 0 0 0 3px var(--main-10), inset 0 0 0 1px var(--main-25);
+}
+.word-entry-input:disabled { background: var(--bg-sub); }
 .game-shell.has-gameplay-chrome .gameplay-scroll .bingo-board {
   max-height: none;
   margin: 0;
@@ -2262,7 +2284,6 @@ body:has(.game-shell.has-gameplay-chrome),
     color: var(--sub);
     font-size: 0.62rem;
   }
-  .game-tool--rules { min-width: auto; padding-inline: 7px; }
   .game-tool--emote { font-size: 1rem; line-height: 1; }
   .game-tool:hover:not(:disabled) { color: var(--text); background: var(--bg-3); }
   .gameplay-footer .word-form {
@@ -2273,6 +2294,7 @@ body:has(.game-shell.has-gameplay-chrome),
     grid-template-columns: minmax(0, 1fr) auto;
     background: var(--bg);
   }
+  .gameplay-footer .word-form--entry { grid-template-columns: minmax(0, 1fr); }
   .word-form .ui-input {
     min-width: 0;
     padding: 10px 12px;
@@ -4169,6 +4191,4 @@ body:has(.game-shell.has-gameplay-chrome),
 
 @media (max-width: 360px) {
   .game-tools { gap: 2px; padding-inline: 8px; }
-  .game-tool--rules { min-width: 30px; padding-inline: 5px; }
-  .game-tool--rules span { display: none; }
 }
