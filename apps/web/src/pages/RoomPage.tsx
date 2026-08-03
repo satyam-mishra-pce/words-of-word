@@ -7,6 +7,16 @@ import { loadUsername } from '../services/session';
 import { hapticError, hapticLight, hapticMedium, hapticSelection, hapticSuccess, hapticWarning } from '../services/nativeFeedback';
 import { getRoomInviteUrl } from '../services/platform';
 import { copyTextToClipboard } from '../services/nativeShare';
+import {
+  trackBetUpdated,
+  trackGameCompleted,
+  trackGameStarted,
+  trackHotjarEvent,
+  trackRoundCompleted,
+  trackRoundStarted,
+  trackSettingsSaved,
+  trackTeamSelected
+} from '../services/hotjar';
 import '../styles/game-score-feedback.css';
 import {
   Alert,
@@ -353,6 +363,9 @@ export default function RoomPage(): JSX.Element {
   const emoteBurstIdRef = useRef(0);
   const emoteBurstTimersRef = useRef<Map<number, number>>(new Map());
   const inviteCopiedTimerRef = useRef<number | undefined>();
+  const trackedRoundStartsRef = useRef<Set<number>>(new Set());
+  const trackedRoundCompletionsRef = useRef<Set<number>>(new Set());
+  const trackedGameCompletionRef = useRef(false);
 
   const currentPlayerId = socket.id;
   const currentPlayer = useMemo(
@@ -650,6 +663,12 @@ export default function RoomPage(): JSX.Element {
       setNegativeMarkedWords([]);
       setBetInput('');
       setBustFlash(undefined);
+      const isSeatedPlayer = p.snapshot.players.some((player) => player.id === socket.id);
+      if (isSeatedPlayer && !trackedRoundStartsRef.current.has(p.currentRound)) {
+        trackedRoundStartsRef.current.add(p.currentRound);
+        if (p.currentRound === 1) trackGameStarted(p.snapshot.settings, p.snapshot.players.length);
+        trackRoundStarted(p.snapshot.settings, p.currentRound, p.snapshot.players.length);
+      }
       void hapticMedium();
       // Restore keyboard focus when a new round begins
       requestAnimationFrame(() => inputRef.current?.focus());
@@ -659,7 +678,10 @@ export default function RoomPage(): JSX.Element {
     });
     socket.on('wordAccepted', (p) => {
       setInputFeedback('success');
-      if (p.playerId === socket.id && typeof p.scoreDelta === 'number') queueScoreBurst(p.scoreDelta);
+      if (p.playerId === socket.id) {
+        trackHotjarEvent('word_accepted');
+        if (typeof p.scoreDelta === 'number') queueScoreBurst(p.scoreDelta);
+      }
       void hapticLight();
       if (p.message) setNotice(p.message);
       if (p.message.includes('-3')) {
@@ -677,6 +699,7 @@ export default function RoomPage(): JSX.Element {
       });
     });
     socket.on('wordRejected', (p) => {
+      trackHotjarEvent('word_rejected');
       setInputFeedback('error');
       if (p.penalty) queueScoreBurst(p.penalty);
       void hapticError();
@@ -709,6 +732,11 @@ export default function RoomPage(): JSX.Element {
       });
     });
     socket.on('roundEnded', (p) => {
+      const ownResult = p.results.find((result) => result.playerId === socket.id);
+      if (ownResult && !trackedRoundCompletionsRef.current.has(p.currentRound)) {
+        trackedRoundCompletionsRef.current.add(p.currentRound);
+        trackRoundCompleted(p.snapshot.settings, p.currentRound, p.snapshot.players.length, ownResult.words.length, ownResult.score);
+      }
       previousPhaseRef.current = p.snapshot.phase;
       setSnapshot(p.snapshot);
       setRoundResults(p.results);
@@ -727,6 +755,16 @@ export default function RoomPage(): JSX.Element {
       ]);
     });
     socket.on('gameOver', (p) => {
+      const ownFinalScore = p.finalScores.find((score) => score.playerId === socket.id);
+      const ownFinalRoundResult = p.results?.find((result) => result.playerId === socket.id);
+      if (ownFinalRoundResult && p.currentRound && !trackedRoundCompletionsRef.current.has(p.currentRound)) {
+        trackedRoundCompletionsRef.current.add(p.currentRound);
+        trackRoundCompleted(p.snapshot.settings, p.currentRound, p.snapshot.players.length, ownFinalRoundResult.words.length, ownFinalRoundResult.score);
+      }
+      if (ownFinalScore && !trackedGameCompletionRef.current) {
+        trackedGameCompletionRef.current = true;
+        trackGameCompleted(p.snapshot.settings, p.snapshot.players.length, ownFinalScore.rank, ownFinalScore.score);
+      }
       previousPhaseRef.current = p.snapshot.phase;
       setSnapshot(p.snapshot);
       setFinalScores(p.finalScores);
@@ -758,6 +796,7 @@ export default function RoomPage(): JSX.Element {
       void hapticSuccess();
     });
     socket.on('playerBusted', (p) => {
+      if (p.playerId === socket.id) trackHotjarEvent('player_busted');
       setSnapshot(p.snapshot);
       setInputFeedback(p.playerId === socket.id ? 'error' : null);
       setNotice(p.message);
@@ -766,6 +805,10 @@ export default function RoomPage(): JSX.Element {
     });
     socket.on('emotePlayed', onEmotePlayed);
     socket.on('gameRestarted', (p) => {
+      trackedRoundStartsRef.current.clear();
+      trackedRoundCompletionsRef.current.clear();
+      trackedGameCompletionRef.current = false;
+      if (p.snapshot.players.some((player) => player.id === socket.id)) trackHotjarEvent('game_restarted');
       previousPhaseRef.current = p.snapshot.phase;
       setSnapshot(p.snapshot);
       resetClientGameState();
@@ -804,10 +847,12 @@ export default function RoomPage(): JSX.Element {
   async function copyInvite(): Promise<void> {
     const copied = await copyTextToClipboard(getRoomInviteUrl(roomId));
     if (!copied) {
+      trackHotjarEvent('invite_copy_failed');
       void hapticError();
       return;
     }
 
+    trackHotjarEvent('invite_copied');
     if (inviteCopiedTimerRef.current !== undefined) {
       window.clearTimeout(inviteCopiedTimerRef.current);
     }
@@ -821,8 +866,12 @@ export default function RoomPage(): JSX.Element {
 
   function startGame(): void {
     socket.emit('startGame', { roomId }, (r) => {
-      if (!r.ok) setError(r.error);
-      else setError('');
+      if (!r.ok) {
+        trackHotjarEvent('game_start_failed');
+        setError(r.error);
+      } else {
+        setError('');
+      }
     });
   }
 
@@ -830,8 +879,12 @@ export default function RoomPage(): JSX.Element {
     event.preventDefault();
     const word = inputWord.trim();
     if (!word || !canSubmit) return;
+    trackHotjarEvent('word_submitted');
     socket.emit('submitWord', { roomId, word }, (r) => {
-      if (!r.ok) setError(r.error);
+      if (!r.ok) {
+        trackHotjarEvent('word_submission_failed');
+        setError(r.error);
+      }
     });
     setInputWord('');
     // Keep the keyboard up — restore focus after React flushes the state update
@@ -841,10 +894,12 @@ export default function RoomPage(): JSX.Element {
   function sendEmote(emote: EmotePlayedPayload['emote']): void {
     socket.emit('sendEmote', { roomId, emote }, (response) => {
       if (!response.ok) {
+        trackHotjarEvent('emote_failed');
         void hapticError();
         return;
       }
 
+      trackHotjarEvent('emote_sent');
       void hapticSelection();
     });
     if (canSubmit) requestAnimationFrame(() => inputRef.current?.focus());
@@ -855,18 +910,27 @@ export default function RoomPage(): JSX.Element {
     const bet = Number(betInput);
     if (!Number.isInteger(bet)) return;
     socket.emit('updateBet', { roomId, bet }, (r) => {
-      if (!r.ok) setError(r.error);
-      else setError('');
+      if (!r.ok) {
+        trackHotjarEvent('bet_update_failed');
+        setError(r.error);
+      } else {
+        trackBetUpdated(bet);
+        setError('');
+      }
     });
   }
 
   function restartGame(): void {
     socket.emit('restartGame', { roomId, autoStart: true }, (r) => {
-      if (!r.ok) setError(r.error);
+      if (!r.ok) {
+        trackHotjarEvent('game_restart_failed');
+        setError(r.error);
+      }
     });
   }
 
   function openHowToPlay(): void {
+    trackHotjarEvent('rules_opened');
     inputRef.current?.blur();
     setShowHowToPlay(true);
   }
@@ -890,10 +954,12 @@ export default function RoomPage(): JSX.Element {
     socket.emit('leaveRoom', { roomId }, (response) => {
       setIsExiting(false);
       if (!response.ok) {
+        trackHotjarEvent('room_leave_failed');
         setError(response.error);
         return;
       }
 
+      trackHotjarEvent('room_left');
       void hapticLight();
       navigate('/', { replace: true });
     });
@@ -906,16 +972,19 @@ export default function RoomPage(): JSX.Element {
     socket.emit('restartGame', { roomId, autoStart: false }, (r) => {
       setIsStoppingGame(false);
       if (!r.ok) {
+        trackHotjarEvent('game_stop_failed');
         setError(r.error);
         return;
       }
 
+      trackHotjarEvent('game_stopped');
       setError('');
       setShowStopConfirmation(false);
     });
   }
 
   function openSettingsDialog(): void {
+    trackHotjarEvent('settings_opened');
     setDraftSettings(snapshot?.settings);
     setShowSettingsDialog(true);
   }
@@ -952,7 +1021,12 @@ export default function RoomPage(): JSX.Element {
     }
 
     socket.emit('updateSettings', { roomId, settings: draftSettings }, (r) => {
-      if (!r.ok) { setError(r.error); return; }
+      if (!r.ok) {
+        trackHotjarEvent('settings_save_failed');
+        setError(r.error);
+        return;
+      }
+      trackSettingsSaved(draftSettings, playerCount);
       setError('');
       setShowSettingsDialog(false);
     });
@@ -1025,8 +1099,13 @@ export default function RoomPage(): JSX.Element {
 
   function chooseTeam(teamId: 'red' | 'blue'): void {
     socket.emit('updateTeam', { roomId, teamId }, (r) => {
-      if (!r.ok) setError(r.error);
-      else setError('');
+      if (!r.ok) {
+        trackHotjarEvent('team_selection_failed');
+        setError(r.error);
+      } else {
+        trackTeamSelected(teamId);
+        setError('');
+      }
     });
   }
 
@@ -1190,7 +1269,7 @@ export default function RoomPage(): JSX.Element {
 
   /* ── main game view ── */
   return (
-    <main className={`game-shell${hasGameplayChrome ? ' has-gameplay-chrome' : ''}${isWordInputFocused ? ' is-typing' : ''}`}>
+    <main className={`game-shell${hasGameplayChrome ? ' has-gameplay-chrome' : ''}${isWordInputFocused ? ' is-typing' : ''}`} data-hj-suppress>
       <div className="emote-burst-layer" aria-live="polite" aria-relevant="additions">
         <AnimatePresence initial={false}>
           {emoteBursts.map((burst) => {
@@ -1424,7 +1503,7 @@ export default function RoomPage(): JSX.Element {
               </div>
             )}
             {roundHistory.length > 0 && (
-              <Button variant="ghost" fullWidth onClick={() => setShowRoundHistory(true)}>
+              <Button variant="ghost" fullWidth onClick={() => { trackHotjarEvent('round_history_opened'); setShowRoundHistory(true); }}>
                 See all words by round →
               </Button>
             )}

@@ -4,6 +4,7 @@ import { Badge, Button, Input, Label, Progress } from '../components/ui';
 import { readStoredValue, writeStoredValue } from '../services/storage';
 import { getDailyChallengeUrl } from '../services/platform';
 import { shareContent } from '../services/nativeShare';
+import { trackDailyCompleted, trackDailyStarted, trackHotjarEvent } from '../services/hotjar';
 
 const DAILY_SECONDS = 30;
 const DAILY_WORDS = [
@@ -116,8 +117,10 @@ export default function DailyWordPage(): JSX.Element {
   const timerRef = useRef<number | undefined>();
   const inputRef = useRef<HTMLInputElement>(null);
   const attemptRef = useRef<DailyAttempt | undefined>(existingAttempt);
+  const dailyCompletionTrackedRef = useRef(Boolean(existingAttempt?.finished));
 
   function finishAttempt(finalWords = words): void {
+    const wasFinished = Boolean(attemptRef.current?.finished);
     window.clearInterval(timerRef.current);
     timerRef.current = undefined;
     setIsRunning(false);
@@ -132,6 +135,11 @@ export default function DailyWordPage(): JSX.Element {
         words: finalWords
       };
       saveDailyAttempt(attemptRef.current);
+    }
+
+    if (!wasFinished && !dailyCompletionTrackedRef.current) {
+      dailyCompletionTrackedRef.current = true;
+      trackDailyCompleted(finalWords.length);
     }
   }
 
@@ -160,6 +168,7 @@ export default function DailyWordPage(): JSX.Element {
   function start(): void {
     if (isRunning) return;
 
+    const isRetry = Boolean(attemptRef.current);
     const now = Date.now();
     const attempt: DailyAttempt = {
       day,
@@ -171,7 +180,9 @@ export default function DailyWordPage(): JSX.Element {
     };
 
     attemptRef.current = attempt;
+    dailyCompletionTrackedRef.current = false;
     saveDailyAttempt(attempt);
+    trackDailyStarted(isRetry);
     setWords([]);
     setInputWord('');
     setTimeLeft(DAILY_SECONDS);
@@ -199,14 +210,17 @@ export default function DailyWordPage(): JSX.Element {
 
     if (!word) return;
     if (!/^[a-z]+$/.test(word)) {
+      trackHotjarEvent('daily_word_rejected');
       setMessage('Words can only contain letters.');
       return;
     }
     if (attemptRef.current.words.includes(word)) {
+      trackHotjarEvent('daily_word_rejected');
       setMessage('You already made that word.');
       return;
     }
     if (!canMakeWord(word, sourceWord)) {
+      trackHotjarEvent('daily_word_rejected');
       setMessage('That word cannot be made from the daily word.');
       return;
     }
@@ -214,6 +228,7 @@ export default function DailyWordPage(): JSX.Element {
     const nextWords = [...attemptRef.current.words, word].sort();
     attemptRef.current = { ...attemptRef.current, words: nextWords };
     saveDailyAttempt(attemptRef.current);
+    trackHotjarEvent('daily_word_accepted');
     setWords(nextWords);
     setMessage(`Accepted: ${word}`);
     requestAnimationFrame(() => inputRef.current?.focus());
@@ -230,10 +245,12 @@ export default function DailyWordPage(): JSX.Element {
     });
 
     if (method === 'unavailable') {
+      trackHotjarEvent('daily_share_unavailable');
       setShareStatus(`${text} ${dailyUrl}`);
       return;
     }
 
+    trackHotjarEvent(method === 'clipboard' ? 'daily_share_copied' : 'daily_shared');
     setShareStatus(method === 'clipboard' ? 'Challenge copied. Paste it anywhere.' : 'Shared!');
   }
 
@@ -241,7 +258,7 @@ export default function DailyWordPage(): JSX.Element {
   const timerState = timeLeft <= 5 ? 'urgent' : timeLeft <= 10 ? 'warn' : 'ok';
 
   return (
-    <main className={`game-shell daily-shell${isWordInputFocused ? ' is-typing' : ''}`}>
+    <main className={`game-shell daily-shell${isWordInputFocused ? ' is-typing' : ''}`} data-hj-suppress>
       <header className="game-header daily-game-header">
         <div className="game-header__left">
           <span className="game-header__label">daily</span>

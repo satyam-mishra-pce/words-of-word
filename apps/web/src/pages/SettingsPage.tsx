@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { GameSettings } from '@wow/shared';
 import socket from '../services/socket';
 import { loadPlayerAvatar, loadUsername } from '../services/session';
+import { trackHotjarEvent, trackRoomCreated } from '../services/hotjar';
 import { Alert, Button, Dialog, Label, Select, Textarea } from '../components/ui';
 
 const DEFAULT_SETTINGS: GameSettings = {
@@ -88,6 +89,7 @@ export default function SettingsPage(): JSX.Element {
     const timeout = window.setTimeout(() => {
       settled = true;
       setIsCreating(false);
+      trackHotjarEvent('room_create_failed');
       setError('Could not reach the game server. Make sure the local server is running on port 4000, then try again.');
     }, 8000);
 
@@ -96,7 +98,12 @@ export default function SettingsPage(): JSX.Element {
       settled = true;
       window.clearTimeout(timeout);
       setIsCreating(false);
-      if (!response.ok) { setError(response.error); return; }
+      if (!response.ok) {
+        trackHotjarEvent('room_create_failed');
+        setError(response.error);
+        return;
+      }
+      trackRoomCreated(settings, isOnlineRoom ? 'public' : 'private');
       navigate(`/room/${response.data.roomId}`);
     });
   }

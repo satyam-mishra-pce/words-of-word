@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { hydrateApplicationStorage } from './services/storage';
+import { initializeHotjar } from './services/hotjar';
 import './styles.css';
 
 let visualViewportSyncFrame: number | undefined;
@@ -63,6 +64,8 @@ async function bootstrap(): Promise<void> {
       </BrowserRouter>
     </React.StrictMode>
   );
+
+  initializeHotjar();
 }
 
 void bootstrap();

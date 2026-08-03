@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { RoomSnapshot } from '@wow/shared';
 import socket from '../services/socket';
 import { loadPlayerAvatar, loadUsername, saveUsername } from '../services/session';
+import { trackHotjarEvent, trackRoomJoined } from '../services/hotjar';
 import { Alert, Button, Input, Label } from '../components/ui';
 
 export default function JoinPage(): JSX.Element {
@@ -42,7 +43,17 @@ export default function JoinPage(): JSX.Element {
 
     socket.emit('joinRoom', { roomId: trimmedRoomCode, username: trimmedUsername, avatar: loadPlayerAvatar() }, (response) => {
       setIsJoining(false);
-      if (!response.ok) { setError(response.error); return; }
+      if (!response.ok) {
+        trackHotjarEvent('room_join_failed');
+        setError(response.error);
+        return;
+      }
+      trackRoomJoined(
+        response.data.snapshot.settings,
+        params.roomId ? 'invite' : 'code',
+        response.data.snapshot.phase,
+        response.data.snapshot.players.length
+      );
       navigate(`/room/${response.data.snapshot.roomId}`);
     });
   }
@@ -59,14 +70,14 @@ export default function JoinPage(): JSX.Element {
         <h1>{params.roomId ? 'Join Room' : 'Join Existing Game'}</h1>
 
         {roomSnapshot && (
-          <div className="room-preview">
+          <div className="room-preview" data-hj-suppress>
             <strong>Room {roomSnapshot.roomId}</strong>
             <span>{roomSnapshot.status.message}</span>
             <span>{roomSnapshot.phase === 'lobby' ? 'Waiting in lobby' : 'Game in progress'}</span>
           </div>
         )}
 
-        <form className="entry-panel" style={{ marginTop: 18 }} onSubmit={submit}>
+        <form className="entry-panel" style={{ marginTop: 18 }} onSubmit={submit} data-hj-suppress>
           <div>
             <Label htmlFor="join-username">Username</Label>
             <Input

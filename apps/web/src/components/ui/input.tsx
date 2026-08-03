@@ -25,6 +25,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
           className={cn('ui-input', 'ui-input-has-icon', stateClass, className)}
           onPaste={blockPaste}
           {...props}
+          data-hj-suppress
         />
       </div>
     );
@@ -35,6 +36,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
       className={cn('ui-input', stateClass, className)}
       onPaste={blockPaste}
       {...props}
+      data-hj-suppress
     />
   );
 });

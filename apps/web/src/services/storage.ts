@@ -2,6 +2,8 @@ import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
 
 export const STORAGE_KEYS = {
+  analyticsConsent: 'wow.analytics-consent',
+  analyticsVisitorId: 'wow.analytics-visitor-id',
   installationId: 'wow.installation-id',
   pushRegistration: 'wow.push-registration',
   theme: 'wow-theme',

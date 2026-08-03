@@ -18,6 +18,7 @@ export interface DialogProps {
   children: ReactNode;
   className?: string;
   size?: 'sm' | 'md' | 'lg';
+  suppressContent?: boolean;
   ariaLabel?: string;
 }
 
@@ -26,7 +27,7 @@ function getFocusableElements(dialog: HTMLElement): HTMLElement[] {
     .filter((element) => !element.hidden && element.getAttribute('aria-hidden') !== 'true');
 }
 
-export function Dialog({ open, onClose, children, className, size = 'md', ariaLabel = 'Dialog' }: DialogProps) {
+export function Dialog({ open, onClose, children, className, size = 'md', suppressContent = false, ariaLabel = 'Dialog' }: DialogProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
 
@@ -116,7 +117,7 @@ export function Dialog({ open, onClose, children, className, size = 'md', ariaLa
         >
           ×
         </button>
-        <div className="ui-dialog-content">
+        <div className="ui-dialog-content" data-hj-suppress={suppressContent || undefined}>
           {children}
         </div>
       </div>
