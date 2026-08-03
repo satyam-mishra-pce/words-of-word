@@ -85,7 +85,7 @@ export function PlayerAvatarEditor({ avatar, name, open, onClose, onChange }: Pl
   }
 
   return (
-    <Dialog open={open} onClose={onClose} size="lg" ariaLabel="Customize your player character" className="avatar-editor-dialog" suppressContent>
+    <Dialog open={open} onClose={onClose} size="lg" ariaLabel="Customize your player character" className="avatar-editor-dialog">
       <div className="avatar-editor__hero">
         <div className="avatar-editor__preview" aria-hidden="true">
           <Avatar name={playerName} avatar={avatar} size="lg" />

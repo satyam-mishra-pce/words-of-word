@@ -6,7 +6,6 @@ import { ThemePicker } from '../components/ThemePicker';
 import { Alert, Avatar, Button, Input } from '../components/ui';
 import { loadPlayerAvatar, loadUsername, savePlayerAvatar, saveUsername } from '../services/session';
 import { getGameServerUrl } from '../services/platform';
-import { trackHotjarEvent } from '../services/hotjar';
 
 const FLOAT_CHARS = ['W', 'O', 'R', 'D', 'S', '?'];
 const statsUrl = `${getGameServerUrl()}/stats`;
@@ -91,21 +90,15 @@ export default function HomePage(): JSX.Element {
   }
 
   function createRoom(): void {
-    if (!requireUsername()) return;
-    trackHotjarEvent('home_create_private_selected');
-    navigate('/settings');
+    if (requireUsername()) navigate('/settings');
   }
 
   function onlineRoom(): void {
-    if (!requireUsername()) return;
-    trackHotjarEvent('home_online_multiplayer_selected');
-    navigate('/online');
+    if (requireUsername()) navigate('/online');
   }
 
   function joinRoom(): void {
-    if (!requireUsername()) return;
-    trackHotjarEvent('home_join_private_selected');
-    navigate('/join');
+    if (requireUsername()) navigate('/join');
   }
 
   function submit(event: FormEvent<HTMLFormElement>): void {
@@ -129,7 +122,7 @@ export default function HomePage(): JSX.Element {
               <i /> {stats.activePlayers} playing
             </span>
           )}
-          <button type="button" className="starter-daily-link" onClick={() => { trackHotjarEvent('daily_opened'); navigate('/daily'); }} aria-label="Play the Daily Word challenge">
+          <button type="button" className="starter-daily-link" onClick={() => navigate('/daily')} aria-label="Play the Daily Word challenge">
             <span className="starter-daily-link__icon"><DailyWordIcon /></span>
             <span><b>Daily</b> <em>word</em></span>
             <ArrowIcon />
@@ -151,7 +144,7 @@ export default function HomePage(): JSX.Element {
             )}
           </div>
 
-          <form className="starter-console" onSubmit={submit} data-hj-suppress>
+          <form className="starter-console" onSubmit={submit}>
             <div className="starter-profile">
               <button
                 type="button"

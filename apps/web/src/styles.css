@@ -763,33 +763,6 @@ html[data-native-app="true"] .ui-dialog-backdrop {
 }
 .ui-dialog-close:hover { color: var(--text); background: var(--bg-3); }
 
-/* --- Analytics consent --- */
-.analytics-consent {
-  position: fixed;
-  z-index: 70;
-  bottom: max(14px, calc(var(--safe-bottom) + 12px));
-  left: 50%;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 18px;
-  width: min(650px, calc(100% - 32px));
-  padding: 15px 16px;
-  transform: translateX(-50%);
-  border: 1px solid var(--main-25);
-  border-radius: var(--r-lg);
-  background: color-mix(in srgb, var(--bg-sub) 88%, transparent);
-  box-shadow: var(--shadow-lg);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
-  animation: slide-up 260ms var(--ease-out);
-}
-.analytics-consent .eyebrow { margin-bottom: 5px; color: var(--main); font-size: 0.56rem; }
-.analytics-consent h2 { margin: 0 0 5px; font-size: 1rem; line-height: 1.15; }
-.analytics-consent p:not(.eyebrow) { margin: 0; color: var(--sub); font-size: 0.68rem; line-height: 1.55; }
-.analytics-consent__actions { display: flex; flex: 0 0 auto; gap: 6px; }
-.analytics-consent__actions .ui-btn { min-height: 32px; padding-inline: 10px; white-space: nowrap; }
-
 .stop-confirmation-dialog__copy {
   margin: 0 0 20px;
   color: var(--sub);
@@ -2418,16 +2391,6 @@ body:has(.game-shell.has-gameplay-chrome),
     animation: sheet-up 260ms var(--ease-out);
   }
   .ui-dialog-content { padding: 20px 16px 32px; }
-
-  .analytics-consent {
-    bottom: max(10px, calc(var(--safe-bottom) + 8px));
-    grid-template-columns: 1fr;
-    gap: 12px;
-    width: min(420px, calc(100% - 20px));
-    padding: 14px;
-  }
-  .analytics-consent__actions { width: 100%; }
-  .analytics-consent__actions .ui-btn { flex: 1 1 0; }
 
 }
 

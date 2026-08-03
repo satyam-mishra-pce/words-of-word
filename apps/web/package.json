@@ -26,7 +26,6 @@
     "@capacitor/splash-screen": "^8.0.2",
     "@capacitor/status-bar": "^8.0.3",
     "@capawesome/capacitor-navigation-bar": "^8.0.1",
-    "@hotjar/browser": "^1.0.9",
     "@vitejs/plugin-react": "^4.5.2",
     "@wow/shared": "workspace:*",
     "framer-motion": "^12.43.0",

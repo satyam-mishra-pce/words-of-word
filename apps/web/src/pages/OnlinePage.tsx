@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { OnlineRoomSummary } from '@wow/shared';
 import socket from '../services/socket';
 import { loadPlayerAvatar, loadUsername, saveUsername } from '../services/session';
-import { trackHotjarEvent, trackRoomJoined } from '../services/hotjar';
 import { Alert, Button, Input, Label } from '../components/ui';
 
 const MODE_LABELS: Record<OnlineRoomSummary['gameMode'], string> = {
@@ -77,17 +76,10 @@ export default function OnlinePage(): JSX.Element {
     socket.emit('joinRoom', { roomId, username: trimmed, avatar: loadPlayerAvatar() }, (response) => {
       setJoiningRoomId(undefined);
       if (!response.ok) {
-        trackHotjarEvent('room_join_failed');
         setError(response.error);
         loadRooms();
         return;
       }
-      trackRoomJoined(
-        response.data.snapshot.settings,
-        'online',
-        response.data.snapshot.phase,
-        response.data.snapshot.players.length
-      );
       navigate(`/room/${response.data.snapshot.roomId}`);
     });
   }
@@ -132,7 +124,7 @@ export default function OnlinePage(): JSX.Element {
         ) : (
           <div style={{ display: 'grid', gap: 10 }}>
             {rooms.map((room) => (
-              <div key={room.roomId} className="room-preview" style={{ alignItems: 'stretch' }} data-hj-suppress>
+              <div key={room.roomId} className="room-preview" style={{ alignItems: 'stretch' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
                   <div className="online-room-details">
                     <strong className="online-room-mode">{MODE_LABELS[room.gameMode]}</strong>

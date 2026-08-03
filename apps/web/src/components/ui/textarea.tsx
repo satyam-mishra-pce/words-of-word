@@ -20,7 +20,6 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function 
       className={cn('ui-textarea', hasError && 'ui-input-error', className)}
       onPaste={blockPaste}
       {...props}
-      data-hj-suppress
     />
   );
 });
