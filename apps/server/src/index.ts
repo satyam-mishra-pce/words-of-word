@@ -1,10 +1,10 @@
 import cors from '@fastify/cors';
 import Fastify from 'fastify';
-import { createHash } from 'node:crypto';
+import { timingSafeEqual } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { existsSync } from 'node:fs';
-import { appendFile, mkdir, readFile } from 'node:fs/promises';
-import { dirname, extname, join, normalize } from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { customAlphabet } from 'nanoid';
 import { Server, Socket } from 'socket.io';
@@ -32,6 +32,7 @@ import {
   PlayerLeftPayload,
   PushPlatform,
   RegisterPushTokenPayloadSchema,
+  RecordFeatureUsagePayloadSchema,
   SetAppActivityPayloadSchema,
   RestartGamePayloadSchema,
   RoomSnapshot,
@@ -50,6 +51,7 @@ import {
   WordAcceptedPayload,
   WordRejectedPayload
 } from '@wow/shared';
+import { AggregateAnalyticsStore } from './aggregateAnalytics.js';
 import {
   chooseSourceWord,
   createValidWords,
@@ -61,8 +63,7 @@ import {
 
 const PORT = Number(process.env.PORT ?? 4000);
 const WEB_DIST_DIR = fileURLToPath(new URL('../../web/dist', import.meta.url));
-const ANALYTICS_LOG_FILE = process.env.ANALYTICS_LOG_FILE ?? join(process.cwd(), 'logs', 'game-analytics.jsonl');
-const ANALYTICS_IP_SALT = process.env.ANALYTICS_IP_SALT ?? 'words-of-word-local-salt';
+const ANALYTICS_AGGREGATE_FILE = process.env.ANALYTICS_AGGREGATE_FILE?.trim() || join(process.cwd(), 'logs', 'aggregate-analytics.json');
 const WAIT_BETWEEN_ROUNDS_SECONDS = 10;
 const BETTING_SECONDS = 15;
 const LIGHTNING_SECONDS = 10;
@@ -212,215 +213,17 @@ function dispatchPush(clientId: string, title: string, body: string, data: Recor
       const current = pushTokensByClientId.get(clientId);
       if (current?.token === registration.token) pushTokensByClientId.delete(clientId);
     }
-    fastify.log.warn({ clientId, statusCode: response.status }, 'push relay rejected a notification');
+    fastify.log.warn({ statusCode: response.status }, 'push relay rejected a notification');
   }).catch((error: unknown) => {
-    fastify.log.warn({ clientId, error }, 'push relay delivery failed');
+    fastify.log.warn({ error }, 'push relay delivery failed');
   });
-}
-
-interface DeviceIdentity {
-  deviceId: string;
-  ipHash: string;
-  userAgent: string | undefined;
-}
-
-interface AnalyticsPlayer extends DeviceIdentity {
-  socketId: string;
-  name: string | undefined;
-  connectedAt: string;
-  disconnectedAt: string | undefined;
-  playTimeMs: number;
-  lastRoomId: string | undefined;
-  lastSettings: GameSettings | undefined;
-  roomsCreated: string[];
-  roomsJoined: string[];
-  wordsAccepted: number;
-}
-
-interface AnalyticsGame {
-  id: string;
-  roomId: string;
-  gameMode: GameSettings['gameMode'];
-  wordCategory: GameSettings['wordCategory'];
-  settings: GameSettings;
-  startedAt: string;
-  endedAt: string | undefined;
-  durationMs: number | undefined;
-  players: Array<{ playerId: string; playerName: string; deviceId: string | undefined }>;
-  finalScores: GameOverPayload['finalScores'] | undefined;
-  totalWordsAccepted: number;
-}
-
-class AnalyticsStore {
-  private readonly players = new Map<string, AnalyticsPlayer>();
-  private readonly recentPlayers: AnalyticsPlayer[] = [];
-  private readonly activeGamesByRoom = new Map<string, AnalyticsGame>();
-  private readonly recentGames: AnalyticsGame[] = [];
-  private readonly uniqueDevices = new Set<string>();
-  private readonly maxEntries = 250;
-
-  public recordConnect(socketId: string, identity: DeviceIdentity = anonymousIdentity(socketId)): void {
-    const player: AnalyticsPlayer = {
-      socketId,
-      ...identity,
-      name: undefined,
-      connectedAt: new Date().toISOString(),
-      disconnectedAt: undefined,
-      playTimeMs: 0,
-      lastRoomId: undefined,
-      lastSettings: undefined,
-      roomsCreated: [],
-      roomsJoined: [],
-      wordsAccepted: 0
-    };
-    this.players.set(socketId, player);
-    this.uniqueDevices.add(identity.deviceId);
-    this.pushRecent(this.recentPlayers, player);
-    this.writeLog('player_connected', player);
-  }
-
-  public recordDisconnect(socketId: string): void {
-    const player = this.players.get(socketId);
-    if (!player) return;
-    player.disconnectedAt = new Date().toISOString();
-    player.playTimeMs = Date.parse(player.disconnectedAt) - Date.parse(player.connectedAt);
-    this.players.delete(socketId);
-    this.writeLog('player_disconnected', player);
-  }
-
-  public rebindSocket(previousSocketId: string, nextSocketId: string): void {
-    const player = this.players.get(previousSocketId);
-    if (!player) return;
-
-    this.players.delete(previousSocketId);
-    player.socketId = nextSocketId;
-    this.players.set(nextSocketId, player);
-  }
-
-  public recordRoomCreated(socketId: string, username: string, roomId: string, settings: GameSettings): void {
-    const player = this.ensurePlayer(socketId);
-    player.name = username;
-    player.lastRoomId = roomId;
-    player.lastSettings = settings;
-    player.roomsCreated.push(roomId);
-    this.writeLog('room_created', { player, roomId, settings });
-  }
-
-  public recordRoomJoined(socketId: string, username: string, roomId: string, settings: GameSettings): void {
-    const player = this.ensurePlayer(socketId);
-    player.name = username;
-    player.lastRoomId = roomId;
-    player.lastSettings = settings;
-    player.roomsJoined.push(roomId);
-    this.writeLog('room_joined', { player, roomId, settings });
-  }
-
-  public recordGameStarted(room: InternalRoom): void {
-    const game: AnalyticsGame = {
-      id: `${room.id}-${Date.now()}`,
-      roomId: room.id,
-      gameMode: room.settings.gameMode,
-      wordCategory: room.settings.wordCategory,
-      settings: room.settings,
-      startedAt: new Date().toISOString(),
-      endedAt: undefined,
-      durationMs: undefined,
-      players: room.players.map((player) => ({
-        playerId: player.id,
-        playerName: player.name,
-        deviceId: this.players.get(player.id)?.deviceId
-      })),
-      finalScores: undefined,
-      totalWordsAccepted: 0
-    };
-    this.activeGamesByRoom.set(room.id, game);
-    this.pushRecent(this.recentGames, game);
-    this.writeLog('game_started', game);
-  }
-
-  public recordWordAccepted(room: InternalRoom, socketId: string): void {
-    const player = this.ensurePlayer(socketId);
-    player.wordsAccepted += 1;
-    const game = this.activeGamesByRoom.get(room.id);
-    if (game) game.totalWordsAccepted += 1;
-  }
-
-  public recordGameFinished(room: InternalRoom, finalScores: GameOverPayload['finalScores'], playerWords: Record<string, string[]>): void {
-    const game = this.activeGamesByRoom.get(room.id) ?? {
-      id: `${room.id}-${Date.now()}`,
-      roomId: room.id,
-      gameMode: room.settings.gameMode,
-      wordCategory: room.settings.wordCategory,
-      settings: room.settings,
-      startedAt: new Date().toISOString(),
-      endedAt: undefined,
-      durationMs: undefined,
-      players: room.players.map((player) => ({
-        playerId: player.id,
-        playerName: player.name,
-        deviceId: this.players.get(player.id)?.deviceId
-      })),
-      finalScores: undefined,
-      totalWordsAccepted: 0
-    };
-    game.endedAt = new Date().toISOString();
-    game.durationMs = Date.parse(game.endedAt) - Date.parse(game.startedAt);
-    game.finalScores = finalScores;
-    game.totalWordsAccepted = Object.values(playerWords).reduce((total, wordsForPlayer) => total + wordsForPlayer.length, 0);
-    this.activeGamesByRoom.delete(room.id);
-    if (!this.recentGames.includes(game)) this.pushRecent(this.recentGames, game);
-    this.writeLog('game_finished', game);
-  }
-
-  public snapshot(): { activePlayers: AnalyticsPlayer[]; recentPlayers: AnalyticsPlayer[]; activeGames: AnalyticsGame[]; recentGames: AnalyticsGame[]; totals: ReturnType<AnalyticsStore['publicStats']> } {
-    return {
-      activePlayers: Array.from(this.players.values()).sort((left, right) => left.connectedAt.localeCompare(right.connectedAt)),
-      recentPlayers: [...this.recentPlayers].reverse(),
-      activeGames: Array.from(this.activeGamesByRoom.values()),
-      recentGames: [...this.recentGames].reverse(),
-      totals: this.publicStats()
-    };
-  }
-
-  public publicStats(): { activePlayers: number; activeGames: number; uniqueDevices: number; gamesPlayed: number; wordsFound: number } {
-    const finishedGames = this.recentGames.filter((game) => game.endedAt);
-    return {
-      activePlayers: this.players.size,
-      activeGames: this.activeGamesByRoom.size,
-      uniqueDevices: this.uniqueDevices.size,
-      gamesPlayed: finishedGames.length,
-      wordsFound: this.recentGames.reduce((total, game) => total + game.totalWordsAccepted, 0)
-    };
-  }
-
-  private ensurePlayer(socketId: string): AnalyticsPlayer {
-    let player = this.players.get(socketId);
-    if (!player) {
-      this.recordConnect(socketId);
-      player = this.players.get(socketId);
-    }
-    if (!player) throw new Error('Unable to create analytics player.');
-    return player;
-  }
-
-  private pushRecent<T>(items: T[], item: T): void {
-    items.push(item);
-    if (items.length > this.maxEntries) items.shift();
-  }
-
-  private writeLog(event: string, data: unknown): void {
-    const line = `${JSON.stringify({ event, at: new Date().toISOString(), data })}\n`;
-    void mkdir(dirname(ANALYTICS_LOG_FILE), { recursive: true })
-      .then(() => appendFile(ANALYTICS_LOG_FILE, line))
-      .catch((error: unknown) => fastify.log.warn({ error }, 'failed to write analytics log'));
-  }
 }
 
 class GameRoomManager {
   private readonly rooms = new Map<string, InternalRoom>();
   private readonly socketToRoom = new Map<string, string>();
 
-  public constructor(private readonly io: TypedIo, private readonly dictionary: readonly string[], private readonly analytics: AnalyticsStore) {}
+  public constructor(private readonly io: TypedIo, private readonly dictionary: readonly string[], private readonly analytics: AggregateAnalyticsStore) {}
 
   private isMixMode(settings: GameSettings): boolean {
     return settings.gameMode === 'mix';
@@ -834,7 +637,7 @@ class GameRoomManager {
 
     this.rooms.set(roomId, room);
     this.socketToRoom.set(socketId, roomId);
-    this.analytics.recordRoomCreated(socketId, username, roomId, settings);
+    this.analytics.recordRoomCreated(settings);
 
     return { ok: true, data: this.toSnapshot(room) };
   }
@@ -881,6 +684,7 @@ class GameRoomManager {
     if (openRoom) {
       const joined = this.joinRoom(socketId, username, avatar, openRoom.id);
       if (!joined.ok) return joined;
+      this.analytics.recordQuickJoin(false);
       return { ok: true, data: { ...joined.data, created: false } };
     }
 
@@ -888,6 +692,7 @@ class GameRoomManager {
     if (!created.ok) return created;
     const player = created.data.players.find((candidate) => candidate.id === socketId);
     if (!player) return { ok: false, error: 'Unable to create online room.' };
+    this.analytics.recordQuickJoin(true);
     return { ok: true, data: { snapshot: created.data, player, created: true } };
   }
 
@@ -942,7 +747,7 @@ class GameRoomManager {
     }
     room.bettingWordCounts.set(socketId, []);
     this.socketToRoom.set(socketId, roomId);
-    this.analytics.recordRoomJoined(socketId, username, roomId, room.settings);
+    this.analytics.recordRoomJoined();
 
     return { ok: true, data: { snapshot: this.toSnapshot(room), player } };
   }
@@ -966,7 +771,9 @@ class GameRoomManager {
       return { ok: false, error: 'Player not found in this room.' };
     }
 
+    const teamChanged = player.teamId !== teamId;
     player.teamId = teamId;
+    if (teamChanged) this.analytics.recordTeamChanged();
     this.io.to(room.id).emit('roomSnapshot', { snapshot: this.toSnapshot(room) });
     return { ok: true, data: { ok: true } };
   }
@@ -1015,6 +822,7 @@ class GameRoomManager {
       };
     });
     this.resetScores(room);
+    this.analytics.recordSettingsUpdated();
 
     this.io.to(room.id).emit('roomSnapshot', { snapshot: this.toSnapshot(room) });
     this.io.to(room.id).emit('notice', { message: 'Settings updated by the host.' });
@@ -1045,7 +853,9 @@ class GameRoomManager {
       return { ok: false, error: `Your minimum bet is ${minimumBet} word${minimumBet !== 1 ? 's' : ''}.` };
     }
 
+    const previousBet = room.currentBets.get(socketId);
     room.currentBets.set(socketId, bet);
+    if (previousBet !== bet) this.analytics.recordBetPlaced();
     this.io.to(room.id).emit('roomSnapshot', { snapshot: this.toSnapshot(room) });
 
     if (this.allActivePlayersBet(room)) {
@@ -1086,6 +896,9 @@ class GameRoomManager {
     room.lightningTimeLeft.delete(socketId);
 
     if (room.players.length === 0) {
+      if (room.phase === 'round' || room.phase === 'betweenRounds' || room.phase === 'betting') {
+        this.analytics.recordGameAbandoned(room.id, room.settings);
+      }
       this.clearTickTimer(room);
       if (room.nextRoundTimer) {
         clearTimeout(room.nextRoundTimer);
@@ -1166,7 +979,7 @@ class GameRoomManager {
     room.timeLeft = this.roundSecondsFor(room.settings);
     room.validWords = new Set<string>();
     room.waitingSeconds = 0;
-    this.analytics.recordGameStarted(room);
+    this.analytics.recordGameStarted(room.id, room.settings, room.isPublic);
     if (room.settings.gameMode === 'betting') {
       this.startBetting(room);
     } else {
@@ -1297,7 +1110,7 @@ class GameRoomManager {
       player.score += FASTEST_N_BONUS;
     }
 
-    this.analytics.recordWordAccepted(room, socketId);
+    this.analytics.recordWordAccepted();
 
     this.io.to(socketId).emit('wordAccepted', {
       playerId: socketId,
@@ -1349,6 +1162,7 @@ class GameRoomManager {
     }
 
     room.lastEmoteAt.set(socketId, now);
+    this.analytics.recordEmoteSent();
     this.io.to(room.id).emit('emotePlayed', {
       playerId: player.id,
       playerName: player.name,
@@ -1382,6 +1196,10 @@ class GameRoomManager {
       }
     }
 
+    const wasActiveGame = room.phase === 'round' || room.phase === 'betweenRounds' || room.phase === 'betting';
+    if (wasActiveGame) this.analytics.recordGameAbandoned(room.id, room.settings);
+    this.analytics.recordGameRestarted();
+
     this.clearTimers(room);
     this.resetScores(room);
     room.phase = 'lobby';
@@ -1399,6 +1217,7 @@ class GameRoomManager {
 
     if (autoStart && room.players.length >= 2) {
       setTimeout(() => {
+        this.analytics.recordGameStarted(room.id, room.settings, room.isPublic);
         if (room.settings.gameMode === 'betting') {
           this.startBetting(room);
         } else {
@@ -1584,6 +1403,7 @@ class GameRoomManager {
       this.eliminateLowestScorers(room);
     }
 
+    this.analytics.recordRoundCompleted();
     const isGameOver = room.currentRound >= room.settings.rounds;
 
     if (isGameOver) {
@@ -1646,7 +1466,7 @@ class GameRoomManager {
         };
       });
 
-    this.analytics.recordGameFinished(room, finalScores, playerWords);
+    this.analytics.recordGameFinished(room.id, room.settings);
 
     const payload: GameOverPayload = {
       finalScores,
@@ -1978,31 +1798,8 @@ function validationMessage(errorMessage: string): string {
   return errorMessage || 'Invalid request.';
 }
 
-function anonymousIdentity(seed: string): DeviceIdentity {
-  const hash = hashValue(`anonymous:${seed}`);
-  return { deviceId: hash, ipHash: hash, userAgent: undefined };
-}
-
-function deviceIdentityForSocket(socket: TypedSocket): DeviceIdentity {
-  const forwardedFor = socket.handshake.headers['x-forwarded-for'];
-  const rawIp = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor?.split(',')[0]?.trim();
-  const ip = rawIp || socket.handshake.address || 'unknown';
-  const userAgentHeader = socket.handshake.headers['user-agent'];
-  const userAgent = Array.isArray(userAgentHeader) ? userAgentHeader[0] : userAgentHeader;
-  const ipHash = hashValue(ip);
-  return {
-    // Do not store raw IPs. This is stable enough for public counts but safer for privacy.
-    deviceId: hashValue(`${ip}|${userAgent ?? ''}`),
-    ipHash,
-    userAgent
-  };
-}
-
-function hashValue(value: string): string {
-  return createHash('sha256').update(`${ANALYTICS_IP_SALT}:${value}`).digest('hex').slice(0, 16);
-}
-
-const fastify = Fastify({ logger: true });
+// Do not let framework request logs turn connection metadata into analytics.
+const fastify = Fastify({ logger: true, disableRequestLogging: true });
 
 const configuredOrigin = process.env.CLIENT_ORIGIN;
 const clientOrigins: string[] | boolean = configuredOrigin
@@ -2014,44 +1811,37 @@ await fastify.register(cors, {
   methods: ['GET', 'POST']
 });
 
-const analytics = new AnalyticsStore();
+const analytics = new AggregateAnalyticsStore(
+  ANALYTICS_AGGREGATE_FILE,
+  (message, error) => fastify.log.warn({ error }, message)
+);
+await analytics.load();
+
+function hasAnalyticsAdminAccess(authorization: string | undefined): boolean {
+  const configuredToken = process.env.ANALYTICS_TOKEN;
+  if (!configuredToken || !authorization?.startsWith('Bearer ')) return false;
+
+  const providedToken = Buffer.from(authorization.slice('Bearer '.length));
+  const expectedToken = Buffer.from(configuredToken);
+  return providedToken.length === expectedToken.length && timingSafeEqual(providedToken, expectedToken);
+}
 
 fastify.get('/health', async () => ({ ok: true }));
 
 fastify.get('/stats', async () => ({ ok: true, data: analytics.publicStats() }));
 
-fastify.get('/analytics', async (request, reply) => {
-  const configuredToken = process.env.ANALYTICS_TOKEN;
-  if (configuredToken) {
-    const token = (request.query as { token?: string }).token;
-    if (token !== configuredToken) {
-      return reply.code(401).send({ ok: false, error: 'Unauthorized.' });
-    }
+fastify.get('/admin/analytics', async (request, reply) => {
+  if (!process.env.ANALYTICS_TOKEN) {
+    return reply.code(404).send({ ok: false, error: 'Not found.' });
   }
 
-  return { ok: true, data: analytics.snapshot() };
-});
-
-fastify.get('/analytics/logs', async (request, reply) => {
-  const configuredToken = process.env.ANALYTICS_TOKEN;
-  const token = (request.query as { token?: string; limit?: string }).token;
-  if (!configuredToken || token !== configuredToken) {
+  if (!hasAnalyticsAdminAccess(request.headers.authorization)) {
     return reply.code(401).send({ ok: false, error: 'Unauthorized.' });
   }
 
-  if (!existsSync(ANALYTICS_LOG_FILE)) {
-    return { ok: true, data: { file: ANALYTICS_LOG_FILE, lines: [] } };
-  }
-
-  const limit = Math.min(Math.max(Number((request.query as { limit?: string }).limit ?? 100), 1), 500);
-  const lines = (await readFile(ANALYTICS_LOG_FILE, 'utf8'))
-    .trim()
-    .split('\n')
-    .filter(Boolean)
-    .slice(-limit)
-    .map((line) => JSON.parse(line) as unknown);
-
-  return { ok: true, data: { file: ANALYTICS_LOG_FILE, lines } };
+  return reply
+    .header('Cache-Control', 'no-store')
+    .send({ ok: true, data: analytics.report() });
 });
 
 fastify.get('/.well-known/apple-app-site-association', async (_request, reply) => {
@@ -2143,21 +1933,19 @@ function clearReconnectRemoval(clientId: string): void {
 }
 
 function removeDisconnectedPlayer(socketId: string, reason: string): void {
-  analytics.recordDisconnect(socketId);
+  analytics.recordSocketDisconnected(socketId);
   const roomId = manager.findRoomIdForSocket(socketId);
-  fastify.log.info({ socketId, roomId, reason }, 'removing disconnected player');
+  fastify.log.info({ reason }, 'removing disconnected player');
   const removal = manager.removePlayer(socketId);
   if (!roomId || !removal.ok) {
     if (roomId || !removal.ok) {
-      fastify.log.warn({ socketId, roomId, error: removal.ok ? undefined : removal.error }, 'disconnect room cleanup skipped');
+      fastify.log.warn('disconnect room cleanup skipped');
     }
     return;
   }
 
   const snapshot = removal.data.snapshot;
   fastify.log.info({
-    socketId,
-    roomId,
     hostChanged: removal.data.hostChanged,
     roomClosed: !snapshot,
     ...(snapshot ? roomLogContext(snapshot) : {})
@@ -2209,7 +1997,7 @@ function restoreReconnectSession(socket: TypedSocket, clientId: string): boolean
 
   const previousSocket = io.sockets.sockets.get(previousSession.socketId) as TypedSocket | undefined;
   if (previousSocket?.connected) {
-    fastify.log.warn({ clientId, activeSocketId: previousSession.socketId, rejectedSocketId: socket.id }, 'rejected duplicate reconnect client');
+    fastify.log.warn('rejected duplicate reconnect client');
     socket.disconnect(true);
     return false;
   }
@@ -2225,7 +2013,7 @@ function restoreReconnectSession(socket: TypedSocket, clientId: string): boolean
 
   if (!rebound.ok) {
     // The installation may have reconnected after intentionally leaving a room.
-    analytics.recordDisconnect(previousSocketId);
+    analytics.recordSocketDisconnected(previousSocketId);
     return true;
   }
 
@@ -2233,17 +2021,15 @@ function restoreReconnectSession(socket: TypedSocket, clientId: string): boolean
   reboundSocketIds.add(socket.id);
   socket.join(rebound.data.roomId);
   io.to(rebound.data.roomId).emit('roomSnapshot', { snapshot: rebound.data.snapshot });
-  fastify.log.info({ clientId, previousSocketId, socketId: socket.id, ...roomLogContext(rebound.data.snapshot) }, 'mobile player session rebound');
+  fastify.log.info(roomLogContext(rebound.data.snapshot), 'mobile player session rebound');
   return true;
 }
 
 function roomLogContext(snapshot: RoomSnapshot): Record<string, unknown> {
   return {
-    roomId: snapshot.roomId,
     phase: snapshot.phase,
     players: snapshot.players.length,
     maxPlayers: snapshot.status.maxPlayers,
-    hostId: snapshot.hostId,
     gameMode: snapshot.settings.gameMode,
     currentRound: snapshot.currentRound,
     totalRounds: snapshot.totalRounds
@@ -2256,18 +2042,16 @@ function detachSocketFromCurrentRoom(socket: TypedSocket): ServerAck<EmptyResult
     return { ok: true, data: { ok: true } };
   }
 
-  fastify.log.info({ socketId: socket.id, previousRoomId }, 'socket leaving previous room before room change');
+  fastify.log.info('socket leaving previous room before room change');
   socket.leave(previousRoomId);
   const removal = manager.removePlayer(socket.id);
   if (!removal.ok) {
-    fastify.log.warn({ socketId: socket.id, previousRoomId, error: removal.error }, 'failed to remove socket from previous room');
+    fastify.log.warn('failed to remove socket from previous room');
     return { ok: false, error: removal.error };
   }
 
   const snapshot = removal.data.snapshot;
   fastify.log.info({
-    socketId: socket.id,
-    roomId: removal.data.roomId,
     hostChanged: removal.data.hostChanged,
     roomClosed: !snapshot,
     ...(snapshot ? roomLogContext(snapshot) : {})
@@ -2294,10 +2078,9 @@ io.on('connection', (socket) => {
   const clientId = clientIdForSocket(socket);
   if (clientId && !restoreReconnectSession(socket, clientId)) return;
 
-  const identity = deviceIdentityForSocket(socket);
   const wasRebound = reboundSocketIds.delete(socket.id);
-  if (!wasRebound && !socket.recovered) analytics.recordConnect(socket.id, identity);
-  fastify.log.info({ socketId: socket.id, clientId, recovered: socket.recovered, deviceId: identity.deviceId }, 'socket connected');
+  if (!wasRebound && !socket.recovered) analytics.recordSocketConnected(socket.id);
+  fastify.log.info({ recovered: socket.recovered }, 'socket connected');
 
   socket.on('createRoom', (payload, ack) => {
     const parsed = CreateRoomPayloadSchema.safeParse(payload);
@@ -2307,8 +2090,6 @@ io.on('connection', (socket) => {
     }
 
     fastify.log.info({
-      socketId: socket.id,
-      username: parsed.data.username,
       gameMode: parsed.data.settings.gameMode,
       maxPlayers: parsed.data.settings.maxPlayers,
       rounds: parsed.data.settings.rounds,
@@ -2318,13 +2099,13 @@ io.on('connection', (socket) => {
     detachSocketFromCurrentRoom(socket);
     const result = manager.createRoom(socket.id, parsed.data.username, parsed.data.avatar, parsed.data.settings, parsed.data.isPublic);
     if (!result.ok) {
-      fastify.log.warn({ socketId: socket.id, username: parsed.data.username, error: result.error }, 'createRoom failed');
+      fastify.log.warn('createRoom failed');
       reply(ack, result);
       return;
     }
 
     socket.join(result.data.roomId);
-    fastify.log.info({ socketId: socket.id, username: parsed.data.username, ...roomLogContext(result.data) }, 'room created and socket joined');
+    fastify.log.info(roomLogContext(result.data), 'room created and socket joined');
     socket.emit('roomSnapshot', { snapshot: result.data });
     reply(ack, { ok: true, data: { roomId: result.data.roomId, snapshot: result.data } });
   });
@@ -2356,23 +2137,18 @@ io.on('connection', (socket) => {
       return;
     }
 
-    fastify.log.info({ socketId: socket.id, username: parsed.data.username, roomId: parsed.data.roomId }, 'joinRoom requested');
+    fastify.log.info('joinRoom requested');
 
     detachSocketFromCurrentRoom(socket);
     const result = manager.joinRoom(socket.id, parsed.data.username, parsed.data.avatar, parsed.data.roomId);
     if (!result.ok) {
-      fastify.log.warn({ socketId: socket.id, username: parsed.data.username, roomId: parsed.data.roomId, error: result.error }, 'joinRoom failed');
+      fastify.log.warn('joinRoom failed');
       reply(ack, result);
       return;
     }
 
     socket.join(parsed.data.roomId);
-    fastify.log.info({
-      socketId: socket.id,
-      username: parsed.data.username,
-      playerId: result.data.player.id,
-      ...roomLogContext(result.data.snapshot)
-    }, 'player joined room');
+    fastify.log.info(roomLogContext(result.data.snapshot), 'player joined room');
     io.to(parsed.data.roomId).emit('playerJoined', {
       player: result.data.player,
       snapshot: result.data.snapshot
@@ -2388,12 +2164,12 @@ io.on('connection', (socket) => {
       return;
     }
 
-    fastify.log.info({ socketId: socket.id, username: parsed.data.username }, 'quickJoinRoom requested');
+    fastify.log.info('quickJoinRoom requested');
 
     detachSocketFromCurrentRoom(socket);
     const result = manager.quickJoinRoom(socket.id, parsed.data.username, parsed.data.avatar);
     if (!result.ok) {
-      fastify.log.warn({ socketId: socket.id, username: parsed.data.username, error: result.error }, 'quickJoinRoom failed');
+      fastify.log.warn('quickJoinRoom failed');
       reply(ack, result);
       return;
     }
@@ -2401,9 +2177,6 @@ io.on('connection', (socket) => {
     const roomId = result.data.snapshot.roomId;
     socket.join(roomId);
     fastify.log.info({
-      socketId: socket.id,
-      username: parsed.data.username,
-      playerId: result.data.player.id,
       created: result.data.created,
       ...roomLogContext(result.data.snapshot)
     }, result.data.created ? 'quick match room created and socket joined' : 'quick match player joined room');
@@ -2547,7 +2320,7 @@ io.on('connection', (socket) => {
       platform: parsed.data.platform,
       updatedAt: new Date().toISOString()
     });
-    fastify.log.info({ clientId, platform: parsed.data.platform }, 'push token registered');
+    fastify.log.info({ platform: parsed.data.platform }, 'push token registered');
     reply(ack, { ok: true, data: { ok: true } });
   });
 
@@ -2571,9 +2344,15 @@ io.on('connection', (socket) => {
     reply(ack, { ok: true, data: { ok: true } });
   });
 
+  socket.on('recordFeatureUsage', (payload) => {
+    const parsed = RecordFeatureUsagePayloadSchema.safeParse(payload);
+    if (!parsed.success) return;
+    analytics.recordFeatureUsage(parsed.data.event);
+  });
+
   socket.on('disconnect', (reason) => {
     const roomId = manager.findRoomIdForSocket(socket.id);
-    fastify.log.info({ socketId: socket.id, clientId, roomId, reason }, 'socket disconnected');
+    fastify.log.info({ reason }, 'socket disconnected');
 
     if (!clientId) {
       removeDisconnectedPlayer(socket.id, reason);
@@ -2590,12 +2369,30 @@ io.on('connection', (socket) => {
       reconnectSessions.delete(clientId);
       clientIdBySocketId.delete(socket.id);
       inactiveClientIds.delete(clientId);
-      analytics.recordDisconnect(socket.id);
+      analytics.recordSocketDisconnected(socket.id);
       return;
     }
 
     scheduleReconnectExpiry(clientId, socket.id, reason);
   });
 });
+
+let isShuttingDown = false;
+
+async function shutdown(signal: 'SIGINT' | 'SIGTERM'): Promise<void> {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  fastify.log.info({ signal }, 'shutting down');
+
+  try {
+    await analytics.flush();
+    await fastify.close();
+  } finally {
+    process.exit(0);
+  }
+}
+
+process.once('SIGINT', () => { void shutdown('SIGINT'); });
+process.once('SIGTERM', () => { void shutdown('SIGTERM'); });
 
 await fastify.listen({ port: PORT, host: '0.0.0.0' });

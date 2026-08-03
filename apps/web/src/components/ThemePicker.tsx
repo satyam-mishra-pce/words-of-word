@@ -1,5 +1,6 @@
 import type { CSSProperties, MouseEvent } from 'react';
 import { THEME_OPTIONS, type Theme, useTheme } from '../utils/useTheme';
+import { trackFeatureUsage } from '../services/aggregateAnalytics';
 
 function getThemeOrigin(event: MouseEvent<HTMLButtonElement>): { x: number; y: number } {
   const bounds = event.currentTarget.getBoundingClientRect();
@@ -13,6 +14,7 @@ export function ThemePicker(): JSX.Element {
   const { theme, setTheme } = useTheme();
 
   function selectTheme(event: MouseEvent<HTMLButtonElement>, nextTheme: Theme): void {
+    if (nextTheme !== theme) trackFeatureUsage('theme_changed');
     setTheme(nextTheme, getThemeOrigin(event));
   }
 

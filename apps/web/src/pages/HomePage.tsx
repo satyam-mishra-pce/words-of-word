@@ -6,6 +6,7 @@ import { ThemePicker } from '../components/ThemePicker';
 import { Alert, Avatar, Button, Input } from '../components/ui';
 import { loadPlayerAvatar, loadUsername, savePlayerAvatar, saveUsername } from '../services/session';
 import { getGameServerUrl } from '../services/platform';
+import { trackFeatureUsage } from '../services/aggregateAnalytics';
 
 const FLOAT_CHARS = ['W', 'O', 'R', 'D', 'S', '?'];
 const statsUrl = `${getGameServerUrl()}/stats`;
@@ -13,8 +14,6 @@ const statsUrl = `${getGameServerUrl()}/stats`;
 interface PublicStats {
   activePlayers: number;
   activeGames: number;
-  uniqueDevices: number;
-  gamesPlayed: number;
   wordsFound: number;
 }
 
@@ -90,15 +89,21 @@ export default function HomePage(): JSX.Element {
   }
 
   function createRoom(): void {
-    if (requireUsername()) navigate('/settings');
+    if (!requireUsername()) return;
+    trackFeatureUsage('home_create_private_selected');
+    navigate('/settings');
   }
 
   function onlineRoom(): void {
-    if (requireUsername()) navigate('/online');
+    if (!requireUsername()) return;
+    trackFeatureUsage('home_online_multiplayer_selected');
+    navigate('/online');
   }
 
   function joinRoom(): void {
-    if (requireUsername()) navigate('/join');
+    if (!requireUsername()) return;
+    trackFeatureUsage('home_join_private_selected');
+    navigate('/join');
   }
 
   function submit(event: FormEvent<HTMLFormElement>): void {
@@ -149,7 +154,7 @@ export default function HomePage(): JSX.Element {
               <button
                 type="button"
                 className="starter-avatar-button"
-                onClick={() => setAvatarEditorOpen(true)}
+                onClick={() => { trackFeatureUsage('avatar_editor_opened'); setAvatarEditorOpen(true); }}
                 aria-label="Customize your player character"
               >
                 <span className="starter-avatar-frame">

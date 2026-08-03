@@ -7,6 +7,7 @@ import { loadUsername } from '../services/session';
 import { hapticError, hapticLight, hapticMedium, hapticSelection, hapticSuccess, hapticWarning } from '../services/nativeFeedback';
 import { getRoomInviteUrl } from '../services/platform';
 import { copyTextToClipboard } from '../services/nativeShare';
+import { trackFeatureUsage } from '../services/aggregateAnalytics';
 import '../styles/game-score-feedback.css';
 import {
   Alert,
@@ -811,6 +812,7 @@ export default function RoomPage(): JSX.Element {
     if (inviteCopiedTimerRef.current !== undefined) {
       window.clearTimeout(inviteCopiedTimerRef.current);
     }
+    trackFeatureUsage('invite_copied');
     setIsInviteCopied(true);
     inviteCopiedTimerRef.current = window.setTimeout(() => {
       setIsInviteCopied(false);
@@ -867,6 +869,7 @@ export default function RoomPage(): JSX.Element {
   }
 
   function openHowToPlay(): void {
+    trackFeatureUsage('rules_opened');
     inputRef.current?.blur();
     setShowHowToPlay(true);
   }
@@ -1424,7 +1427,7 @@ export default function RoomPage(): JSX.Element {
               </div>
             )}
             {roundHistory.length > 0 && (
-              <Button variant="ghost" fullWidth onClick={() => setShowRoundHistory(true)}>
+              <Button variant="ghost" fullWidth onClick={() => { trackFeatureUsage('round_history_opened'); setShowRoundHistory(true); }}>
                 See all words by round →
               </Button>
             )}

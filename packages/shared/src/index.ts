@@ -186,6 +186,35 @@ export const SetAppActivityPayloadSchema = z.object({
   isActive: z.boolean()
 });
 
+/**
+ * Strict, content-free signals for features that are entirely client-side.
+ * Multiplayer gameplay itself is measured authoritatively by the server.
+ */
+export const FeatureUsageEventSchema = z.enum([
+  'page_home_viewed',
+  'page_settings_viewed',
+  'page_online_viewed',
+  'page_daily_viewed',
+  'page_join_viewed',
+  'page_room_viewed',
+  'home_create_private_selected',
+  'home_online_multiplayer_selected',
+  'home_join_private_selected',
+  'avatar_editor_opened',
+  'theme_changed',
+  'daily_started',
+  'daily_completed',
+  'daily_shared',
+  'daily_share_copied',
+  'invite_copied',
+  'rules_opened',
+  'round_history_opened'
+]);
+
+export const RecordFeatureUsagePayloadSchema = z.object({
+  event: FeatureUsageEventSchema
+});
+
 export const UpdateSettingsPayloadSchema = z.object({
   roomId: RoomIdSchema,
   settings: GameSettingsSchema
@@ -212,6 +241,8 @@ export type LeaveRoomPayload = z.infer<typeof LeaveRoomPayloadSchema>;
 export type PushPlatform = z.infer<typeof PushPlatformSchema>;
 export type RegisterPushTokenPayload = z.infer<typeof RegisterPushTokenPayloadSchema>;
 export type SetAppActivityPayload = z.infer<typeof SetAppActivityPayloadSchema>;
+export type FeatureUsageEvent = z.infer<typeof FeatureUsageEventSchema>;
+export type RecordFeatureUsagePayload = z.infer<typeof RecordFeatureUsagePayloadSchema>;
 export type UpdateSettingsPayload = z.infer<typeof UpdateSettingsPayloadSchema>;
 
 export type RoomPhase = 'lobby' | 'betting' | 'round' | 'betweenRounds' | 'gameOver';
@@ -470,4 +501,5 @@ export interface ClientToServerEvents {
   leaveRoom: (payload: LeaveRoomPayload, ack?: Ack<EmptyResult>) => void;
   registerPushToken: (payload: RegisterPushTokenPayload, ack?: Ack<EmptyResult>) => void;
   setAppActivity: (payload: SetAppActivityPayload, ack?: Ack<EmptyResult>) => void;
+  recordFeatureUsage: (payload: RecordFeatureUsagePayload) => void;
 }

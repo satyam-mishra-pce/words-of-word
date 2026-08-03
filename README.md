@@ -35,3 +35,39 @@ pnpm mobile:android
 ```
 
 See [the mobile delivery guide](docs/MOBILE.md) for deep links, push credentials, device QA, and release setup.
+
+## First-party aggregate analytics
+
+The server has a built-in, zero-third-party product report for understanding
+which modes and features are actually used. It stores counters only—analytics
+uses no cookies, replay recordings, user profiles, IP addresses, device IDs, player
+names, room IDs, words, custom word lists, scores, raw errors, or event history.
+
+Authoritative server counters cover successful room creation/joining, quick
+matchmaking, settings changes, starts, finishes, abandons, rounds, accepted
+words, restarts, team changes, bets, and emotes. The report groups actual games
+by mode and uses only bounded gameplay settings selected at game start. The
+small client-side supplement sends fixed enum names only for client-only
+features such as Daily Word, invite copies, rules/history, themes, and page
+views; it is production-only and respects Do Not Track and Global Privacy Control. These are aggregate
+usage counts—not unique-player, retention, or demographic measurements.
+
+Set a strong `ANALYTICS_TOKEN` in the server environment, then retrieve the
+private aggregate report without putting the token in a URL:
+
+```bash
+curl -H "Authorization: Bearer $ANALYTICS_TOKEN" \
+  https://your-domain.example/admin/analytics
+```
+
+The endpoint is unavailable when no token is configured and responses use
+`Cache-Control: no-store`. Aggregates are atomically written to
+`ANALYTICS_AGGREGATE_FILE`, defaulting to `logs/aggregate-analytics.json`.
+Render's free filesystem is ephemeral, so counters reset on a deploy/restart
+unless that path is backed by durable storage; download reports regularly if
+running on the free plan.
+
+If this project was deployed with the older detailed analytics implementation,
+remove its legacy `logs/game-analytics.jsonl` file from the deployment storage:
+it may contain data that the aggregate implementation intentionally no longer
+collects.

@@ -4,6 +4,7 @@ import { Badge, Button, Input, Label, Progress } from '../components/ui';
 import { readStoredValue, writeStoredValue } from '../services/storage';
 import { getDailyChallengeUrl } from '../services/platform';
 import { shareContent } from '../services/nativeShare';
+import { trackFeatureUsage } from '../services/aggregateAnalytics';
 
 const DAILY_SECONDS = 30;
 const DAILY_WORDS = [
@@ -116,8 +117,10 @@ export default function DailyWordPage(): JSX.Element {
   const timerRef = useRef<number | undefined>();
   const inputRef = useRef<HTMLInputElement>(null);
   const attemptRef = useRef<DailyAttempt | undefined>(existingAttempt);
+  const dailyCompletionTrackedRef = useRef(Boolean(existingAttempt?.finished));
 
   function finishAttempt(finalWords = words): void {
+    const wasFinished = Boolean(attemptRef.current?.finished);
     window.clearInterval(timerRef.current);
     timerRef.current = undefined;
     setIsRunning(false);
@@ -132,6 +135,11 @@ export default function DailyWordPage(): JSX.Element {
         words: finalWords
       };
       saveDailyAttempt(attemptRef.current);
+    }
+
+    if (!wasFinished && !dailyCompletionTrackedRef.current) {
+      dailyCompletionTrackedRef.current = true;
+      trackFeatureUsage('daily_completed');
     }
   }
 
@@ -171,7 +179,9 @@ export default function DailyWordPage(): JSX.Element {
     };
 
     attemptRef.current = attempt;
+    dailyCompletionTrackedRef.current = false;
     saveDailyAttempt(attempt);
+    trackFeatureUsage('daily_started');
     setWords([]);
     setInputWord('');
     setTimeLeft(DAILY_SECONDS);
@@ -234,6 +244,7 @@ export default function DailyWordPage(): JSX.Element {
       return;
     }
 
+    trackFeatureUsage(method === 'clipboard' ? 'daily_share_copied' : 'daily_shared');
     setShareStatus(method === 'clipboard' ? 'Challenge copied. Paste it anywhere.' : 'Shared!');
   }
 
