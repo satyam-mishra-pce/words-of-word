@@ -289,21 +289,23 @@ interface GameToolsProps {
 function GameTools({ className, onSendEmote }: GameToolsProps): JSX.Element {
   return (
     <div className={`game-tools${className ? ` ${className}` : ''}`} aria-label="Emotes">
-      {EMOTE_OPTIONS.map((option) => (
-        <Tooltip key={option.id} content={`Send ${option.label}`}>
-          <Button
-            variant="ghost"
-            size="sm"
-            type="button"
-            className="game-tool game-tool--emote"
-            title={option.label}
-            aria-label={`Send ${option.label} emote`}
-            onClick={() => onSendEmote(option.id)}
-          >
-            <span aria-hidden="true">{option.emoji}</span>
-          </Button>
-        </Tooltip>
-      ))}
+      <div className="game-tools__emotes">
+        {EMOTE_OPTIONS.map((option) => (
+          <Tooltip key={option.id} content={`Send ${option.label}`}>
+            <Button
+              variant="ghost"
+              size="sm"
+              type="button"
+              className="game-tool game-tool--emote"
+              title={option.label}
+              aria-label={`Send ${option.label} emote`}
+              onClick={() => onSendEmote(option.id)}
+            >
+              <span aria-hidden="true">{option.emoji}</span>
+            </Button>
+          </Tooltip>
+        ))}
+      </div>
     </div>
   );
 }
