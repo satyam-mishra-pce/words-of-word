@@ -110,6 +110,7 @@ interface EmoteBurst {
   playerName: string;
   emoji: string;
   label: string;
+  originBottom: number;
 }
 
 interface PlayerFinalAward {
@@ -983,9 +984,14 @@ export default function RoomPage(): JSX.Element {
 
     const id = emoteBurstIdRef.current;
     emoteBurstIdRef.current += 1;
+    const inputTop = inputRef.current?.getBoundingClientRect().top;
+    const distanceAboveInput = 52 + Math.round(Math.random() * 72);
+    const originBottom = inputTop === undefined
+      ? 232
+      : Math.max(120, window.innerHeight - inputTop + distanceAboveInput + 20);
     setEmoteBursts((current) => [
       ...current,
-      { id, playerId: payload.playerId, playerName: payload.playerName, emoji: option.emoji, label: option.label }
+      { id, playerId: payload.playerId, playerName: payload.playerName, emoji: option.emoji, label: option.label, originBottom }
     ].slice(-3));
 
     const timer = window.setTimeout(() => {
@@ -1195,10 +1201,10 @@ export default function RoomPage(): JSX.Element {
                 className={`emote-burst-slot emote-burst-slot--${burst.id % 3}`}
                 role="status"
                 aria-label={`${senderName} sent ${burst.label}`}
-                style={{ transformOrigin: '0 50%' }}
-                initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.46, y: 30, rotate: -7 }}
-                animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: -50, rotate: 0 }}
-                exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.62, y: -92, rotate: 6, transition: { duration: 0.28, ease: 'easeIn' } }}
+                style={{ bottom: `${burst.originBottom}px`, transformOrigin: '0 50%' }}
+                initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.46, y: 20, rotate: -7 }}
+                animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: -140, rotate: 0 }}
+                exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.62, y: -190, rotate: 6, transition: { duration: 0.28, ease: 'easeIn' } }}
                 transition={shouldReduceMotion ? { duration: 0.12 } : {
                   opacity: { duration: 0.18, ease: 'easeOut' },
                   scale: { type: 'spring', stiffness: 420, damping: 29, mass: 0.7 },
