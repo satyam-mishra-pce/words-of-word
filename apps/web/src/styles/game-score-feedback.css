@@ -399,7 +399,7 @@
 
 .emote-burst-slot {
   position: absolute;
-  top: clamp(104px, 29vh, 280px);
+  top: clamp(150px, 35vh, 400px);
   left: 50%;
   display: grid;
   width: max-content;
@@ -438,7 +438,7 @@
 }
 
 @media (max-width: 640px) {
-  .emote-burst-slot { top: max(92px, 24vh); }
+  .emote-burst-slot { top: max(132px, 36vh); }
   .emote-burst-slot--0 { margin-left: -78px; }
   .emote-burst-slot--2 { margin-left: 78px; }
   .emote-burst__emoji { font-size: 3rem; }
