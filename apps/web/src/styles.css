@@ -143,6 +143,7 @@ html[data-native-app="true"] body::after {
   color: var(--main);
   font: 700 clamp(3.3rem, 18vw, 6rem) 'JetBrains Mono', monospace;
   letter-spacing: -0.12em;
+  text-transform: none;
 }
 .app-boot i {
   display: block;
@@ -778,48 +779,7 @@ html[data-native-app="true"] .ui-dialog-backdrop {
   padding-inline: 12px;
 }
 
-.mobile-leaderboard-list {
-  display: grid;
-  gap: 4px;
-  margin-bottom: 18px;
-}
-.mobile-leaderboard-row {
-  display: grid;
-  grid-template-columns: 30px auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 9px;
-  padding: 9px 10px;
-  border-radius: var(--r-sm);
-  background: var(--bg-3);
-}
-.mobile-leaderboard-row--self { background: var(--main-10); }
-.mobile-leaderboard-row__rank { color: var(--sub); font-size: 0.72rem; }
-.mobile-leaderboard-row__identity { min-width: 0; }
-.mobile-leaderboard-row__identity strong {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text);
-  font-size: 0.78rem;
-}
-.mobile-leaderboard-row--self .mobile-leaderboard-row__identity strong { color: var(--main); }
-.mobile-leaderboard-row__identity span { display: block; margin-top: 2px; color: var(--sub); font-size: 0.60rem; }
-.mobile-leaderboard-row__score { min-width: 34px; text-align: right; }
-.mobile-leaderboard-row__score strong { display: block; color: var(--main); font-size: 0.86rem; }
-.mobile-leaderboard-row__score span { display: block; color: var(--sub); font-size: 0.56rem; }
-.mobile-team-scores {
-  display: grid;
-  gap: 4px;
-  margin: 0 0 18px;
-  padding: 12px;
-  border-radius: var(--r-sm);
-  background: var(--bg-3);
-}
-.mobile-team-scores .eyebrow { margin-bottom: 3px; }
-.mobile-team-scores > div { display: flex; justify-content: space-between; gap: 12px; color: var(--sub); font-size: 0.72rem; }
-.mobile-team-scores strong { color: var(--main); }
-.mobile-live-leaderboard { display: none; }
+.mobile-players-panel { display: none; }
 
 /* --- Progress --- */
 .ui-progress {
@@ -1315,25 +1275,40 @@ body:has(.game-shell.has-gameplay-chrome),
   margin: 0;
   padding: 8px 16px 10px;
 }
-.mobile-entry-tools {
+.room-footer-slot {
+  grid-column: 2;
+  min-width: 0;
+}
+.room-footer-slot .gameplay-footer {
+  min-width: 0;
+  margin: 0;
+  background: var(--bg);
+  border-top: 1px solid var(--sub-2);
+}
+.room-footer-slot .gameplay-footer .word-form {
+  min-width: 0;
+  margin: 0;
+  padding: 8px 16px 10px;
+}
+.game-tools {
   display: flex;
   align-items: center;
   gap: 4px;
   min-height: 38px;
   padding: 3px 16px;
-  border-bottom: 1px solid rgba(100, 102, 105, 0.32);
 }
-.mobile-entry-tools .ui-tooltip-host { display: flex; flex: 0 0 auto; }
-.mobile-entry-tool {
+.game-tools--footer { border-bottom: 1px solid rgba(100, 102, 105, 0.32); }
+.game-tools .ui-tooltip-host { display: flex; flex: 0 0 auto; }
+.game-tool {
   min-width: 30px;
   min-height: 30px;
   padding: 5px 6px;
   color: var(--sub);
   font-size: 0.7rem;
 }
-.mobile-entry-tool--rules { min-width: auto; padding-inline: 8px; }
-.mobile-entry-tool--emote { font-size: 1rem; line-height: 1; }
-.mobile-entry-tool:hover:not(:disabled) { color: var(--text); background: var(--bg-3); }
+.game-tool--rules { min-width: auto; padding-inline: 8px; }
+.game-tool--emote { font-size: 1rem; line-height: 1; }
+.game-tool:hover:not(:disabled) { color: var(--text); background: var(--bg-3); }
 .game-shell.has-gameplay-chrome .gameplay-scroll .bingo-board {
   max-height: none;
   margin: 0;
@@ -2154,6 +2129,7 @@ body:has(.game-shell.has-gameplay-chrome),
     background: var(--bg);
   }
   .word-stage--active { overflow: hidden; }
+  .game-shell:not(.has-gameplay-chrome) .word-stage { padding-bottom: 112px; }
   /* The room header already carries this metadata; keep announcements for
      assistive tech without inserting visual content above the source word. */
   .word-stage > .stage-notice-bar {
@@ -2240,26 +2216,15 @@ body:has(.game-shell.has-gameplay-chrome),
     -webkit-overflow-scrolling: touch;
     scrollbar-width: thin;
   }
-  .mobile-live-leaderboard {
-    display: grid;
-    gap: 8px;
-    padding: 10px;
-    border: 1px solid var(--sub-2);
-    border-radius: var(--r-sm);
-    background: var(--bg-sub);
+  .mobile-players-panel {
+    display: block;
+    min-width: 0;
+    margin-top: 4px;
   }
-  .mobile-live-leaderboard__header {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 8px;
-  }
-  .mobile-live-leaderboard__header .eyebrow { margin: 0; }
-  .mobile-live-leaderboard__header > span { color: var(--sub); font-size: 0.58rem; }
-  .mobile-live-leaderboard .mobile-leaderboard-list { margin: 0; }
-  .mobile-live-leaderboard .mobile-team-scores { margin: 0; }
+  .mobile-players-panel .room-status { margin-bottom: 0; }
+  .game-shell:not(.has-gameplay-chrome) .gameplay-scroll { padding-bottom: 112px; }
 
-  /* The bottom dock is intentionally just for word entry. */
+  /* The bottom dock keeps emotes and the disabled word input available in every phase. */
   .gameplay-layout > .gameplay-footer {
     grid-row: 3;
     min-width: 0;
@@ -2267,22 +2232,29 @@ body:has(.game-shell.has-gameplay-chrome),
     background: var(--bg);
     border-top: 1px solid var(--sub-2);
   }
-  .mobile-entry-tools {
-    display: flex;
-    align-items: center;
+  .room-footer-slot {
+    position: fixed;
+    right: var(--safe-right);
+    bottom: 0;
+    left: var(--safe-left);
+    z-index: 30;
+    margin: 0;
+    background: var(--bg);
+    border-top: 1px solid var(--sub-2);
+  }
+  .room-footer-slot .gameplay-footer { border-top: 0; }
+  .room-footer-slot .gameplay-footer .word-form { padding-bottom: calc(10px + var(--safe-bottom)); }
+  .game-tools {
     gap: 4px;
     min-height: 38px;
     padding: 3px 12px;
-    border-bottom: 1px solid rgba(100,102,105,0.32);
-  }
-  .mobile-entry-tools {
     overflow-x: auto;
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch;
   }
-  .mobile-entry-tools::-webkit-scrollbar { display: none; }
-  .mobile-entry-tools .ui-tooltip-host { display: flex; flex: 0 0 auto; }
-  .mobile-entry-tool {
+  .game-tools::-webkit-scrollbar { display: none; }
+  .game-tools .ui-tooltip-host { display: flex; flex: 0 0 auto; }
+  .game-tool {
     min-width: 30px;
     min-height: 30px;
     padding: 5px 6px;
@@ -2290,9 +2262,9 @@ body:has(.game-shell.has-gameplay-chrome),
     color: var(--sub);
     font-size: 0.62rem;
   }
-  .mobile-entry-tool--rules { min-width: auto; padding-inline: 7px; }
-  .mobile-entry-tool--emote { font-size: 1rem; line-height: 1; }
-  .mobile-entry-tool:hover:not(:disabled) { color: var(--text); background: var(--bg-3); }
+  .game-tool--rules { min-width: auto; padding-inline: 7px; }
+  .game-tool--emote { font-size: 1rem; line-height: 1; }
+  .game-tool:hover:not(:disabled) { color: var(--text); background: var(--bg-3); }
   .gameplay-footer .word-form {
     min-width: 0;
     margin: 0;
@@ -4196,7 +4168,7 @@ body:has(.game-shell.has-gameplay-chrome),
 }
 
 @media (max-width: 360px) {
-  .mobile-entry-tools { gap: 2px; padding-inline: 8px; }
-  .mobile-entry-tool--rules { min-width: 30px; padding-inline: 5px; }
-  .mobile-entry-tool--rules span { display: none; }
+  .game-tools { gap: 2px; padding-inline: 8px; }
+  .game-tool--rules { min-width: 30px; padding-inline: 5px; }
+  .game-tool--rules span { display: none; }
 }

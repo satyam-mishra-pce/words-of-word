@@ -1337,10 +1337,6 @@ class GameRoomManager {
       return { ok: false, error: 'Room not found.' };
     }
 
-    if (room.phase !== 'round' && room.phase !== 'betweenRounds') {
-      return { ok: false, error: 'Emotes are available while a game is in progress.' };
-    }
-
     const player = room.players.find((candidate) => candidate.id === socketId);
     if (!player) {
       return { ok: false, error: 'Player not found in this room.' };

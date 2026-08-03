@@ -25,7 +25,7 @@ import {
 
 const RANK_ICONS: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉' };
 
-type GameActionIconName = 'share' | 'rules' | 'stop' | 'exit';
+type GameActionIconName = 'share' | 'check' | 'rules' | 'stop' | 'exit';
 
 function GameActionIcon({ name }: { name: GameActionIconName }): JSX.Element {
   const svgProps = {
@@ -43,6 +43,8 @@ function GameActionIcon({ name }: { name: GameActionIconName }): JSX.Element {
   switch (name) {
     case 'share':
       return <svg {...svgProps}><path d="M10 11V2.5" /><path d="m6.5 6 3.5-3.5L13.5 6" /><path d="M4 10.5v5h12v-5" /></svg>;
+    case 'check':
+      return <svg {...svgProps}><path d="m4 10 3.75 3.75L16 5.5" /></svg>;
     case 'rules':
       return <svg {...svgProps}><path d="M3.5 3.5h5a2 2 0 0 1 2 2v11a2 2 0 0 0-2-2h-5Z" /><path d="M16.5 3.5h-5a2 2 0 0 0-2 2v11a2 2 0 0 1 2-2h5Z" /></svg>;
     case 'stop':
@@ -180,6 +182,138 @@ function FinalPodium({ players, avatarsByPlayerId, currentPlayerId, getAward }: 
   );
 }
 
+interface PlayersPanelProps {
+  className: string;
+  snapshot: RoomSnapshot;
+  currentPlayerId: string | undefined;
+  currentPlayerTeamId: 'red' | 'blue' | undefined;
+  isTeamsMode: boolean;
+  isBettingMode: boolean;
+  needsRejoin: boolean;
+  error: string;
+  onChooseTeam: (teamId: 'red' | 'blue') => void;
+}
+
+function PlayersPanel({
+  className,
+  snapshot,
+  currentPlayerId,
+  currentPlayerTeamId,
+  isTeamsMode,
+  isBettingMode,
+  needsRejoin,
+  error,
+  onChooseTeam
+}: PlayersPanelProps): JSX.Element {
+  return (
+    <aside className={className} aria-label="Players">
+      <p className="eyebrow" style={{ marginBottom: 10 }}>Players</p>
+
+      <div className="player-list">
+        {snapshot.players.map((player, index) => (
+          <div
+            key={player.id}
+            className={`player-row ${player.id === currentPlayerId ? 'self' : ''}`}
+          >
+            <div className="player-row__info">
+              <Avatar name={player.name} avatar={player.avatar} colorIndex={index} size="sm" />
+              <div className="player-row__text">
+                <div className="player-row__name">{player.name}</div>
+                <span className="player-row__tag">
+                  {snapshot.bustedPlayers[player.id] ? '💣 Busted' : player.isEliminated ? 'Out' : `${player.isHost ? '★ Host' : player.id === currentPlayerId ? 'You' : 'Player'}${isTeamsMode && player.teamId ? ` · ${player.teamId === 'red' ? 'Red' : 'Blue'}` : ''}`}
+                </span>
+              </div>
+            </div>
+            <span className="player-row__score">{player.score}</span>
+          </div>
+        ))}
+      </div>
+
+      {isTeamsMode && snapshot.teamScores.length > 0 && (
+        <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
+          <p className="eyebrow" style={{ marginBottom: 0 }}>Team scores</p>
+          {snapshot.teamScores.map((team) => (
+            <div key={team.teamId} className="player-row" style={{ borderColor: team.teamId === 'red' ? 'rgba(255,90,90,0.35)' : 'rgba(90,160,255,0.35)' }}>
+              <div className="player-row__text">
+                <div className="player-row__name">{team.teamName}</div>
+                <span className="player-row__tag">{team.players.length} player{team.players.length !== 1 ? 's' : ''}</span>
+              </div>
+              <span className="player-row__score">{team.score}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {isBettingMode && snapshot.phase !== 'lobby' && snapshot.phase !== 'gameOver' && (
+        <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
+          <p className="eyebrow" style={{ marginBottom: 0 }}>Bets</p>
+          {snapshot.players.map((player, playerIndex) => {
+            const bet = snapshot.bettingBets[player.id];
+            const words = snapshot.acceptedWords[player.id]?.length ?? 0;
+            return (
+              <div key={player.id} className="player-row">
+                <div className="player-row__info">
+                  <Avatar name={player.name} avatar={player.avatar} colorIndex={playerIndex} size="sm" />
+                  <div className="player-row__text">
+                    <div className="player-row__name">{player.name}</div>
+                    <span className="player-row__tag">{bet ? `${words} / ${bet} words` : 'Choosing bet'}</span>
+                  </div>
+                </div>
+                <span className="player-row__score">{bet ? (words >= bet ? '✅' : '🎲') : '—'}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {isTeamsMode && snapshot.phase === 'lobby' && !needsRejoin && (
+        <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <Button variant={currentPlayerTeamId === 'red' ? 'primary' : 'secondary'} size="sm" onClick={() => onChooseTeam('red')}>Red Team</Button>
+          <Button variant={currentPlayerTeamId === 'blue' ? 'primary' : 'secondary'} size="sm" onClick={() => onChooseTeam('blue')}>Blue Team</Button>
+        </div>
+      )}
+
+      <div className="room-status">{snapshot.status.message}</div>
+
+      {error && <Alert variant="error" style={{ marginTop: 8, fontSize: '0.80rem' }}>{error}</Alert>}
+    </aside>
+  );
+}
+
+interface GameToolsProps {
+  className?: string;
+  onOpenRules: () => void;
+  onSendEmote: (emote: EmotePlayedPayload['emote']) => void;
+}
+
+function GameTools({ className, onOpenRules, onSendEmote }: GameToolsProps): JSX.Element {
+  return (
+    <div className={`game-tools${className ? ` ${className}` : ''}`} aria-label="Game tools and emotes">
+      <Tooltip content="How to play" className="ui-tooltip-start">
+        <Button variant="ghost" size="sm" type="button" className="game-tool game-tool--rules" onClick={onOpenRules} aria-label="How to play">
+          <GameActionIcon name="rules" />
+          <span>Rules</span>
+        </Button>
+      </Tooltip>
+      {EMOTE_OPTIONS.map((option) => (
+        <Tooltip key={option.id} content={`Send ${option.label}`}>
+          <Button
+            variant="ghost"
+            size="sm"
+            type="button"
+            className="game-tool game-tool--emote"
+            title={option.label}
+            aria-label={`Send ${option.label} emote`}
+            onClick={() => onSendEmote(option.id)}
+          >
+            <span aria-hidden="true">{option.emoji}</span>
+          </Button>
+        </Tooltip>
+      ))}
+    </div>
+  );
+}
+
 export default function RoomPage(): JSX.Element {
   const params = useParams();
   const navigate = useNavigate();
@@ -209,6 +343,7 @@ export default function RoomPage(): JSX.Element {
   const [draftSettings, setDraftSettings] = useState<GameSettings | undefined>();
   const [scoreBursts, setScoreBursts] = useState<ScoreBurst[]>([]);
   const [emoteBursts, setEmoteBursts] = useState<EmoteBurst[]>([]);
+  const [isInviteCopied, setIsInviteCopied] = useState(false);
 
   // Keep a ref to the word input so we can restore focus after submit
   const inputRef = useRef<HTMLInputElement>(null);
@@ -219,25 +354,13 @@ export default function RoomPage(): JSX.Element {
   const scoreBurstTimersRef = useRef<Map<number, number>>(new Map());
   const emoteBurstIdRef = useRef(0);
   const emoteBurstTimersRef = useRef<Map<number, number>>(new Map());
+  const inviteCopiedTimerRef = useRef<number | undefined>();
 
   const currentPlayerId = socket.id;
   const currentPlayer = useMemo(
     () => snapshot?.players.find((p) => p.id === currentPlayerId),
     [currentPlayerId, snapshot]
   );
-  const liveLeaderboard = useMemo(() => {
-    const players = [...(snapshot?.players ?? [])].sort((left, right) => right.score - left.score);
-    let previousScore: number | undefined;
-    let rank = 0;
-
-    return players.map((player) => {
-      if (previousScore === undefined || player.score !== previousScore) {
-        rank += 1;
-        previousScore = player.score;
-      }
-      return { ...player, rank };
-    });
-  }, [snapshot?.players]);
   const avatarsByPlayerId = useMemo<ReadonlyMap<string, PlayerAvatar>>(
     () => new Map((snapshot?.players ?? []).map((player) => [player.id, player.avatar])),
     [snapshot?.players]
@@ -269,7 +392,6 @@ export default function RoomPage(): JSX.Element {
   const canSubmit = snapshot?.phase === 'round' && Boolean(currentPlayer) && !currentPlayer?.isEliminated && !isCurrentPlayerBusted && (!isLightningMode || displayedTimeLeft > 0);
   const isUrgent = Boolean(snapshot?.phase === 'round' && displayedTimeLeft <= 10);
   const hasGameplayChrome = snapshot?.phase === 'round' || snapshot?.phase === 'betweenRounds';
-  const hasVisibleEntryInput = snapshot?.phase === 'round' || snapshot?.phase === 'betweenRounds' || snapshot?.phase === 'betting';
   const timerTotal = isLightningMode ? Math.max(10, displayedTimeLeft) : snapshot?.settings.timePerRound ?? 1;
   const timerProgress = Math.max(0, Math.min(100, (displayedTimeLeft / Math.max(1, timerTotal)) * 100));
   const timerLabel = displayedTimeLeft >= 60
@@ -465,6 +587,7 @@ export default function RoomPage(): JSX.Element {
     scoreBurstTimersRef.current.clear();
     emoteBurstTimersRef.current.forEach((timer) => window.clearTimeout(timer));
     emoteBurstTimersRef.current.clear();
+    if (inviteCopiedTimerRef.current !== undefined) window.clearTimeout(inviteCopiedTimerRef.current);
   }, []);
 
   /* ── socket setup ── */
@@ -681,15 +804,20 @@ export default function RoomPage(): JSX.Element {
 
   /* ── actions ── */
   async function copyInvite(): Promise<void> {
-    inputRef.current?.blur();
     const copied = await copyTextToClipboard(getRoomInviteUrl(roomId));
     if (!copied) {
-      setNotice('Could not copy the invite link.');
       void hapticError();
       return;
     }
 
-    setNotice('Invite link copied.');
+    if (inviteCopiedTimerRef.current !== undefined) {
+      window.clearTimeout(inviteCopiedTimerRef.current);
+    }
+    setIsInviteCopied(true);
+    inviteCopiedTimerRef.current = window.setTimeout(() => {
+      setIsInviteCopied(false);
+      inviteCopiedTimerRef.current = undefined;
+    }, 1600);
     void hapticLight();
   }
 
@@ -941,6 +1069,7 @@ export default function RoomPage(): JSX.Element {
   }
 
   const needsRejoin = !currentPlayer;
+  const roomPhase = snapshot.phase;
   const currentModeLabel = GAME_MODE_OPTIONS.find((mode) => mode.value === snapshot.settings.gameMode)?.label ?? snapshot.settings.gameMode;
   const mixModifierLabels = snapshot.settings.gameMode === 'mix'
     ? [
@@ -1000,6 +1129,67 @@ export default function RoomPage(): JSX.Element {
         )}
       </div>
     ) : null;
+  const mobilePlayersPanel = (
+    <PlayersPanel
+      className="mobile-players-panel"
+      snapshot={snapshot}
+      currentPlayerId={currentPlayerId}
+      currentPlayerTeamId={currentPlayer?.teamId}
+      isTeamsMode={isTeamsMode}
+      isBettingMode={isBettingMode}
+      needsRejoin={needsRejoin}
+      error={error}
+      onChooseTeam={chooseTeam}
+    />
+  );
+
+  function renderGameFooter(): JSX.Element {
+    return (
+      <div className="gameplay-footer">
+        {!needsRejoin && <GameTools className="game-tools--footer" onOpenRules={openHowToPlay} onSendEmote={sendEmote} />}
+        <form className="word-form" onSubmit={submitWord}>
+          <div className="word-form__input-wrap">
+            <Input
+              ref={inputRef}
+              type={isTypistMode ? 'password' : 'text'}
+              value={inputWord}
+              onChange={(e) => setInputWord(e.currentTarget.value)}
+              onFocus={() => setIsWordInputFocused(true)}
+              onBlur={() => setIsWordInputFocused(false)}
+              placeholder={isCurrentPlayerBusted ? 'You are busted this round 💣' : canSubmit ? (isTypistMode ? 'Blind Type: hidden word' : 'Type a word…') : needsRejoin ? 'Rejoin to submit' : roomPhase === 'betweenRounds' ? `Next round in ${waitingSeconds}s` : roomPhase === 'gameOver' ? 'Game over — waiting for restart' : 'Waiting for the round'}
+              disabled={!canSubmit}
+              hasError={inputFeedback === 'error'}
+              hasSuccess={inputFeedback === 'success'}
+              autoFocus
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              enterKeyHint="done"
+            />
+            <span className="word-score-float-layer" aria-live="polite" aria-atomic="false">
+              {scoreBursts.map((burst) => (
+                <span
+                  key={burst.id}
+                  className={`word-score-float${burst.delta < 0 ? ' word-score-float--negative' : ''}`}
+                  aria-label={`${burst.delta > 0 ? 'plus' : 'minus'} ${Math.abs(burst.delta)} points`}
+                >
+                  {burst.delta > 0 ? `+${burst.delta}` : `−${Math.abs(burst.delta)}`}
+                </span>
+              ))}
+            </span>
+          </div>
+          <Button
+            variant="primary"
+            type="submit"
+            disabled={!canSubmit || !inputWord.trim()}
+          >
+            Go
+          </Button>
+        </form>
+      </div>
+    );
+  }
 
   /* ── main game view ── */
   return (
@@ -1048,17 +1238,17 @@ export default function RoomPage(): JSX.Element {
             {snapshot.players.length} player{snapshot.players.length !== 1 ? 's' : ''}
           </span>
         </div>
-        <div className={`game-header__right${hasVisibleEntryInput ? '' : ' game-header__right--labelled'}`}>
-          <Tooltip content="Copy invite link" className="ui-tooltip-down">
+        <div className="game-header__right">
+          <Tooltip content={isInviteCopied ? 'copied' : 'Copy invite link'} className="ui-tooltip-down">
             <Button
               variant="mini"
               size="sm"
               type="button"
               className="game-header__action"
               onClick={() => { void copyInvite(); }}
-              aria-label="Copy invite link"
+              aria-label={isInviteCopied ? 'Invite link copied' : 'Copy invite link'}
             >
-              <GameActionIcon name="share" />
+              <GameActionIcon name={isInviteCopied ? 'check' : 'share'} />
               <span className="game-header__action-label">Invite</span>
             </Button>
           </Tooltip>
@@ -1103,77 +1293,17 @@ export default function RoomPage(): JSX.Element {
       )}
 
       {/* ── LEFT: Players ── */}
-      <aside className="players-panel glass-panel">
-        <p className="eyebrow" style={{ marginBottom: 10 }}>Players</p>
-
-        <div className="player-list">
-          {snapshot.players.map((player, idx) => (
-            <div
-              key={player.id}
-              className={`player-row ${player.id === currentPlayerId ? 'self' : ''}`}
-            >
-              <div className="player-row__info">
-                <Avatar name={player.name} avatar={player.avatar} colorIndex={idx} size="sm" />
-                <div className="player-row__text">
-                  <div className="player-row__name">{player.name}</div>
-                  <span className="player-row__tag">
-                    {snapshot.bustedPlayers[player.id] ? '💣 Busted' : player.isEliminated ? 'Out' : `${player.isHost ? '★ Host' : player.id === currentPlayerId ? 'You' : 'Player'}${isTeamsMode && player.teamId ? ` · ${player.teamId === 'red' ? 'Red' : 'Blue'}` : ''}`}
-                  </span>
-                </div>
-              </div>
-              <span className="player-row__score">{player.score}</span>
-            </div>
-          ))}
-        </div>
-
-        {isTeamsMode && snapshot.teamScores.length > 0 && (
-          <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
-            <p className="eyebrow" style={{ marginBottom: 0 }}>Team scores</p>
-            {snapshot.teamScores.map((team) => (
-              <div key={team.teamId} className="player-row" style={{ borderColor: team.teamId === 'red' ? 'rgba(255,90,90,0.35)' : 'rgba(90,160,255,0.35)' }}>
-                <div className="player-row__text">
-                  <div className="player-row__name">{team.teamName}</div>
-                  <span className="player-row__tag">{team.players.length} player{team.players.length !== 1 ? 's' : ''}</span>
-                </div>
-                <span className="player-row__score">{team.score}</span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {isBettingMode && snapshot.phase !== 'lobby' && snapshot.phase !== 'gameOver' && (
-          <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
-            <p className="eyebrow" style={{ marginBottom: 0 }}>Bets</p>
-            {snapshot.players.map((player, playerIndex) => {
-              const bet = snapshot.bettingBets[player.id];
-              const words = snapshot.acceptedWords[player.id]?.length ?? 0;
-              return (
-                <div key={player.id} className="player-row">
-                  <div className="player-row__info">
-                    <Avatar name={player.name} avatar={player.avatar} colorIndex={playerIndex} size="sm" />
-                    <div className="player-row__text">
-                      <div className="player-row__name">{player.name}</div>
-                      <span className="player-row__tag">{bet ? `${words} / ${bet} words` : 'Choosing bet'}</span>
-                    </div>
-                  </div>
-                  <span className="player-row__score">{bet ? (words >= bet ? '✅' : '🎲') : '—'}</span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {isTeamsMode && snapshot.phase === 'lobby' && !needsRejoin && (
-          <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <Button variant={currentPlayer?.teamId === 'red' ? 'primary' : 'secondary'} size="sm" onClick={() => chooseTeam('red')}>Red Team</Button>
-            <Button variant={currentPlayer?.teamId === 'blue' ? 'primary' : 'secondary'} size="sm" onClick={() => chooseTeam('blue')}>Blue Team</Button>
-          </div>
-        )}
-
-        <div className="room-status">{snapshot.status.message}</div>
-
-        {error && <Alert variant="error" style={{ marginTop: 8, fontSize: '0.80rem' }}>{error}</Alert>}
-      </aside>
+      <PlayersPanel
+        className="players-panel glass-panel"
+        snapshot={snapshot}
+        currentPlayerId={currentPlayerId}
+        currentPlayerTeamId={currentPlayer?.teamId}
+        isTeamsMode={isTeamsMode}
+        isBettingMode={isBettingMode}
+        needsRejoin={needsRejoin}
+        error={error}
+        onChooseTeam={chooseTeam}
+      />
 
       {/* ── CENTER: Word Stage ── */}
       <section className={`word-stage glass-panel${isBingoMode ? ' bingo-stage' : ''}${hasGameplayChrome ? ' word-stage--active' : ''}`}>
@@ -1186,6 +1316,7 @@ export default function RoomPage(): JSX.Element {
         {(snapshot.phase === 'gameOver' || snapshot.phase === 'betting') && stageCtas}
 
         {snapshot.phase === 'gameOver' ? (
+          <>
           <div className="game-over-panel">
             <div>
               <p className="eyebrow">Game over</p>
@@ -1289,6 +1420,8 @@ export default function RoomPage(): JSX.Element {
               </Button>
             )}
           </div>
+          {mobilePlayersPanel}
+          </>
         ) : (
           <>
             {isBettingMode && snapshot.phase === 'betting' && (
@@ -1344,6 +1477,7 @@ export default function RoomPage(): JSX.Element {
                 </div>
               </div>
             )}
+            {snapshot.phase === 'betting' && mobilePlayersPanel}
 
             {snapshot.phase !== 'betting' && (
               <div className="gameplay-layout">
@@ -1398,40 +1532,6 @@ export default function RoomPage(): JSX.Element {
                       })}
                     </div>
                   </div>
-
-                  <section className="mobile-live-leaderboard" aria-label="Live leaderboard">
-                    <div className="mobile-live-leaderboard__header">
-                      <p className="eyebrow">Live leaderboard</p>
-                      <span>{liveLeaderboard.length} player{liveLeaderboard.length === 1 ? '' : 's'}</span>
-                    </div>
-                    <div className="mobile-leaderboard-list">
-                      {liveLeaderboard.map((player, index) => (
-                        <div key={player.id} className={`mobile-leaderboard-row${player.id === currentPlayerId ? ' mobile-leaderboard-row--self' : ''}`}>
-                          <span className="mobile-leaderboard-row__rank">#{player.rank}</span>
-                          <Avatar name={player.name} avatar={player.avatar} colorIndex={index} size="sm" />
-                          <div className="mobile-leaderboard-row__identity">
-                            <strong>{player.name}{player.id === currentPlayerId ? ' (You)' : ''}</strong>
-                            <span>{player.isHost ? 'Host' : player.teamId ? `${player.teamId === 'red' ? 'Red' : 'Blue'} team` : 'Player'}</span>
-                          </div>
-                          <div className="mobile-leaderboard-row__score">
-                            <strong>{player.score}</strong>
-                            <span>pts</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    {isTeamsMode && snapshot.teamScores.length > 0 && (
-                      <section className="mobile-team-scores" aria-label="Team scores">
-                        <p className="eyebrow">Team scores</p>
-                        {snapshot.teamScores.map((team) => (
-                          <div key={team.teamId}>
-                            <span>{team.teamName}</span>
-                            <strong>{team.score} pts</strong>
-                          </div>
-                        ))}
-                      </section>
-                    )}
-                  </section>
 
                   {/* Bingo board */}
             {isBingoMode && snapshot.bingoTasks.length > 0 && (
@@ -1550,80 +1650,21 @@ export default function RoomPage(): JSX.Element {
               </div>
             )}
 
+                  {mobilePlayersPanel}
                 </div>
 
-                {hasGameplayChrome && (
-                  <div className="gameplay-footer">
-                    <div className="mobile-entry-tools" aria-label="Game tools and emotes">
-                      <Tooltip content="How to play" className="ui-tooltip-start">
-                        <Button variant="ghost" size="sm" type="button" className="mobile-entry-tool mobile-entry-tool--rules" onClick={openHowToPlay} aria-label="How to play">
-                          <GameActionIcon name="rules" />
-                          <span>Rules</span>
-                        </Button>
-                      </Tooltip>
-                      {!needsRejoin && EMOTE_OPTIONS.map((option) => (
-                        <Tooltip key={option.id} content={`Send ${option.label}`}>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            type="button"
-                            className="mobile-entry-tool mobile-entry-tool--emote"
-                            title={option.label}
-                            aria-label={`Send ${option.label} emote`}
-                            onClick={() => sendEmote(option.id)}
-                          >
-                            <span aria-hidden="true">{option.emoji}</span>
-                          </Button>
-                        </Tooltip>
-                      ))}
-                    </div>
-                    <form className="word-form" onSubmit={submitWord}>
-                      <div className="word-form__input-wrap">
-                        <Input
-                          ref={inputRef}
-                          type={isTypistMode ? 'password' : 'text'}
-                          value={inputWord}
-                          onChange={(e) => setInputWord(e.currentTarget.value)}
-                          onFocus={() => setIsWordInputFocused(true)}
-                          onBlur={() => setIsWordInputFocused(false)}
-                          placeholder={isCurrentPlayerBusted ? 'You are busted this round 💣' : canSubmit ? (isTypistMode ? 'Blind Type: hidden word' : 'Type a word…') : needsRejoin ? 'Rejoin to submit' : snapshot.phase === 'betweenRounds' ? `Next round in ${waitingSeconds}s` : 'Waiting for the round'}
-                          disabled={!canSubmit}
-                          hasError={inputFeedback === 'error'}
-                          hasSuccess={inputFeedback === 'success'}
-                          autoFocus
-                          autoComplete="off"
-                          autoCorrect="off"
-                          autoCapitalize="none"
-                          spellCheck={false}
-                          enterKeyHint="done"
-                        />
-                        <span className="word-score-float-layer" aria-live="polite" aria-atomic="false">
-                          {scoreBursts.map((burst) => (
-                            <span
-                              key={burst.id}
-                              className={`word-score-float${burst.delta < 0 ? ' word-score-float--negative' : ''}`}
-                              aria-label={`${burst.delta > 0 ? 'plus' : 'minus'} ${Math.abs(burst.delta)} points`}
-                            >
-                              {burst.delta > 0 ? `+${burst.delta}` : `−${Math.abs(burst.delta)}`}
-                            </span>
-                          ))}
-                        </span>
-                      </div>
-                      <Button
-                        variant="primary"
-                        type="submit"
-                        disabled={!canSubmit || !inputWord.trim()}
-                      >
-                        Go
-                      </Button>
-                    </form>
-                  </div>
-                )}
+                {hasGameplayChrome && renderGameFooter()}
               </div>
             )}
           </>
         )}
       </section>
+
+      {!hasGameplayChrome && (
+        <div className="room-footer-slot">
+          {renderGameFooter()}
+        </div>
+      )}
 
       {/* ── RIGHT: Info panel ── */}
       <aside className="info-panel glass-panel">
