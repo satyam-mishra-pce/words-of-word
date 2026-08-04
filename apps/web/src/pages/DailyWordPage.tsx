@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Badge, Button, Input, Label, Progress } from '../components/ui';
 import { readStoredValue, writeStoredValue } from '../services/storage';
@@ -116,6 +116,7 @@ export default function DailyWordPage(): JSX.Element {
   const [isWordInputFocused, setIsWordInputFocused] = useState(false);
   const timerRef = useRef<number | undefined>();
   const inputRef = useRef<HTMLInputElement>(null);
+  const inputFocusRequestedRef = useRef(false);
   const attemptRef = useRef<DailyAttempt | undefined>(existingAttempt);
   const dailyCompletionTrackedRef = useRef(Boolean(existingAttempt?.finished));
 
@@ -165,6 +166,12 @@ export default function DailyWordPage(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useLayoutEffect(() => {
+    if (!isRunning || !inputFocusRequestedRef.current) return;
+    inputFocusRequestedRef.current = false;
+    inputRef.current?.focus();
+  }, [isRunning]);
+
   function start(): void {
     if (isRunning) return;
 
@@ -186,6 +193,7 @@ export default function DailyWordPage(): JSX.Element {
     setInputWord('');
     setTimeLeft(DAILY_SECONDS);
     setIsFinished(false);
+    inputFocusRequestedRef.current = true;
     setIsRunning(true);
     setShareStatus('');
     setMessage('Go!');
