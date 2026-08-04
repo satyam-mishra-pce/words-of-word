@@ -1,6 +1,6 @@
 import cors from '@fastify/cors';
 import Fastify from 'fastify';
-import { timingSafeEqual } from 'node:crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
@@ -52,6 +52,7 @@ import {
   WordRejectedPayload
 } from '@wow/shared';
 import { AggregateAnalyticsStore } from './aggregateAnalytics.js';
+import { renderAnalyticsAdminPage } from './analyticsAdminPage.js';
 import {
   chooseSourceWord,
   createValidWords,
@@ -97,6 +98,9 @@ const PUSH_RELAY_URL = process.env.PUSH_RELAY_URL;
 const PUSH_RELAY_TOKEN = process.env.PUSH_RELAY_TOKEN;
 const PUBLIC_WEB_URL = process.env.PUBLIC_WEB_URL?.replace(/\/+$/, '');
 const ClientIdSchema = z.string().uuid();
+const AnalyticsPasswordPayloadSchema = z.object({
+  password: z.string().min(1).max(512)
+}).strict();
 const ONLINE_ROOM_SETTINGS: GameSettings = {
   minWordLength: 5,
   timePerRound: 30,
@@ -1817,30 +1821,170 @@ const analytics = new AggregateAnalyticsStore(
 );
 await analytics.load();
 
+const ANALYTICS_SESSION_COOKIE = 'wow_analytics_session';
+const ANALYTICS_SESSION_CONTEXT = 'words-of-word:analytics-admin-session:v1';
+
+function secretsMatch(providedValue: string | undefined, expectedValue: string): boolean {
+  if (!providedValue) return false;
+
+  const provided = Buffer.from(providedValue);
+  const expected = Buffer.from(expectedValue);
+  return provided.length === expected.length && timingSafeEqual(provided, expected);
+}
+
 function hasAnalyticsAdminAccess(authorization: string | undefined): boolean {
   const configuredToken = process.env.ANALYTICS_TOKEN;
   if (!configuredToken || !authorization?.startsWith('Bearer ')) return false;
 
-  const providedToken = Buffer.from(authorization.slice('Bearer '.length));
-  const expectedToken = Buffer.from(configuredToken);
-  return providedToken.length === expectedToken.length && timingSafeEqual(providedToken, expectedToken);
+  return secretsMatch(authorization.slice('Bearer '.length), configuredToken);
+}
+
+function cookieValue(cookieHeader: string | undefined, name: string): string | undefined {
+  if (!cookieHeader) return undefined;
+
+  for (const segment of cookieHeader.split(';')) {
+    const [cookieName, ...valueParts] = segment.trim().split('=');
+    if (cookieName === name) return valueParts.join('=');
+  }
+
+  return undefined;
+}
+
+function analyticsSessionValue(analyticsToken: string): string {
+  return createHmac('sha256', analyticsToken)
+    .update(ANALYTICS_SESSION_CONTEXT)
+    .digest('base64url');
+}
+
+function hasAnalyticsSessionAccess(cookieHeader: string | undefined): boolean {
+  const configuredToken = process.env.ANALYTICS_TOKEN;
+  if (!configuredToken) return false;
+
+  return secretsMatch(
+    cookieValue(cookieHeader, ANALYTICS_SESSION_COOKIE),
+    analyticsSessionValue(configuredToken)
+  );
+}
+
+function prefersHtml(accept: string | undefined): boolean {
+  if (!accept) return false;
+
+  return accept.split(',').some((value) => {
+    const [mediaType = '', ...parameters] = value.split(';').map((part) => part.trim());
+    if (mediaType.toLowerCase() !== 'text/html') return false;
+
+    const qualityParameter = parameters.find((parameter) => parameter.toLowerCase().startsWith('q='));
+    if (!qualityParameter) return true;
+
+    const quality = Number(qualityParameter.slice(2));
+    return Number.isFinite(quality) && quality > 0;
+  });
+}
+
+function isSecureRequest(forwardedProtocol: string | string[] | undefined): boolean {
+  const values = Array.isArray(forwardedProtocol) ? forwardedProtocol : [forwardedProtocol];
+  return process.env.NODE_ENV === 'production'
+    || values.some((value) => value?.split(',').some((protocol) => protocol.trim() === 'https'));
+}
+
+function analyticsSessionCookie(value: string, secure: boolean, clear = false): string {
+  return [
+    `${ANALYTICS_SESSION_COOKIE}=${value}`,
+    'Path=/admin/analytics',
+    'HttpOnly',
+    'SameSite=Strict',
+    ...(secure ? ['Secure'] : []),
+    ...(clear ? ['Max-Age=0'] : [])
+  ].join('; ');
+}
+
+function analyticsAdminCsp(nonce: string): string {
+  return [
+    "default-src 'none'",
+    `script-src 'nonce-${nonce}'`,
+    "style-src 'unsafe-inline'",
+    "connect-src 'self'",
+    "base-uri 'none'",
+    "form-action 'self'",
+    "frame-ancestors 'none'"
+  ].join('; ');
+}
+
+function sendAnalyticsAdminPage(reply: import('fastify').FastifyReply, authenticated: boolean): import('fastify').FastifyReply {
+  const nonce = randomBytes(18).toString('base64');
+  return reply
+    .header('Cache-Control', 'no-store')
+    .header('Content-Security-Policy', analyticsAdminCsp(nonce))
+    .header('Referrer-Policy', 'no-referrer')
+    .header('X-Content-Type-Options', 'nosniff')
+    .header('X-Frame-Options', 'DENY')
+    .header('Vary', 'Accept, Cookie')
+    .type('text/html; charset=utf-8')
+    .send(renderAnalyticsAdminPage({ nonce, authenticated }));
 }
 
 fastify.get('/health', async () => ({ ok: true }));
 
 fastify.get('/stats', async () => ({ ok: true, data: analytics.publicStats() }));
 
-fastify.get('/admin/analytics', async (request, reply) => {
-  if (!process.env.ANALYTICS_TOKEN) {
-    return reply.code(404).send({ ok: false, error: 'Not found.' });
-  }
+fastify.post('/admin/analytics/session', async (request, reply) => {
+  const configuredToken = process.env.ANALYTICS_TOKEN;
+  if (!configuredToken) return reply.code(404).send({ ok: false, error: 'Not found.' });
 
-  if (!hasAnalyticsAdminAccess(request.headers.authorization)) {
-    return reply.code(401).send({ ok: false, error: 'Unauthorized.' });
+  const payload = AnalyticsPasswordPayloadSchema.safeParse(request.body);
+  if (!payload.success || !secretsMatch(payload.data.password, configuredToken)) {
+    return reply
+      .header('Cache-Control', 'no-store')
+      .code(401)
+      .send({ ok: false, error: 'Unauthorized.' });
   }
 
   return reply
     .header('Cache-Control', 'no-store')
+    .header('Set-Cookie', analyticsSessionCookie(
+      analyticsSessionValue(configuredToken),
+      isSecureRequest(request.headers['x-forwarded-proto'])
+    ))
+    .send({ ok: true });
+});
+
+fastify.post('/admin/analytics/session/logout', async (request, reply) => {
+  if (!process.env.ANALYTICS_TOKEN) return reply.code(404).send({ ok: false, error: 'Not found.' });
+
+  return reply
+    .header('Cache-Control', 'no-store')
+    .header('Set-Cookie', analyticsSessionCookie(
+      '',
+      isSecureRequest(request.headers['x-forwarded-proto']),
+      true
+    ))
+    .send({ ok: true });
+});
+
+fastify.get('/admin/analytics', async (request, reply) => {
+  const configuredToken = process.env.ANALYTICS_TOKEN;
+  if (!configuredToken) {
+    return reply.code(404).send({ ok: false, error: 'Not found.' });
+  }
+
+  const hasAccess = hasAnalyticsAdminAccess(request.headers.authorization)
+    || hasAnalyticsSessionAccess(request.headers.cookie);
+  const wantsHtml = prefersHtml(request.headers.accept);
+
+  if (!hasAccess) {
+    if (wantsHtml) return sendAnalyticsAdminPage(reply, false);
+
+    return reply
+      .header('Cache-Control', 'no-store')
+      .code(401)
+      .send({ ok: false, error: 'Unauthorized.' });
+  }
+
+  if (wantsHtml) return sendAnalyticsAdminPage(reply, true);
+
+  return reply
+    .header('Cache-Control', 'no-store')
+    .header('Vary', 'Accept, Cookie')
     .send({ ok: true, data: analytics.report() });
 });
 

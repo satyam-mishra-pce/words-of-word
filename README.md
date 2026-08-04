@@ -40,8 +40,9 @@ See [the mobile delivery guide](docs/MOBILE.md) for deep links, push credentials
 
 The server has a built-in, zero-third-party product report for understanding
 which modes and features are actually used. It stores counters only—analytics
-uses no cookies, replay recordings, user profiles, IP addresses, device IDs, player
-names, room IDs, words, custom word lists, scores, raw errors, or event history.
+uses no tracking cookies, replay recordings, user profiles, IP addresses, device
+IDs, player names, room IDs, words, custom word lists, scores, raw errors, or
+event history.
 
 Authoritative server counters cover successful room creation/joining, quick
 matchmaking, settings changes, starts, finishes, abandons, rounds, accepted
@@ -52,8 +53,12 @@ features such as Daily Word, invite copies, rules/history, themes, and page
 views; it is production-only and respects Do Not Track and Global Privacy Control. These are aggregate
 usage counts—not unique-player, retention, or demographic measurements.
 
-Set a strong `ANALYTICS_TOKEN` in the server environment, then retrieve the
-private aggregate report without putting the token in a URL:
+Set a strong `ANALYTICS_TOKEN` in the server environment. Opening
+`/admin/analytics` in a browser displays a password prompt; enter that same token
+once to create an `HttpOnly`, `SameSite=Strict`, session-only admin cookie. It is
+not an analytics/tracking cookie, carries no report data, is never put in a URL,
+and can be cleared with **End session**. Programmatic access remains available
+without putting the token in a URL:
 
 ```bash
 curl -H "Authorization: Bearer $ANALYTICS_TOKEN" \
