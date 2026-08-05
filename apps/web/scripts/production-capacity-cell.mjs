@@ -1074,14 +1074,21 @@ async function playGame(room, cycle) {
       });
     }
     if (isBattleRoyaleCell()) {
-      const expectedScoreEvents = metrics.actions.filter((action) => action.roomId === room.roomId && action.outcome === 'accepted').length;
+      const acceptedActionCount = metrics.actions.filter((action) => action.roomId === room.roomId && action.outcome === 'accepted').length;
       const scoreEventCounts = room.players.map((client) => ({ clientId: client.id, count: client.scoresUpdatedCount }));
-      const mismatchedClients = scoreEventCounts.filter((client) => client.count !== expectedScoreEvents);
-      metrics.battleRoyale.scoreFanout = { expectedScoreEvents, scoreEventCounts, mismatchedClients };
+      const observedScoreEvents = scoreEventCounts[0]?.count ?? 0;
+      // The server can finish and broadcast a word after the client's bounded
+      // eight-second wait has timed out. Fanout integrity means every client
+      // observed the same stream; strict action success separately rejects the
+      // late client action without misclassifying the lifecycle as broken.
+      const mismatchedClients = scoreEventCounts.filter((client) => client.count !== observedScoreEvents);
+      metrics.battleRoyale.scoreFanout = {
+        acceptedActionCount, observedScoreEvents, scoreEventCounts, mismatchedClients,
+        lateServerProcessedActions: Math.max(0, observedScoreEvents - acceptedActionCount)
+      };
       if (mismatchedClients.length > 0) {
         throw battleRoyaleViolation('Battle Royale score updates were not delivered to every player.', {
-          expectedScoreEvents,
-          mismatchedClients
+          acceptedActionCount, observedScoreEvents, mismatchedClients
         });
       }
     }
