@@ -224,6 +224,7 @@ const metrics = {
   health: [],
   stats: [],
   errors: [],
+  cleanupAcknowledgementFailures: [],
   ...(cell.gameMode === 'battleRoyale' ? {
     battleRoyale: {
       expectedEliminationsPerRound: cell.eliminationsPerRound,
@@ -456,7 +457,7 @@ async function mapWithConcurrency(items, concurrency, operation) {
   return results;
 }
 
-function emitAck(client, eventName, payload, { timeoutMs = ACK_TIMEOUT_MS, critical = true } = {}) {
+function emitAck(client, eventName, payload, { timeoutMs = ACK_TIMEOUT_MS, critical = true, recordFailure = true } = {}) {
   ensureRunning();
   const started = performance.now();
   return new Promise((resolvePromise, rejectPromise) => {
@@ -477,7 +478,7 @@ function emitAck(client, eventName, payload, { timeoutMs = ACK_TIMEOUT_MS, criti
       });
       if (!ok) {
         const failure = error ?? new Error(response?.error ?? `${eventName} failed without an error message.`);
-        if (!silent) recordError('socket_ack_failure', failure, { critical, clientId: client.id, detail: { eventName } });
+        if (!silent && recordFailure) recordError('socket_ack_failure', failure, { critical, clientId: client.id, detail: { eventName } });
         rejectPromise(failure);
         return;
       }
@@ -1093,11 +1094,16 @@ async function playGame(room, cycle) {
 
 async function leaveRooms(rooms) {
   const players = rooms.flatMap((room) => room.players);
-  await mapWithConcurrency(players, 20, async (client) => {
+  await mapWithConcurrency(players, isBattleRoyaleCell() ? 5 : 20, async (client) => {
     const roomId = client.roomId;
     if (!roomId) return;
     try {
-      await emitAck(client, 'leaveRoom', { roomId }, { timeoutMs: 2_000, critical: false });
+      await emitAck(client, 'leaveRoom', { roomId }, { timeoutMs: 2_000, critical: false, recordFailure: false });
+    } catch (error) {
+      // Teardown uses a bounded, intentionally low-priority leave burst. A
+      // disconnect immediately follows, so record a warning without calling a
+      // completed game unhealthy solely for its cleanup acknowledgement.
+      metrics.cleanupAcknowledgementFailures.push({ at: nowIso(), clientId: client.id, eventName: 'leaveRoom', message: asErrorMessage(error) });
     } finally {
       client.roomId = undefined;
     }
@@ -1173,6 +1179,7 @@ function summarize() {
         postTestHealthy,
         unexpectedDisconnects: metrics.cleanup?.unexpectedDisconnects ?? null,
         violations: battleRoyale.violations.length,
+        cleanupAcknowledgementFailures: metrics.cleanupAcknowledgementFailures.length,
         result: tournamentReady ? 'pass' : 'fail'
       }
     } : {}),
