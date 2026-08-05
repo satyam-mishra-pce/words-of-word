@@ -234,7 +234,8 @@ const metrics = {
       violations: [],
       gameOver: null,
       roomFullSnapshot: null,
-      roomFullProbe: null
+      roomFullProbe: null,
+      scoreFanout: null
     }
   } : {}),
   status: 'running',
@@ -356,8 +357,13 @@ function createClient(index, socket) {
     roomId: undefined,
     intentionalDisconnect: false,
     unexpectedDisconnects: 0,
+    scoresUpdatedCount: 0,
     transportHistory: []
   };
+
+  socket.on('scoresUpdated', () => {
+    client.scoresUpdatedCount += 1;
+  });
 
   socket.on('disconnect', (reason) => {
     if (client.intentionalDisconnect || state.intentionalShutdown) return;
@@ -975,7 +981,10 @@ async function scheduleRound(room, payload) {
   const jobs = [];
   for (let playerIndex = 0; playerIndex < activePlayers.length; playerIndex += 1) {
     const client = activePlayers[playerIndex];
-    const staggerMs = Math.floor((playerIndex / activePlayers.length) * Math.min(cell.actionCadenceMs * 0.8, 1_000));
+    const staggerWindowMs = isBattleRoyaleCell()
+      ? cell.actionCadenceMs * 0.8
+      : Math.min(cell.actionCadenceMs * 0.8, 1_000);
+    const staggerMs = Math.floor((playerIndex / activePlayers.length) * staggerWindowMs);
     for (let actionIndex = 0; actionIndex < slots.length; actionIndex += 1) {
       const dueMs = slots[actionIndex] + staggerMs;
       const word = candidates[actionIndex];
@@ -1063,6 +1072,18 @@ async function playGame(room, cycle) {
         observedRounds, roundEndedEvents: roundEndedChecks.length
       });
     }
+    if (isBattleRoyaleCell()) {
+      const expectedScoreEvents = metrics.actions.filter((action) => action.roomId === room.roomId && action.outcome === 'accepted').length;
+      const scoreEventCounts = room.players.map((client) => ({ clientId: client.id, count: client.scoresUpdatedCount }));
+      const mismatchedClients = scoreEventCounts.filter((client) => client.count !== expectedScoreEvents);
+      metrics.battleRoyale.scoreFanout = { expectedScoreEvents, scoreEventCounts, mismatchedClients };
+      if (mismatchedClients.length > 0) {
+        throw battleRoyaleViolation('Battle Royale score updates were not delivered to every player.', {
+          expectedScoreEvents,
+          mismatchedClients
+        });
+      }
+    }
     return { roomId: room.roomId, cycle, durationMs: elapsedMilliseconds(gameStartedAt), observedRounds };
   } finally {
     room.host.socket.off('roundStarted', onRoundStarted);
@@ -1119,6 +1140,7 @@ function summarize() {
     && battleRoyale.roundChecks.filter((check) => check.phase === 'gameOver').length === 1
     && battleRoyale.roomFullSnapshot?.isFull === true
     && (battleRoyale.roomFullProbe?.result === 'rejected-as-full' || Boolean(battleRoyale.roomFullProbe?.skipped))
+    && battleRoyale.scoreFanout?.mismatchedClients?.length === 0
     && battleRoyale.gameOver?.currentRound === cell.rounds
     && battleRoyale.gameOver?.finalScores === cell.playersPerRoom
     && battleRoyale.gameOver?.eliminatedPlayers === Math.min(cell.rounds * cell.eliminationsPerRound, cell.playersPerRoom - 1)
