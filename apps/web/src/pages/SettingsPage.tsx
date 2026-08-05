@@ -290,7 +290,7 @@ export default function SettingsPage(): JSX.Element {
               value={settings.maxPlayers}
               onChange={(e) => set('maxPlayers', Number(e.currentTarget.value))}
             >
-              {[2, 3, 4, 5, 6, 8, 10, 15, 20, 30, 40, 50].map((n) => (
+              {[2, 3, 4, 5, 6, 8, 10, 15, 20, 30, 40, 50, 60, 75, 100].map((n) => (
                 <option key={n} value={n}>{n} players</option>
               ))}
             </Select>

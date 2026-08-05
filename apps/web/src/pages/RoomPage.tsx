@@ -1835,7 +1835,7 @@ export default function RoomPage(): JSX.Element {
             <div className="setting-group">
               <Label htmlFor="room-max-players">Max players</Label>
               <Select id="room-max-players" value={draftSettings.maxPlayers} onChange={(e) => setDraft('maxPlayers', Number(e.currentTarget.value))}>
-                {[2, 3, 4, 5, 6, 8, 10, 15, 20, 30, 40, 50].map((n) => <option key={n} value={n}>{n} players</option>)}
+                {[2, 3, 4, 5, 6, 8, 10, 15, 20, 30, 40, 50, 60, 75, 100].map((n) => <option key={n} value={n}>{n} players</option>)}
               </Select>
             </div>
             <div className="setting-group">

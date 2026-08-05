@@ -95,7 +95,7 @@ export const GameSettingsSchema = z.object({
   minWordLength: z.number().int().min(5).max(18),
   timePerRound: z.number().int().min(5).max(300),
   rounds: z.number().int().min(1).max(20),
-  maxPlayers: z.number().int().min(2).max(50),
+  maxPlayers: z.number().int().min(2).max(100),
   gameMode: GameModeSchema.default('classic'),
   fastestWordTarget: z.number().int().min(3).max(10).default(5),
   eliminationsPerRound: z.number().int().min(1).max(10).default(1),
