@@ -3766,6 +3766,10 @@ body:has(.game-shell.has-gameplay-chrome),
   min-height: 0;
   place-items: center;
   padding: 18px 0;
+  /* At browser zoom, this grid row can become shorter than the launch form.
+     Contain and scroll it so the fixed theme footer never paints over controls. */
+  overflow-y: auto;
+  scroll-padding-block: 12px;
 }
 .starter-stage {
   display: grid;
