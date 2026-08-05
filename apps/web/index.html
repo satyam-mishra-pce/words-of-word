@@ -7,16 +7,7 @@
     <meta name="theme-color" content="#111111" />
     <meta name="ory-verify" content="orynth-9496996a22a04726b706897953719adb" />
     <title>Words of Word — Real-Time Word Battle</title>
-    <script>
-      try {
-        var t = localStorage.getItem('wow-theme');
-        var themes = ['amber', 'sky', 'lilac', 'mint', 'rose', 'apricot'];
-        var theme = themes.indexOf(t) > -1 ? t : (t === 'light' ? 'apricot' : 'amber');
-        document.documentElement.setAttribute('data-theme', theme);
-      } catch (e) {
-        document.documentElement.setAttribute('data-theme', 'amber');
-      }
-    </script>
+    <script src="/theme-bootstrap.js"></script>
   </head>
   <body>
     <div id="root">

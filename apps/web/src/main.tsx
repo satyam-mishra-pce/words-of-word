@@ -45,7 +45,25 @@ document.addEventListener('focusout', () => {
   window.setTimeout(scheduleVisualViewportSync, 120);
 });
 
+function isAnalyticsAdminPath(): boolean {
+  return window.location.pathname.replace(/\/+$/, '') === '/admin/analytics';
+}
+
 async function bootstrap(): Promise<void> {
+  const root = ReactDOM.createRoot(document.getElementById('root') ?? document.body);
+
+  // Keep the private admin view isolated from the play app: it should not create
+  // a game socket, emit player analytics, or load native game integrations.
+  if (isAnalyticsAdminPath()) {
+    const { default: AnalyticsPage } = await import('./pages/AnalyticsPage');
+    root.render(
+      <React.StrictMode>
+        <AnalyticsPage />
+      </React.StrictMode>
+    );
+    return;
+  }
+
   // Native Preferences is asynchronous. Hydrate it before importing pages so the
   // synchronous username/theme/session reads begin with the durable device value.
   await hydrateApplicationStorage();
@@ -55,7 +73,7 @@ async function bootstrap(): Promise<void> {
     import('./components/NativeAppBridge')
   ]);
 
-  ReactDOM.createRoot(document.getElementById('root') ?? document.body).render(
+  root.render(
     <React.StrictMode>
       <BrowserRouter>
         <NativeAppBridge />

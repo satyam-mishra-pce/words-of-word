@@ -55,9 +55,10 @@ raw socket IDs, replay recordings, or raw event payloads. Browser Do Not Track
 and Global Privacy Control remain an opt-out for the optional pseudonymous
 client measurement; server-authoritative aggregate game totals still work.
 
-Opening `/admin/analytics` in a browser displays a full private dashboard with
-traffic, retention, funnels, room health, engagement, drop-off, UTC heatmaps,
-mode adoption, feature adoption, and settings charts. Set a strong
+Opening `/admin/analytics` in a browser loads the private dashboard as a route
+in the existing React app, using the same W.o.W visual system as the game. It
+includes traffic, retention, funnels, room health, engagement, drop-off, UTC
+heatmaps, mode adoption, feature adoption, and settings charts. Set a strong
 `ANALYTICS_TOKEN` in the server environment; enter that value once to create an
 `HttpOnly`, `SameSite=Strict`, session-only admin cookie. It is not a player
 tracking cookie, carries no report data, is never put in a URL, and can be

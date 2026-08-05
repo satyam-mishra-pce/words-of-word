@@ -1,6 +1,6 @@
 import cors from '@fastify/cors';
-import Fastify from 'fastify';
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
@@ -52,7 +52,6 @@ import {
   WordRejectedPayload
 } from '@wow/shared';
 import { AggregateAnalyticsStore, type AnalyticsVisitorIdentity } from './aggregateAnalytics.js';
-import { renderAnalyticsAdminPage } from './analyticsAdminPage.js';
 import {
   chooseSourceWord,
   createValidWords,
@@ -1934,29 +1933,36 @@ function analyticsSessionCookie(value: string, secure: boolean, clear = false): 
   ].join('; ');
 }
 
-function analyticsAdminCsp(nonce: string): string {
+function analyticsAppCsp(): string {
   return [
-    "default-src 'none'",
-    `script-src 'nonce-${nonce}'`,
-    "style-src 'unsafe-inline'",
-    "connect-src 'self'",
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' data: https://fonts.gstatic.com",
+    "img-src 'self' data:",
+    "connect-src 'self' ws: wss:",
     "base-uri 'none'",
     "form-action 'self'",
-    "frame-ancestors 'none'"
+    "frame-ancestors 'none'",
+    "object-src 'none'"
   ].join('; ');
 }
 
-function sendAnalyticsAdminPage(reply: import('fastify').FastifyReply, authenticated: boolean): import('fastify').FastifyReply {
-  const nonce = randomBytes(18).toString('base64');
+async function sendAnalyticsApplication(reply: import('fastify').FastifyReply): Promise<import('fastify').FastifyReply> {
+  const indexFile = join(WEB_DIST_DIR, 'index.html');
+  if (!existsSync(indexFile)) {
+    return reply.code(404).send({ ok: false, error: 'Web build not found. Run pnpm build first.' });
+  }
+
   return reply
     .header('Cache-Control', 'no-store')
-    .header('Content-Security-Policy', analyticsAdminCsp(nonce))
+    .header('Content-Security-Policy', analyticsAppCsp())
     .header('Referrer-Policy', 'no-referrer')
     .header('X-Content-Type-Options', 'nosniff')
     .header('X-Frame-Options', 'DENY')
-    .header('Vary', 'Accept, Cookie')
+    .header('Vary', 'Accept')
     .type('text/html; charset=utf-8')
-    .send(renderAnalyticsAdminPage({ nonce, authenticated }));
+    .send(await readFile(indexFile));
 }
 
 fastify.get('/health', async () => ({ ok: true }));
@@ -1997,32 +2003,33 @@ fastify.post('/admin/analytics/session/logout', async (request, reply) => {
     .send({ ok: true });
 });
 
-fastify.get('/admin/analytics', async (request, reply) => {
+async function handleAnalyticsReport(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
   const configuredToken = process.env.ANALYTICS_TOKEN;
   if (!configuredToken) {
     return reply.code(404).send({ ok: false, error: 'Not found.' });
   }
 
+  // The browser view is the existing React application. Its own private route
+  // handles the session prompt, while JSON clients retain bearer/session access.
+  if (prefersHtml(request.headers.accept)) return sendAnalyticsApplication(reply);
+
   const hasAccess = hasAnalyticsAdminAccess(request.headers.authorization)
     || hasAnalyticsSessionAccess(request.headers.cookie);
-  const wantsHtml = prefersHtml(request.headers.accept);
-
   if (!hasAccess) {
-    if (wantsHtml) return sendAnalyticsAdminPage(reply, false);
-
     return reply
       .header('Cache-Control', 'no-store')
       .code(401)
       .send({ ok: false, error: 'Unauthorized.' });
   }
 
-  if (wantsHtml) return sendAnalyticsAdminPage(reply, true);
-
   return reply
     .header('Cache-Control', 'no-store')
     .header('Vary', 'Accept, Cookie')
     .send({ ok: true, data: analytics.report() });
-});
+}
+
+fastify.get('/admin/analytics', handleAnalyticsReport);
+fastify.get('/admin/analytics/', handleAnalyticsReport);
 
 fastify.get('/.well-known/apple-app-site-association', async (_request, reply) => {
   if (!IOS_APP_TEAM_ID) {
