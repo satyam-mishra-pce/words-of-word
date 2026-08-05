@@ -95,7 +95,9 @@ export const GameSettingsSchema = z.object({
   minWordLength: z.number().int().min(5).max(18),
   timePerRound: z.number().int().min(5).max(300),
   rounds: z.number().int().min(1).max(20),
-  maxPlayers: z.number().int().min(2).max(100),
+  // Tournament-safe production ceiling, based on the Battle Royale capacity
+  // validation on 2026-08-05. Raise only after another controlled test window.
+  maxPlayers: z.number().int().min(2).max(60),
   gameMode: GameModeSchema.default('classic'),
   fastestWordTarget: z.number().int().min(3).max(10).default(5),
   eliminationsPerRound: z.number().int().min(1).max(10).default(1),

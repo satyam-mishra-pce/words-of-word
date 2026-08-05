@@ -138,9 +138,9 @@ function resolveCell() {
 
   if (factor === 'battleRoyale') {
     // Five rounds with one knockout per round requires at least six players.
-    // The 100-player upper bound mirrors the deployed shared settings schema.
-    if (!Number.isInteger(level) || level < 6 || level > 100) {
-      throw new Error('battleRoyale level must be an integer from 6 to 100.');
+    // The 60-player upper bound mirrors the tournament-safe shared schema.
+    if (!Number.isInteger(level) || level < 6 || level > 60) {
+      throw new Error('battleRoyale level must be an integer from 6 to 60.');
     }
     return {
       factor,
