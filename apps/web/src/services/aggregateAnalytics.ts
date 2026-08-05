@@ -1,4 +1,5 @@
 import type { FeatureUsageEvent } from '@wow/shared';
+import { isFirstPartyAnalyticsEnabled } from './analyticsIdentity';
 import socket from './socket';
 
 type AnalyticsRoute = 'home' | 'settings' | 'online' | 'daily' | 'join' | 'room';
@@ -15,19 +16,13 @@ const ROUTE_EVENTS: Record<AnalyticsRoute, FeatureUsageEvent> = {
 let lastRouteEvent: FeatureUsageEvent | undefined;
 let lastRouteAt = 0;
 
-function isOptionalClientMeasurementAllowed(): boolean {
-  if (!import.meta.env.PROD || typeof navigator === 'undefined') return false;
-
-  const privacyNavigator = navigator as Navigator & { globalPrivacyControl?: boolean };
-  return !privacyNavigator.globalPrivacyControl && navigator.doNotTrack !== '1' && navigator.doNotTrack !== 'yes';
-}
-
 /**
  * Sends a strict enum only—never names, room IDs, words, scores, routes, or
- * custom settings. The server persists only a counter for each enum value.
+ * custom settings. The server aggregates it with the pseudonymous visitor
+ * identity carried by the socket and respects explicit browser privacy signals.
  */
 export function trackFeatureUsage(event: FeatureUsageEvent): void {
-  if (!isOptionalClientMeasurementAllowed()) return;
+  if (!isFirstPartyAnalyticsEnabled()) return;
   socket.emit('recordFeatureUsage', { event });
 }
 

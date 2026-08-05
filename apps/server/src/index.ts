@@ -51,7 +51,7 @@ import {
   WordAcceptedPayload,
   WordRejectedPayload
 } from '@wow/shared';
-import { AggregateAnalyticsStore } from './aggregateAnalytics.js';
+import { AggregateAnalyticsStore, type AnalyticsVisitorIdentity } from './aggregateAnalytics.js';
 import { renderAnalyticsAdminPage } from './analyticsAdminPage.js';
 import {
   chooseSourceWord,
@@ -101,6 +101,10 @@ const ClientIdSchema = z.string().uuid();
 const AnalyticsPasswordPayloadSchema = z.object({
   password: z.string().min(1).max(512)
 }).strict();
+const AnalyticsVisitorIdentitySchema = z.object({
+  visitorId: z.string().uuid(),
+  sessionId: z.string().uuid()
+}).strict();
 const ONLINE_ROOM_SETTINGS: GameSettings = {
   minWordLength: 5,
   timePerRound: 30,
@@ -143,6 +147,7 @@ type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
 type ManagerResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: string };
+type PlayerRemovalReason = 'leave' | 'switch' | 'disconnect';
 
 interface InternalRoom {
   id: string;
@@ -167,6 +172,8 @@ interface InternalRoom {
   bingoProgress: Map<string, Set<string>>;
   bingoCompletedBoards: Set<string>;
   lastEmoteAt: Map<string, number>;
+  playerJoinedAt: Map<string, number>;
+  playableRecorded: boolean;
   tickTimer: NodeJS.Timeout | undefined;
   nextRoundTimer: NodeJS.Timeout | undefined;
   emptyCleanupTimer: NodeJS.Timeout | undefined;
@@ -580,6 +587,7 @@ class GameRoomManager {
     this.movePlayerMapEntry(room.bettingWordCounts, previousSocketId, nextSocketId);
     this.movePlayerMapEntry(room.bingoProgress, previousSocketId, nextSocketId);
     this.movePlayerMapEntry(room.lastEmoteAt, previousSocketId, nextSocketId);
+    this.movePlayerMapEntry(room.playerJoinedAt, previousSocketId, nextSocketId);
     this.movePlayerMapEntry(room.lightningTimeLeft, previousSocketId, nextSocketId);
     this.movePlayerSetEntry(room.bustedPlayers, previousSocketId, nextSocketId);
     this.movePlayerSetEntry(room.bingoCompletedBoards, previousSocketId, nextSocketId);
@@ -633,6 +641,8 @@ class GameRoomManager {
       bingoProgress: new Map([[socketId, new Set<string>()]]),
       bingoCompletedBoards: new Set<string>(),
       lastEmoteAt: new Map<string, number>(),
+      playerJoinedAt: new Map([[socketId, Date.now()]]),
+      playableRecorded: false,
       tickTimer: undefined,
       nextRoundTimer: undefined,
       emptyCleanupTimer: undefined,
@@ -641,7 +651,7 @@ class GameRoomManager {
 
     this.rooms.set(roomId, room);
     this.socketToRoom.set(socketId, roomId);
-    this.analytics.recordRoomCreated(settings);
+    this.analytics.recordRoomCreated(settings, socketId);
 
     return { ok: true, data: this.toSnapshot(room) };
   }
@@ -688,7 +698,7 @@ class GameRoomManager {
     if (openRoom) {
       const joined = this.joinRoom(socketId, username, avatar, openRoom.id);
       if (!joined.ok) return joined;
-      this.analytics.recordQuickJoin(false);
+      this.analytics.recordQuickJoin(false, socketId);
       return { ok: true, data: { ...joined.data, created: false } };
     }
 
@@ -696,7 +706,7 @@ class GameRoomManager {
     if (!created.ok) return created;
     const player = created.data.players.find((candidate) => candidate.id === socketId);
     if (!player) return { ok: false, error: 'Unable to create online room.' };
-    this.analytics.recordQuickJoin(true);
+    this.analytics.recordQuickJoin(true, socketId);
     return { ok: true, data: { snapshot: created.data, player, created: true } };
   }
 
@@ -740,6 +750,11 @@ class GameRoomManager {
     }
 
     room.players.push(player);
+    room.playerJoinedAt.set(socketId, Date.now());
+    if (!room.playableRecorded && room.players.length >= 2) {
+      room.playableRecorded = true;
+      this.analytics.recordRoomBecamePlayable();
+    }
     // Players who join during an active round are added to the room immediately,
     // but they start participating from the next round. Not adding them to
     // acceptedWords marks them as a non-participant for the current round.
@@ -751,7 +766,10 @@ class GameRoomManager {
     }
     room.bettingWordCounts.set(socketId, []);
     this.socketToRoom.set(socketId, roomId);
-    this.analytics.recordRoomJoined();
+    if (room.phase === 'round' || room.phase === 'betweenRounds' || room.phase === 'betting') {
+      this.analytics.recordPlayerJoinedActiveGame(room.id, socketId);
+    }
+    this.analytics.recordRoomJoined(socketId);
 
     return { ok: true, data: { snapshot: this.toSnapshot(room), player } };
   }
@@ -777,7 +795,7 @@ class GameRoomManager {
 
     const teamChanged = player.teamId !== teamId;
     player.teamId = teamId;
-    if (teamChanged) this.analytics.recordTeamChanged();
+    if (teamChanged) this.analytics.recordTeamChanged(socketId);
     this.io.to(room.id).emit('roomSnapshot', { snapshot: this.toSnapshot(room) });
     return { ok: true, data: { ok: true } };
   }
@@ -826,7 +844,7 @@ class GameRoomManager {
       };
     });
     this.resetScores(room);
-    this.analytics.recordSettingsUpdated();
+    this.analytics.recordSettingsUpdated(socketId);
 
     this.io.to(room.id).emit('roomSnapshot', { snapshot: this.toSnapshot(room) });
     this.io.to(room.id).emit('notice', { message: 'Settings updated by the host.' });
@@ -859,7 +877,7 @@ class GameRoomManager {
 
     const previousBet = room.currentBets.get(socketId);
     room.currentBets.set(socketId, bet);
-    if (previousBet !== bet) this.analytics.recordBetPlaced();
+    if (previousBet !== bet) this.analytics.recordBetPlaced(socketId);
     this.io.to(room.id).emit('roomSnapshot', { snapshot: this.toSnapshot(room) });
 
     if (this.allActivePlayersBet(room)) {
@@ -874,7 +892,7 @@ class GameRoomManager {
     return { ok: true, data: { ok: true } };
   }
 
-  public removePlayer(socketId: string): ManagerResult<{ roomId: string; snapshot: RoomSnapshot | undefined; hostChanged: boolean }> {
+  public removePlayer(socketId: string, reason: PlayerRemovalReason = 'leave'): ManagerResult<{ roomId: string; snapshot: RoomSnapshot | undefined; hostChanged: boolean }> {
     const roomId = this.socketToRoom.get(socketId);
     if (!roomId) {
       return { ok: false, error: 'Player was not in a room.' };
@@ -887,8 +905,23 @@ class GameRoomManager {
       return { ok: false, error: 'Room not found.' };
     }
 
+    const player = room.players.find((candidate) => candidate.id === socketId);
+    if (!player) {
+      return { ok: false, error: 'Player not found in room.' };
+    }
+
+    const joinedAt = room.playerJoinedAt.get(socketId) ?? Date.now();
+    this.analytics.recordPlayerLeft({
+      roomId,
+      socketId,
+      phase: room.phase,
+      currentRound: room.currentRound,
+      durationMs: Date.now() - joinedAt,
+      reason
+    });
+
     const wasHost = room.hostId === socketId;
-    room.players = room.players.filter((player) => player.id !== socketId);
+    room.players = room.players.filter((candidate) => candidate.id !== socketId);
     room.acceptedWords.delete(socketId);
     room.roundPenalties.delete(socketId);
     room.negativeWords.delete(socketId);
@@ -897,6 +930,7 @@ class GameRoomManager {
     room.bingoProgress.delete(socketId);
     room.bingoCompletedBoards.delete(socketId);
     room.lastEmoteAt.delete(socketId);
+    room.playerJoinedAt.delete(socketId);
     room.lightningTimeLeft.delete(socketId);
 
     if (room.players.length === 0) {
@@ -924,6 +958,8 @@ class GameRoomManager {
       room.bingoProgress.clear();
       room.bingoCompletedBoards.clear();
       room.lastEmoteAt.clear();
+      room.playerJoinedAt.clear();
+      room.playableRecorded = false;
       room.emptyCleanupTimer = setTimeout(() => {
         this.clearTimers(room);
         this.rooms.delete(roomId);
@@ -983,7 +1019,7 @@ class GameRoomManager {
     room.timeLeft = this.roundSecondsFor(room.settings);
     room.validWords = new Set<string>();
     room.waitingSeconds = 0;
-    this.analytics.recordGameStarted(room.id, room.settings, room.isPublic);
+    this.analytics.recordGameStarted(room.id, room.settings, room.isPublic, room.players.map((player) => player.id));
     if (room.settings.gameMode === 'betting') {
       this.startBetting(room);
     } else {
@@ -1114,7 +1150,7 @@ class GameRoomManager {
       player.score += FASTEST_N_BONUS;
     }
 
-    this.analytics.recordWordAccepted();
+    this.analytics.recordWordAccepted(socketId);
 
     this.io.to(socketId).emit('wordAccepted', {
       playerId: socketId,
@@ -1166,7 +1202,7 @@ class GameRoomManager {
     }
 
     room.lastEmoteAt.set(socketId, now);
-    this.analytics.recordEmoteSent();
+    this.analytics.recordEmoteSent(socketId);
     this.io.to(room.id).emit('emotePlayed', {
       playerId: player.id,
       playerName: player.name,
@@ -1201,8 +1237,8 @@ class GameRoomManager {
     }
 
     const wasActiveGame = room.phase === 'round' || room.phase === 'betweenRounds' || room.phase === 'betting';
-    if (wasActiveGame) this.analytics.recordGameAbandoned(room.id, room.settings);
-    this.analytics.recordGameRestarted();
+    if (wasActiveGame) this.analytics.recordGameAbandoned(room.id, room.settings, room.players.map((player) => player.id));
+    this.analytics.recordGameRestarted(socketId);
 
     this.clearTimers(room);
     this.resetScores(room);
@@ -1221,7 +1257,7 @@ class GameRoomManager {
 
     if (autoStart && room.players.length >= 2) {
       setTimeout(() => {
-        this.analytics.recordGameStarted(room.id, room.settings, room.isPublic);
+        this.analytics.recordGameStarted(room.id, room.settings, room.isPublic, room.players.map((player) => player.id));
         if (room.settings.gameMode === 'betting') {
           this.startBetting(room);
         } else {
@@ -1348,6 +1384,7 @@ class GameRoomManager {
     room.bingoTasks = room.settings.gameMode === 'bingo' ? this.createBingoTasks(room.currentWord, room.validWords) : [];
     room.bingoProgress = this.emptyBingoProgress(room);
     room.bingoCompletedBoards = new Set<string>();
+    this.analytics.recordRoundStarted(room.id, this.activePlayers(room).map((player) => player.id));
 
     this.io.to(room.id).emit('roundStarted', {
       currentWord: room.currentWord,
@@ -1402,12 +1439,11 @@ class GameRoomManager {
       this.applyBettingScores(room, playerWords);
     }
     const results = this.roundResults(room, playerWords);
+    this.analytics.recordRoundCompleted(room.id);
 
     if (this.usesKnockout(room.settings)) {
       this.eliminateLowestScorers(room);
     }
-
-    this.analytics.recordRoundCompleted();
     const isGameOver = room.currentRound >= room.settings.rounds;
 
     if (isGameOver) {
@@ -1470,7 +1506,7 @@ class GameRoomManager {
         };
       });
 
-    this.analytics.recordGameFinished(room.id, room.settings);
+    this.analytics.recordGameFinished(room.id, room.settings, room.players.map((player) => player.id));
 
     const payload: GameOverPayload = {
       finalScores,
@@ -2069,6 +2105,11 @@ function clientIdForSocket(socket: TypedSocket): string | undefined {
   return parsed.success ? parsed.data : undefined;
 }
 
+function analyticsIdentityForSocket(socket: TypedSocket): AnalyticsVisitorIdentity | undefined {
+  const parsed = AnalyticsVisitorIdentitySchema.safeParse(socket.handshake.auth?.analytics);
+  return parsed.success ? parsed.data : undefined;
+}
+
 function clearReconnectRemoval(clientId: string): void {
   const session = reconnectSessions.get(clientId);
   if (!session?.removalTimer) return;
@@ -2077,10 +2118,10 @@ function clearReconnectRemoval(clientId: string): void {
 }
 
 function removeDisconnectedPlayer(socketId: string, reason: string): void {
-  analytics.recordSocketDisconnected(socketId);
   const roomId = manager.findRoomIdForSocket(socketId);
   fastify.log.info({ reason }, 'removing disconnected player');
-  const removal = manager.removePlayer(socketId);
+  const removal = manager.removePlayer(socketId, 'disconnect');
+  analytics.recordSocketDisconnected(socketId);
   if (!roomId || !removal.ok) {
     if (roomId || !removal.ok) {
       fastify.log.warn('disconnect room cleanup skipped');
@@ -2180,7 +2221,7 @@ function roomLogContext(snapshot: RoomSnapshot): Record<string, unknown> {
   };
 }
 
-function detachSocketFromCurrentRoom(socket: TypedSocket): ServerAck<EmptyResult> {
+function detachSocketFromCurrentRoom(socket: TypedSocket, reason: PlayerRemovalReason = 'switch'): ServerAck<EmptyResult> {
   const previousRoomId = manager.findRoomIdForSocket(socket.id);
   if (!previousRoomId) {
     return { ok: true, data: { ok: true } };
@@ -2188,7 +2229,7 @@ function detachSocketFromCurrentRoom(socket: TypedSocket): ServerAck<EmptyResult
 
   fastify.log.info('socket leaving previous room before room change');
   socket.leave(previousRoomId);
-  const removal = manager.removePlayer(socket.id);
+  const removal = manager.removePlayer(socket.id, reason);
   if (!removal.ok) {
     fastify.log.warn('failed to remove socket from previous room');
     return { ok: false, error: removal.error };
@@ -2220,10 +2261,14 @@ function detachSocketFromCurrentRoom(socket: TypedSocket): ServerAck<EmptyResult
 
 io.on('connection', (socket) => {
   const clientId = clientIdForSocket(socket);
+  const analyticsIdentity = analyticsIdentityForSocket(socket);
   if (clientId && !restoreReconnectSession(socket, clientId)) return;
 
   const wasRebound = reboundSocketIds.delete(socket.id);
-  if (!wasRebound && !socket.recovered) analytics.recordSocketConnected(socket.id);
+  // A Socket.IO recovered connection may have had its previous analytics mapping
+  // removed during disconnect cleanup, so re-associate every non-manual rebind.
+  // Session deduplication in the store prevents this from inflating sessions.
+  if (!wasRebound) analytics.recordSocketConnected(socket.id, analyticsIdentity);
   fastify.log.info({ recovered: socket.recovered }, 'socket connected');
 
   socket.on('createRoom', (payload, ack) => {
@@ -2435,7 +2480,7 @@ io.on('connection', (socket) => {
       return;
     }
 
-    const result = detachSocketFromCurrentRoom(socket);
+    const result = detachSocketFromCurrentRoom(socket, 'leave');
     if (result.ok && clientId) {
       // Keep the live socket's reconnect session: this player may create or join
       // another room without reconnecting first, and that later room still needs
@@ -2491,7 +2536,7 @@ io.on('connection', (socket) => {
   socket.on('recordFeatureUsage', (payload) => {
     const parsed = RecordFeatureUsagePayloadSchema.safeParse(payload);
     if (!parsed.success) return;
-    analytics.recordFeatureUsage(parsed.data.event);
+    analytics.recordFeatureUsage(parsed.data.event, socket.id);
   });
 
   socket.on('disconnect', (reason) => {

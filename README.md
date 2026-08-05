@@ -36,29 +36,33 @@ pnpm mobile:android
 
 See [the mobile delivery guide](docs/MOBILE.md) for deep links, push credentials, device QA, and release setup.
 
-## First-party aggregate analytics
+## First-party product analytics
 
-The server has a built-in, zero-third-party product report for understanding
-which modes and features are actually used. It stores counters only—analytics
-uses no tracking cookies, replay recordings, user profiles, IP addresses, device
-IDs, player names, room IDs, words, custom word lists, scores, raw errors, or
-event history.
+The server has a built-in, zero-third-party product observatory for understanding
+how people discover, return to, and play the game. It combines authoritative
+server-side game measurements with a random, pseudonymous browser installation
+ID and per-app-session ID. The raw IDs are HMAC-pseudonymized before server
+storage and are not returned by the report.
+This makes exact DAU/WAU/MAU-style activity, D1/D7/D30 return rates, session
+counts, feature adoption, and play-depth metrics possible without accounts.
 
-Authoritative server counters cover successful room creation/joining, quick
-matchmaking, settings changes, starts, finishes, abandons, rounds, accepted
-words, restarts, team changes, bets, and emotes. The report groups actual games
-by mode and uses only bounded gameplay settings selected at game start. The
-small client-side supplement sends fixed enum names only for client-only
-features such as Daily Word, invite copies, rules/history, themes, and page
-views; it is production-only and respects Do Not Track and Global Privacy Control. These are aggregate
-usage counts—not unique-player, retention, or demographic measurements.
+The observatory measures successful room creation/joining, room fill and size,
+game starts/finishes/abandons, round depth, game/player duration, departures,
+accepted words as a count, settings/mode adoption, feature use, and UTC peak
+activity. It deliberately does **not** store or display player names, room
+codes, typed words, custom lists, scores, IP addresses, user-agent strings,
+raw socket IDs, replay recordings, or raw event payloads. Browser Do Not Track
+and Global Privacy Control remain an opt-out for the optional pseudonymous
+client measurement; server-authoritative aggregate game totals still work.
 
-Set a strong `ANALYTICS_TOKEN` in the server environment. Opening
-`/admin/analytics` in a browser displays a password prompt; enter that same token
-once to create an `HttpOnly`, `SameSite=Strict`, session-only admin cookie. It is
-not an analytics/tracking cookie, carries no report data, is never put in a URL,
-and can be cleared with **End session**. Programmatic access remains available
-without putting the token in a URL:
+Opening `/admin/analytics` in a browser displays a full private dashboard with
+traffic, retention, funnels, room health, engagement, drop-off, UTC heatmaps,
+mode adoption, feature adoption, and settings charts. Set a strong
+`ANALYTICS_TOKEN` in the server environment; enter that value once to create an
+`HttpOnly`, `SameSite=Strict`, session-only admin cookie. It is not a player
+tracking cookie, carries no report data, is never put in a URL, and can be
+cleared with **End session**. Programmatic access remains available without
+putting the token in a URL:
 
 ```bash
 curl -H "Authorization: Bearer $ANALYTICS_TOKEN" \
@@ -66,13 +70,14 @@ curl -H "Authorization: Bearer $ANALYTICS_TOKEN" \
 ```
 
 The endpoint is unavailable when no token is configured and responses use
-`Cache-Control: no-store`. Aggregates are atomically written to
-`ANALYTICS_AGGREGATE_FILE`, defaulting to `logs/aggregate-analytics.json`.
-Render's free filesystem is ephemeral, so counters reset on a deploy/restart
-unless that path is backed by durable storage; download reports regularly if
-running on the free plan.
+`Cache-Control: no-store`. Analytics are atomically written to
+`ANALYTICS_AGGREGATE_FILE`, defaulting to `logs/aggregate-analytics.json`. The
+file includes compact pseudonymous retention profiles for the most recent 120
+days; it does not include raw visitor IDs. Render's free filesystem is
+ephemeral, so all history resets on a deploy/restart unless that path is backed
+by durable storage. Download reports regularly if running on the free plan.
 
 If this project was deployed with the older detailed analytics implementation,
-remove its legacy `logs/game-analytics.jsonl` file from the deployment storage:
-it may contain data that the aggregate implementation intentionally no longer
+remove its legacy `logs/game-analytics.jsonl` file from deployment storage: it
+may contain data that the current implementation intentionally no longer
 collects.

@@ -1,15 +1,22 @@
 import { io, Socket } from 'socket.io-client';
 import { ClientToServerEvents, ServerToClientEvents } from '@wow/shared';
 import { getInstallationId } from './identity';
+import { getAnalyticsIdentity } from './analyticsIdentity';
 import { getGameServerUrl, isNativeApp } from './platform';
 import { getStoredPushRegistration } from './nativePush';
 
 const socketUrl = getGameServerUrl();
 const clientId = isNativeApp ? getInstallationId() : undefined;
+const analyticsIdentity = getAnalyticsIdentity();
 let appIsActive = true;
 
 const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io(socketUrl, {
-  ...(clientId ? { auth: { clientId } } : {}),
+  ...((clientId || analyticsIdentity) ? {
+    auth: {
+      ...(clientId ? { clientId } : {}),
+      ...(analyticsIdentity ? { analytics: analyticsIdentity } : {})
+    }
+  } : {}),
   reconnection: true,
   reconnectionAttempts: 8,
   reconnectionDelay: 600,
