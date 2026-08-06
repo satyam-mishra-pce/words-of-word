@@ -56,23 +56,23 @@ function GameActionIcon({ name }: { name: GameActionIconName }): JSX.Element {
   }
 }
 
-const GAME_MODE_OPTIONS: Array<{ value: GameSettings['gameMode']; label: string }> = [
-  { value: 'classic', label: 'Classic' },
-  { value: 'arcade', label: 'Score Attack' },
-  { value: 'precision', label: 'Precision' },
-  { value: 'teams', label: 'Teams' },
-  { value: 'betting', label: 'Betting' },
-  { value: 'fastestNWords', label: 'Word Sprint' },
-  { value: 'battleRoyale', label: 'Knockout' },
-  { value: 'typist', label: 'Blind Type' },
-  { value: 'category', label: 'Theme Challenge' },
-  { value: 'oneWordForAll', label: 'Claim Mode' },
-  { value: 'busted', label: 'Busted Mode' },
-  { value: 'commonWord', label: 'Common Word' },
-  { value: 'intuition', label: 'Intuition Mode' },
-  { value: 'lightning', label: 'Lightning Mode' },
-  { value: 'bingo', label: 'Bingo Board' },
-  { value: 'mix', label: 'Mix Mode' },
+const GAME_MODE_OPTIONS: Array<{ value: GameSettings['gameMode']; label: string; description: string }> = [
+  { value: 'classic', label: 'Classic', description: 'Standard rules: every accepted word gives 3 points.' },
+  { value: 'arcade', label: 'Score Attack', description: 'Reward bigger finds: every word gives 3 points plus bonus points equal to word length.' },
+  { value: 'precision', label: 'Precision', description: 'Accepted words score 3 plus word length, wrong words lose 3 plus word length, and duplicates lose 3 points.' },
+  { value: 'teams', label: 'Teams', description: 'Players pick Red or Blue before the game. Team totals and individual scores are both shown.' },
+  { value: 'betting', label: 'Betting', description: 'Before each round, bet how many words you will make. Hit it for big points, miss it and lose the stake.' },
+  { value: 'fastestNWords', label: 'Word Sprint', description: 'First player to reach the target word count ends the round and earns a 10 point bonus.' },
+  { value: 'battleRoyale', label: 'Knockout', description: 'Lowest scoring players are eliminated after each round until a winner emerges.' },
+  { value: 'typist', label: 'Blind Type', description: 'Your typed word stays hidden until you submit it.' },
+  { value: 'category', label: 'Theme Challenge', description: 'Source words come from the selected theme or your custom list.' },
+  { value: 'oneWordForAll', label: 'Claim Mode', description: 'Once any player claims a word, no one else can use it.' },
+  { value: 'busted', label: 'Busted Mode', description: 'Each player’s first word becomes their bust word. Type another player’s bust word and your round score explodes to 0. Matching first words are safe.' },
+  { value: 'commonWord', label: 'Common Word', description: 'Unique words score +3, rare unique words with 5+ letters score +5. If two or more players make the same word, everyone who used it gets -3 for that word.' },
+  { value: 'intuition', label: 'Intuition Mode', description: 'The source word starts hidden and unlocks one random letter at a time over the round. You can guess words from the hidden letters before they appear.' },
+  { value: 'lightning', label: 'Lightning Mode', description: 'Each player gets their own 10-second timer. Your valid words add 1 second to your timer. If your timer hits zero, you are out for that round.' },
+  { value: 'bingo', label: 'Bingo Board', description: 'Everyone gets the same 7 hard tasks from a bigger pool: Pictureka-style word hunts plus rare letters, lengths, exact positions, edge letters, vowel traps, and pattern challenges. Every task is validated to be possible without using the source word itself. Each task gives 10 points; one word can complete multiple matching tasks. Complete all 7 for a 100 point bonus, then every extra valid word scores 3 points.' },
+  { value: 'mix', label: 'Mix Mode', description: 'Choose Classic or Score Attack scoring, then stack compatible modifiers: Teams, Word Sprint, Blind Type, Claim, Busted, Intuition, and Lightning.' },
 ];
 
 const PLAYER_FINAL_TITLES = [
@@ -339,6 +339,7 @@ export default function RoomPage(): JSX.Element {
   const [bustFlash, setBustFlash] = useState<{ playerId: string; playerName: string; word: string; message: string } | undefined>();
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
   const [draftSettings, setDraftSettings] = useState<GameSettings | undefined>();
+  const [infoMode, setInfoMode] = useState<(typeof GAME_MODE_OPTIONS)[number] | undefined>();
   const [scoreBursts, setScoreBursts] = useState<ScoreBurst[]>([]);
   const [emoteBursts, setEmoteBursts] = useState<EmoteBurst[]>([]);
   const [isInviteCopied, setIsInviteCopied] = useState(false);
@@ -921,6 +922,7 @@ export default function RoomPage(): JSX.Element {
 
   function openSettingsDialog(): void {
     setDraftSettings(snapshot?.settings);
+    setInfoMode(undefined);
     setShowSettingsDialog(true);
   }
 
@@ -1744,7 +1746,7 @@ export default function RoomPage(): JSX.Element {
       </Dialog>
 
       {/* ── SETTINGS MODAL ── */}
-      <Dialog open={showSettingsDialog} onClose={() => setShowSettingsDialog(false)} size="lg" ariaLabel="Change settings">
+      <Dialog open={showSettingsDialog && !infoMode} onClose={() => setShowSettingsDialog(false)} size="lg" ariaLabel="Change settings">
         <p className="eyebrow">same room, new rules</p>
         <h1 style={{ fontSize: 'clamp(1.8rem,5vw,3rem)', lineHeight: 0.9, marginBottom: 12 }}>Change Settings</h1>
         <p className="muted" style={{ marginBottom: 18 }}>Everyone stays seated. Saving resets scores and returns the room to the lobby, where the host can start when everyone is ready.</p>
@@ -1752,7 +1754,29 @@ export default function RoomPage(): JSX.Element {
         {draftSettings && (
           <div className="settings-grid">
             <div className="setting-group">
-              <Label htmlFor="room-game-mode">Game mode</Label>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                <Label htmlFor="room-game-mode">Game mode</Label>
+                <button
+                  type="button"
+                  onClick={() => setInfoMode(GAME_MODE_OPTIONS.find((mode) => mode.value === draftSettings.gameMode))}
+                  title="About selected game mode"
+                  aria-label="About selected game mode"
+                  style={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: '999px',
+                    border: '1px solid var(--sub-2)',
+                    background: 'var(--main-10)',
+                    color: 'var(--main)',
+                    font: 'inherit',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    lineHeight: 1
+                  }}
+                >
+                  i
+                </button>
+              </div>
               <Select id="room-game-mode" value={draftSettings.gameMode} onChange={(e) => setDraft('gameMode', e.currentTarget.value as GameSettings['gameMode'])}>
                 {GAME_MODE_OPTIONS.map((mode) => <option key={mode.value} value={mode.value}>{mode.label}</option>)}
               </Select>
@@ -1864,6 +1888,17 @@ export default function RoomPage(): JSX.Element {
           <Button variant="secondary" onClick={() => setShowSettingsDialog(false)}>Cancel</Button>
           <Button variant="primary" onClick={saveSettings}>Save settings</Button>
         </div>
+      </Dialog>
+
+      <Dialog open={Boolean(infoMode)} onClose={() => setInfoMode(undefined)} size="sm" ariaLabel="Game mode information">
+        <p className="eyebrow">game mode info</p>
+        <h1 style={{ fontSize: 'clamp(1.8rem,5vw,2.6rem)', lineHeight: 0.94, marginBottom: 16 }}>
+          {infoMode?.label}
+        </h1>
+        <p className="muted" style={{ lineHeight: 1.8, marginBottom: 20 }}>
+          {infoMode?.description}
+        </p>
+        <Button variant="secondary" fullWidth onClick={() => setInfoMode(undefined)}>Got it</Button>
       </Dialog>
 
       {/* ── ROUND HISTORY MODAL ── */}
