@@ -252,7 +252,7 @@ function PlayersPanel({
           <p className="eyebrow" style={{ marginBottom: 0 }}>Bets</p>
           {snapshot.players.map((player, playerIndex) => {
             const bet = snapshot.bettingBets[player.id];
-            const words = snapshot.acceptedWords[player.id]?.length ?? 0;
+            const words = snapshot.acceptedWordCounts[player.id] ?? snapshot.acceptedWords[player.id]?.length ?? 0;
             return (
               <div key={player.id} className="player-row">
                 <div className="player-row__info">
@@ -674,6 +674,7 @@ export default function RoomPage(): JSX.Element {
         return {
           ...s,
           acceptedWords: { ...s.acceptedWords, [p.playerId]: p.words },
+          acceptedWordCounts: { ...s.acceptedWordCounts, [p.playerId]: p.words.length },
         };
       });
     });
@@ -691,7 +692,8 @@ export default function RoomPage(): JSX.Element {
     });
     socket.on('scoresUpdated', (p) => {
       setSnapshot((s) => {
-        if (!s || s.phase !== 'round') return p.snapshot;
+        if (p.snapshot) return p.snapshot;
+        if (!s) return s;
         const scoreByPlayer = new Map(p.scores);
         return {
           ...s,
@@ -699,13 +701,12 @@ export default function RoomPage(): JSX.Element {
             ...player,
             score: scoreByPlayer.get(player.id) ?? player.score,
           })),
-          acceptedWords: p.snapshot.acceptedWords,
-          teamScores: p.snapshot.teamScores,
-          bettingBets: p.snapshot.bettingBets,
-          bettingAverages: p.snapshot.bettingAverages,
-          minimumBets: p.snapshot.minimumBets,
-          bingoTasks: p.snapshot.bingoTasks,
-          bingoProgress: p.snapshot.bingoProgress,
+          ...(p.acceptedWordCounts ? { acceptedWordCounts: p.acceptedWordCounts } : {}),
+          ...(p.teamScores ? { teamScores: p.teamScores } : {}),
+          ...(p.bettingBets ? { bettingBets: p.bettingBets } : {}),
+          ...(p.bettingAverages ? { bettingAverages: p.bettingAverages } : {}),
+          ...(p.minimumBets ? { minimumBets: p.minimumBets } : {}),
+          ...(p.bingoProgress ? { bingoProgress: p.bingoProgress } : {}),
         };
       });
     });

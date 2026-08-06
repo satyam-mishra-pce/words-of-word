@@ -95,7 +95,9 @@ export const GameSettingsSchema = z.object({
   minWordLength: z.number().int().min(5).max(18),
   timePerRound: z.number().int().min(5).max(300),
   rounds: z.number().int().min(1).max(20),
-  maxPlayers: z.number().int().min(2).max(50),
+  // Tournament-safe production ceiling, based on the Battle Royale capacity
+  // validation on 2026-08-05. Raise only after another controlled test window.
+  maxPlayers: z.number().int().min(2).max(60),
   gameMode: GameModeSchema.default('classic'),
   fastestWordTarget: z.number().int().min(3).max(10).default(5),
   eliminationsPerRound: z.number().int().min(1).max(10).default(1),
@@ -289,6 +291,8 @@ export interface RoomSnapshot {
   currentRound: number;
   totalRounds: number;
   acceptedWords: Record<string, string[]>;
+  /** Lightweight per-player totals for live score updates and Betting UI. */
+  acceptedWordCounts: Record<string, number>;
   teamScores: TeamScore[];
   bettingBets: Record<string, number>;
   bettingAverages: Record<string, number>;
@@ -418,8 +422,19 @@ export interface WordRejectedPayload {
 }
 
 export interface ScoresUpdatedPayload {
+  /** Only players whose score changed since the prior live score update. */
   scores: Array<[string, number]>;
-  snapshot: RoomSnapshot;
+  /** Full legacy payload retained for already-installed clients. */
+  snapshot?: RoomSnapshot;
+  /** Present only in modes that need live word totals (currently Betting). */
+  acceptedWordCounts?: Record<string, number>;
+  /** Present only when teams are enabled. */
+  teamScores?: TeamScore[];
+  bettingBets?: Record<string, number>;
+  bettingAverages?: Record<string, number>;
+  minimumBets?: Record<string, number>;
+  /** Present only for Bingo. */
+  bingoProgress?: Record<string, string[]>;
 }
 
 export interface RoundEndedPayload {

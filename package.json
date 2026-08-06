@@ -8,6 +8,9 @@
     "build": "turbo build",
     "typecheck": "turbo typecheck",
     "lint": "turbo lint",
+    "test:game-engine:index": "pnpm --filter @wow/game-engine build && node scripts/verify-game-engine-index.mjs",
+    "test:render-free:cell": "node scripts/run-render-free-cell.mjs",
+    "test:render-free:sweep": "node scripts/sweep-render-free-capacity.mjs",
     "mobile:sync": "pnpm --filter @wow/web cap:sync",
     "mobile:ios": "pnpm --filter @wow/web cap:ios",
     "mobile:android": "pnpm --filter @wow/web cap:android"

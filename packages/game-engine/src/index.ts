@@ -42,6 +42,94 @@ export function canMakeWord(candidate: string, sourceWord: string): boolean {
   return true;
 }
 
+/**
+ * Preprocessed dictionary data for repeated round starts. Counts live in one
+ * contiguous typed array rather than allocating a Map for every word on every
+ * round, which keeps the game loop responsive on small CPU allocations.
+ */
+export interface ValidWordIndex {
+  words: readonly string[];
+  wordLengths: Uint16Array;
+  letterMasks: Uint32Array;
+  letterCounts: Uint16Array;
+}
+
+const ALPHABET_SIZE = 26;
+const A_CHAR_CODE = 'a'.charCodeAt(0);
+
+function letterIndex(letter: string): number {
+  return letter.charCodeAt(0) - A_CHAR_CODE;
+}
+
+function sourceLetterCounts(word: string): { counts: Uint16Array; mask: number } {
+  const counts = new Uint16Array(ALPHABET_SIZE);
+  let mask = 0;
+  for (const letter of word) {
+    const index = letterIndex(letter);
+    counts[index] = (counts[index] ?? 0) + 1;
+    mask |= 1 << index;
+  }
+  return { counts, mask };
+}
+
+/** Build once at server start and reuse for every round. */
+export function createValidWordIndex(dictionary: readonly string[]): ValidWordIndex {
+  const words: string[] = [];
+  const lengths: number[] = [];
+  const masks: number[] = [];
+  const counts: number[] = [];
+
+  for (const dictionaryWord of dictionary) {
+    const normalizedWord = normalizeWord(dictionaryWord);
+    if (!isAlphabeticWord(normalizedWord)) continue;
+
+    const { counts: letterCounts, mask } = sourceLetterCounts(normalizedWord);
+    words.push(normalizedWord);
+    lengths.push(normalizedWord.length);
+    masks.push(mask);
+    for (let index = 0; index < ALPHABET_SIZE; index += 1) {
+      counts.push(letterCounts[index] ?? 0);
+    }
+  }
+
+  return {
+    words,
+    wordLengths: Uint16Array.from(lengths),
+    letterMasks: Uint32Array.from(masks),
+    letterCounts: Uint16Array.from(counts)
+  };
+}
+
+/** Return all valid words without allocating per-dictionary-word Maps. */
+export function createValidWordsFromIndex(sourceWord: string, dictionary: ValidWordIndex): Set<string> {
+  const normalizedSource = normalizeWord(sourceWord);
+  const validWords = new Set<string>();
+  if (!isAlphabeticWord(normalizedSource)) return validWords;
+
+  const source = sourceLetterCounts(normalizedSource);
+  for (let wordIndex = 0; wordIndex < dictionary.words.length; wordIndex += 1) {
+    if ((dictionary.wordLengths[wordIndex] ?? 0) > normalizedSource.length) continue;
+    if (((dictionary.letterMasks[wordIndex] ?? 0) & ~source.mask) !== 0) continue;
+
+    const offset = wordIndex * ALPHABET_SIZE;
+    let possible = true;
+    for (let letter = 0; letter < ALPHABET_SIZE; letter += 1) {
+      if ((dictionary.letterCounts[offset + letter] ?? 0) > (source.counts[letter] ?? 0)) {
+        possible = false;
+        break;
+      }
+    }
+    if (possible) validWords.add(dictionary.words[wordIndex] as string);
+  }
+
+  return validWords;
+}
+
+/**
+ * Compatibility path for callers that have not preprocessed their dictionary.
+ * Servers that start many rounds should use createValidWordIndex once and then
+ * createValidWordsFromIndex for each round.
+ */
 export function createValidWords(sourceWord: string, dictionary: readonly string[]): Set<string> {
   const normalizedSource = normalizeWord(sourceWord);
   const validWords = new Set<string>();

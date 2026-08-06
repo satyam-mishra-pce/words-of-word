@@ -54,11 +54,13 @@ import {
 import { AggregateAnalyticsStore, type AnalyticsVisitorIdentity } from './aggregateAnalytics.js';
 import {
   chooseSourceWord,
-  createValidWords,
+  createValidWordIndex,
+  createValidWordsFromIndex,
   DUPLICATE_WORD_PENALTY,
   evaluateSubmission,
   POINTS_PER_WORD,
-  scoreWord
+  scoreWord,
+  type ValidWordIndex
 } from '@wow/game-engine';
 
 const PORT = Number(process.env.PORT ?? 4000);
@@ -76,6 +78,7 @@ const BINGO_TASK_POINTS = 10;
 const BINGO_TASK_COUNT = 7;
 const BINGO_FULL_BOARD_BONUS = 100;
 const EMOTE_COOLDOWN_MS = 750;
+const SCORE_UPDATE_BATCH_MS = 50;
 const TEAM_NAMES: Record<'red' | 'blue', string> = { red: 'Red Team', blue: 'Blue Team' };
 const EMPTY_ROOM_TTL_MS = 10 * 60 * 1000;
 const DEFAULT_MOBILE_RECONNECT_GRACE_MS = 90_000;
@@ -139,6 +142,24 @@ const createRoomId = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 6);
 const requireDictionary = createRequire(import.meta.url);
 const rawWords: unknown = requireDictionary('an-array-of-english-words');
 const words = z.array(z.string()).parse(rawWords);
+const validWordIndex = createValidWordIndex(words);
+
+/**
+ * A deterministic source word is available only to the local capacity harness.
+ * It keeps tournament cells repeatable without changing a deployed game's
+ * ordinary random source-word selection.
+ */
+function localLoadTestSourceWord(): string | undefined {
+  if (process.env.LOCAL_LOAD_TEST !== '1') return undefined;
+
+  const sourceWord = process.env.LOCAL_LOAD_TEST_SOURCE_WORD?.trim().toLowerCase();
+  if (!sourceWord || !/^[a-z]+$/.test(sourceWord) || sourceWord.length < 5) {
+    throw new Error('LOCAL_LOAD_TEST_SOURCE_WORD must be an alphabetic word with at least five letters when LOCAL_LOAD_TEST=1.');
+  }
+  return sourceWord;
+}
+
+const LOCAL_LOAD_TEST_SOURCE_WORD = localLoadTestSourceWord();
 
 type TypedIo = Server<ClientToServerEvents, ServerToClientEvents>;
 type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
@@ -172,10 +193,13 @@ interface InternalRoom {
   bingoCompletedBoards: Set<string>;
   lastEmoteAt: Map<string, number>;
   playerJoinedAt: Map<string, number>;
+  /** Baseline for compact, incremental scoresUpdated broadcasts. */
+  lastEmittedScores: Map<string, number>;
   playableRecorded: boolean;
   tickTimer: NodeJS.Timeout | undefined;
   nextRoundTimer: NodeJS.Timeout | undefined;
   emptyCleanupTimer: NodeJS.Timeout | undefined;
+  scoreUpdateTimer: NodeJS.Timeout | undefined;
   waitingSeconds: number;
 }
 
@@ -195,6 +219,8 @@ const reconnectSessions = new Map<string, ReconnectSession>();
 const clientIdBySocketId = new Map<string, string>();
 const inactiveClientIds = new Set<string>();
 const reboundSocketIds = new Set<string>();
+/** Sockets from the current web/mobile build that understand compact score patches. */
+const compactScoreUpdateSocketIds = new Set<string>();
 const pushTokensByClientId = new Map<string, RegisteredPushToken>();
 
 function roomLink(roomId: string): string {
@@ -233,7 +259,12 @@ class GameRoomManager {
   private readonly rooms = new Map<string, InternalRoom>();
   private readonly socketToRoom = new Map<string, string>();
 
-  public constructor(private readonly io: TypedIo, private readonly dictionary: readonly string[], private readonly analytics: AggregateAnalyticsStore) {}
+  public constructor(
+    private readonly io: TypedIo,
+    private readonly dictionary: readonly string[],
+    private readonly validWordIndex: ValidWordIndex,
+    private readonly analytics: AggregateAnalyticsStore
+  ) {}
 
   private isMixMode(settings: GameSettings): boolean {
     return settings.gameMode === 'mix';
@@ -587,6 +618,7 @@ class GameRoomManager {
     this.movePlayerMapEntry(room.bingoProgress, previousSocketId, nextSocketId);
     this.movePlayerMapEntry(room.lastEmoteAt, previousSocketId, nextSocketId);
     this.movePlayerMapEntry(room.playerJoinedAt, previousSocketId, nextSocketId);
+    this.movePlayerMapEntry(room.lastEmittedScores, previousSocketId, nextSocketId);
     this.movePlayerMapEntry(room.lightningTimeLeft, previousSocketId, nextSocketId);
     this.movePlayerSetEntry(room.bustedPlayers, previousSocketId, nextSocketId);
     this.movePlayerSetEntry(room.bingoCompletedBoards, previousSocketId, nextSocketId);
@@ -641,10 +673,12 @@ class GameRoomManager {
       bingoCompletedBoards: new Set<string>(),
       lastEmoteAt: new Map<string, number>(),
       playerJoinedAt: new Map([[socketId, Date.now()]]),
+      lastEmittedScores: new Map([[socketId, 0]]),
       playableRecorded: false,
       tickTimer: undefined,
       nextRoundTimer: undefined,
       emptyCleanupTimer: undefined,
+      scoreUpdateTimer: undefined,
       waitingSeconds: 0
     };
 
@@ -750,6 +784,7 @@ class GameRoomManager {
 
     room.players.push(player);
     room.playerJoinedAt.set(socketId, Date.now());
+    room.lastEmittedScores.set(socketId, player.score);
     if (!room.playableRecorded && room.players.length >= 2) {
       room.playableRecorded = true;
       this.analytics.recordRoomBecamePlayable();
@@ -930,6 +965,7 @@ class GameRoomManager {
     room.bingoCompletedBoards.delete(socketId);
     room.lastEmoteAt.delete(socketId);
     room.playerJoinedAt.delete(socketId);
+    room.lastEmittedScores.delete(socketId);
     room.lightningTimeLeft.delete(socketId);
 
     if (room.players.length === 0) {
@@ -937,6 +973,7 @@ class GameRoomManager {
         this.analytics.recordGameAbandoned(room.id, room.settings);
       }
       this.clearTickTimer(room);
+      this.clearQueuedScoreUpdate(room);
       if (room.nextRoundTimer) {
         clearTimeout(room.nextRoundTimer);
         room.nextRoundTimer = undefined;
@@ -958,6 +995,7 @@ class GameRoomManager {
       room.bingoCompletedBoards.clear();
       room.lastEmoteAt.clear();
       room.playerJoinedAt.clear();
+      room.lastEmittedScores.clear();
       room.playableRecorded = false;
       room.emptyCleanupTimer = setTimeout(() => {
         this.clearTimers(room);
@@ -1360,7 +1398,7 @@ class GameRoomManager {
     }
 
     const sourceDictionary = this.sourceDictionaryFor(room);
-    const sourceWord = chooseSourceWord(sourceDictionary, room.settings.minWordLength);
+    const sourceWord = LOCAL_LOAD_TEST_SOURCE_WORD ?? chooseSourceWord(sourceDictionary, room.settings.minWordLength);
     if (!sourceWord) {
       this.io.to(room.id).emit('notice', { message: 'No source words are available for these settings.' });
       return;
@@ -1373,7 +1411,7 @@ class GameRoomManager {
     room.lightningTimeLeft = this.usesLightning(room.settings)
       ? new Map(this.activePlayers(room).map((player) => [player.id, LIGHTNING_SECONDS]))
       : new Map<string, number>();
-    room.validWords = createValidWords(room.currentWord, this.dictionary);
+    room.validWords = createValidWordsFromIndex(room.currentWord, this.validWordIndex);
     room.waitingSeconds = 0;
     room.acceptedWords = this.emptyAcceptedWords(room);
     room.roundPenalties = this.emptyRoundPenalties(room);
@@ -1383,6 +1421,7 @@ class GameRoomManager {
     room.bingoTasks = room.settings.gameMode === 'bingo' ? this.createBingoTasks(room.currentWord, room.validWords) : [];
     room.bingoProgress = this.emptyBingoProgress(room);
     room.bingoCompletedBoards = new Set<string>();
+    room.lastEmittedScores = new Map(room.players.map((player) => [player.id, player.score]));
     this.analytics.recordRoundStarted(room.id, this.activePlayers(room).map((player) => player.id));
 
     this.io.to(room.id).emit('roundStarted', {
@@ -1432,6 +1471,7 @@ class GameRoomManager {
     }
 
     this.clearTickTimer(room);
+    this.clearQueuedScoreUpdate(room);
 
     const playerWords = this.acceptedWordsRecord(room);
     if (room.settings.gameMode === 'betting') {
@@ -1540,6 +1580,7 @@ class GameRoomManager {
     room.bingoProgress = this.emptyBingoProgress(room);
     room.bingoCompletedBoards = new Set<string>();
     room.lastEmoteAt = new Map<string, number>();
+    room.lastEmittedScores = new Map(room.players.map((player) => [player.id, player.score]));
   }
 
   private emptyAcceptedWords(room: InternalRoom): Map<string, Set<string>> {
@@ -1575,10 +1616,53 @@ class GameRoomManager {
   }
 
   private emitScoresUpdated(room: InternalRoom): void {
-    this.io.to(room.id).emit('scoresUpdated', {
-      scores: this.scoreEntries(room),
-      snapshot: this.toSnapshot(room)
-    } satisfies ScoresUpdatedPayload);
+    // A burst of simultaneous submissions should result in one compact update
+    // per room per short window, not one room-wide network fanout per word.
+    if (room.scoreUpdateTimer) return;
+    room.scoreUpdateTimer = setTimeout(() => {
+      room.scoreUpdateTimer = undefined;
+      this.sendScoresUpdated(room);
+    }, SCORE_UPDATE_BATCH_MS);
+  }
+
+  private sendScoresUpdated(room: InternalRoom): void {
+    const compactSocketIds = room.players
+      .map((player) => player.id)
+      .filter((socketId) => this.io.sockets.sockets.has(socketId) && compactScoreUpdateSocketIds.has(socketId));
+    const legacySocketIds = room.players
+      .map((player) => player.id)
+      .filter((socketId) => this.io.sockets.sockets.has(socketId) && !compactScoreUpdateSocketIds.has(socketId));
+    const changedScores = this.changedScoreEntries(room);
+
+    if (compactSocketIds.length > 0) {
+      // This event can fire frequently. Keep it incremental rather than
+      // serializing every player avatar and every accepted word to every socket.
+      const payload: ScoresUpdatedPayload = { scores: changedScores };
+
+      if (this.usesTeams(room.settings)) {
+        payload.teamScores = this.teamScores(room);
+      }
+      if (room.settings.gameMode === 'betting') {
+        payload.acceptedWordCounts = this.acceptedWordCountsRecord(room);
+        payload.bettingBets = Object.fromEntries(room.currentBets);
+        payload.bettingAverages = Object.fromEntries(room.players.map((player) => [player.id, this.recentAverageWordsFor(room, player.id)]));
+        payload.minimumBets = Object.fromEntries(room.players.map((player) => [player.id, this.minimumBetFor(room, player.id)]));
+      }
+      if (room.settings.gameMode === 'bingo') {
+        payload.bingoProgress = Object.fromEntries(Array.from(room.bingoProgress.entries()).map(([playerId, tasks]) => [playerId, Array.from(tasks)]));
+      }
+
+      this.io.to(compactSocketIds).emit('scoresUpdated', payload);
+    }
+
+    if (legacySocketIds.length > 0) {
+      // Keep previously released browser and Capacitor bundles working while
+      // newly connected clients use the compact protocol above.
+      this.io.to(legacySocketIds).emit('scoresUpdated', {
+        scores: this.scoreEntries(room),
+        snapshot: this.toSnapshot(room)
+      } satisfies ScoresUpdatedPayload);
+    }
   }
 
   private wordWasTakenByAnotherPlayer(room: InternalRoom, playerId: string, word: string): boolean {
@@ -1699,6 +1783,7 @@ class GameRoomManager {
       currentRound: room.currentRound,
       totalRounds: room.settings.rounds,
       acceptedWords: this.acceptedWordsRecord(room),
+      acceptedWordCounts: this.acceptedWordCountsRecord(room),
       teamScores: this.teamScores(room),
       bettingBets: Object.fromEntries(room.currentBets),
       bettingAverages: Object.fromEntries(room.players.map((player) => [player.id, this.recentAverageWordsFor(room, player.id)])),
@@ -1803,12 +1888,25 @@ class GameRoomManager {
     return record;
   }
 
+  private acceptedWordCountsRecord(room: InternalRoom): Record<string, number> {
+    return Object.fromEntries(Array.from(room.acceptedWords.entries()).map(([playerId, playerWords]) => [playerId, playerWords.size]));
+  }
+
   private scoreEntries(room: InternalRoom): Array<[string, number]> {
     return room.players.map((player) => [player.id, player.score]);
   }
 
+  private changedScoreEntries(room: InternalRoom): Array<[string, number]> {
+    const changed = room.players
+      .filter((player) => room.lastEmittedScores.get(player.id) !== player.score)
+      .map((player) => [player.id, player.score] as [string, number]);
+    room.lastEmittedScores = new Map(room.players.map((player) => [player.id, player.score]));
+    return changed;
+  }
+
   private clearTimers(room: InternalRoom): void {
     this.clearTickTimer(room);
+    this.clearQueuedScoreUpdate(room);
     if (room.nextRoundTimer) {
       clearTimeout(room.nextRoundTimer);
       room.nextRoundTimer = undefined;
@@ -1823,6 +1921,13 @@ class GameRoomManager {
     if (room.tickTimer) {
       clearInterval(room.tickTimer);
       room.tickTimer = undefined;
+    }
+  }
+
+  private clearQueuedScoreUpdate(room: InternalRoom): void {
+    if (room.scoreUpdateTimer) {
+      clearTimeout(room.scoreUpdateTimer);
+      room.scoreUpdateTimer = undefined;
     }
   }
 }
@@ -2105,11 +2210,15 @@ const io: TypedIo = new Server(fastify.server, {
   }
 });
 
-const manager = new GameRoomManager(io, words, analytics);
+const manager = new GameRoomManager(io, words, validWordIndex, analytics);
 
 function clientIdForSocket(socket: TypedSocket): string | undefined {
   const parsed = ClientIdSchema.safeParse(socket.handshake.auth?.clientId);
   return parsed.success ? parsed.data : undefined;
+}
+
+function supportsCompactScoreUpdates(socket: TypedSocket): boolean {
+  return Number(socket.handshake.auth?.scoreUpdateProtocol) >= 2;
 }
 
 function analyticsIdentityForSocket(socket: TypedSocket): AnalyticsVisitorIdentity | undefined {
@@ -2198,6 +2307,7 @@ function restoreReconnectSession(socket: TypedSocket, clientId: string): boolean
   const previousSocketId = previousSession.socketId;
   const rebound = manager.rebindPlayerSocket(previousSocketId, socket.id);
 
+  compactScoreUpdateSocketIds.delete(previousSocketId);
   previousSession.socketId = socket.id;
   previousSession.removalTimer = undefined;
   clientIdBySocketId.delete(previousSocketId);
@@ -2270,6 +2380,7 @@ io.on('connection', (socket) => {
   const clientId = clientIdForSocket(socket);
   const analyticsIdentity = analyticsIdentityForSocket(socket);
   if (clientId && !restoreReconnectSession(socket, clientId)) return;
+  if (supportsCompactScoreUpdates(socket)) compactScoreUpdateSocketIds.add(socket.id);
 
   const wasRebound = reboundSocketIds.delete(socket.id);
   // A Socket.IO recovered connection may have had its previous analytics mapping
@@ -2547,6 +2658,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', (reason) => {
+    compactScoreUpdateSocketIds.delete(socket.id);
     const roomId = manager.findRoomIdForSocket(socket.id);
     fastify.log.info({ reason }, 'socket disconnected');
 
