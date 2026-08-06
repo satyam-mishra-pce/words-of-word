@@ -383,7 +383,8 @@ async function connectClient(index) {
     autoConnect: false,
     forceNew: true,
     reconnection: false,
-    timeout: CONNECT_TIMEOUT_MS
+    timeout: CONNECT_TIMEOUT_MS,
+    auth: { scoreUpdateProtocol: 2 }
   });
   const client = createClient(index, socket);
 
