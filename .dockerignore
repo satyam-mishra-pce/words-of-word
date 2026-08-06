@@ -1,0 +1,15 @@
+.git
+.pi
+.pi-subagents
+.turbo
+**/.turbo
+node_modules
+**/node_modules
+logs
+**/logs
+dist
+**/dist
+coverage
+.DS_Store
+apps/web/android
+apps/web/ios

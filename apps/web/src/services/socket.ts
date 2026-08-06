@@ -11,12 +11,13 @@ const analyticsIdentity = getAnalyticsIdentity();
 let appIsActive = true;
 
 const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io(socketUrl, {
-  ...((clientId || analyticsIdentity) ? {
-    auth: {
-      ...(clientId ? { clientId } : {}),
-      ...(analyticsIdentity ? { analytics: analyticsIdentity } : {})
-    }
-  } : {}),
+  auth: {
+    // Lets the server use compact live-score patches while keeping its legacy
+    // full-snapshot event shape for older installed/mobile clients.
+    scoreUpdateProtocol: 2,
+    ...(clientId ? { clientId } : {}),
+    ...(analyticsIdentity ? { analytics: analyticsIdentity } : {})
+  },
   reconnection: true,
   reconnectionAttempts: 8,
   reconnectionDelay: 600,
