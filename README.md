@@ -71,12 +71,35 @@ curl -H "Authorization: Bearer $ANALYTICS_TOKEN" \
 ```
 
 The endpoint is unavailable when no token is configured and responses use
-`Cache-Control: no-store`. Analytics are atomically written to
-`ANALYTICS_AGGREGATE_FILE`, defaulting to `logs/aggregate-analytics.json`. The
-file includes compact pseudonymous retention profiles for the most recent 120
-days; it does not include raw visitor IDs. Render's free filesystem is
-ephemeral, so all history resets on a deploy/restart unless that path is backed
-by durable storage. Download reports regularly if running on the free plan.
+`Cache-Control: no-store`. Production uses `ANALYTICS_DATABASE_URL` for a
+managed PostgreSQL store. It keeps the private aggregate state (including the
+HMAC salt and pseudonymous retention ledger) plus an append-only, timestamped
+ledger of allowlisted aggregate metric deltas. To count unique visitors in an
+exact time window, connection rows also contain an HMAC-pseudonymous visitor
+key—never the raw browser ID. Treat that permanent, linkable key as
+pseudonymous analytics data. The store never contains names, room codes, typed
+words, scores, IPs, user agents, raw visitor IDs, or socket IDs.
+
+`render.yaml` provisions `words-of-word-analytics` and wires its private
+connection string into the web service. It is a managed `basic-256mb` Render
+Postgres database, so syncing the Blueprint requires a paid database plan.
+`REQUIRE_DURABLE_ANALYTICS=true` makes the server fail at boot rather than
+silently write analytics to Render Free's ephemeral filesystem if that database
+is unavailable. Local development can omit both variables and uses
+`ANALYTICS_AGGREGATE_FILE` (default: `logs/aggregate-analytics.json`) as a
+non-durable fallback.
+
+The dashboard's **Time window** control sends an explicit UTC `[from, to)`
+range to `GET /admin/analytics`; the browser converts the local date/time
+inputs to UTC. New aggregate metrics and traffic can be filtered exactly by
+that range. Retention intentionally remains an all-time, full-UTC-day cohort
+signal. On a new database, startup imports `ANALYTICS_AGGREGATE_FILE` once if
+that file is present (override the source with `ANALYTICS_MIGRATION_FILE`),
+preserving its all-time state and HMAC salt before any new write. Earlier data
+still has no timestamped metric deltas, so it cannot be
+reconstructed into an exact historical window; the dashboard identifies the
+first range-ready timestamp. Already-lost Render Free data cannot be recovered
+from source code.
 
 If this project was deployed with the older detailed analytics implementation,
 remove its legacy `logs/game-analytics.jsonl` file from deployment storage: it

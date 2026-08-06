@@ -2,9 +2,23 @@ import { getGameServerUrl } from './platform';
 
 export type CounterMap = Record<string, number>;
 
+export type AnalyticsReportWindow = {
+  /** UTC ISO timestamp, inclusive. */
+  from: string;
+  /** UTC ISO timestamp, exclusive. */
+  to: string;
+};
+
 export interface AnalyticsReport {
   version: number;
   updatedAt: string;
+  window: {
+    from: string;
+    to: string;
+    isAllTime: boolean;
+    exactMetricsAvailable: boolean;
+    metricsRecordedFrom: string;
+  };
   totals: CounterMap;
   byGameMode: Record<string, {
     roomsCreated: number;
@@ -107,8 +121,11 @@ export class AnalyticsUnauthorizedError extends Error {
   }
 }
 
-function analyticsUrl(path = ''): string {
-  return `${getGameServerUrl()}/admin/analytics${path}`;
+function analyticsUrl(path = '', window?: AnalyticsReportWindow): string {
+  const base = `${getGameServerUrl()}/admin/analytics${path}`;
+  if (!window) return base;
+  const query = new URLSearchParams({ from: window.from, to: window.to });
+  return `${base}?${query.toString()}`;
 }
 
 async function parsePayload(response: Response): Promise<{ ok?: boolean; data?: AnalyticsReport; error?: string }> {
@@ -119,8 +136,8 @@ async function parsePayload(response: Response): Promise<{ ok?: boolean; data?: 
   }
 }
 
-export async function loadAnalyticsReport(): Promise<AnalyticsReport> {
-  const response = await fetch(analyticsUrl(), {
+export async function loadAnalyticsReport(window?: AnalyticsReportWindow): Promise<AnalyticsReport> {
+  const response = await fetch(analyticsUrl('', window), {
     credentials: 'same-origin',
     cache: 'no-store',
     headers: { Accept: 'application/json' }

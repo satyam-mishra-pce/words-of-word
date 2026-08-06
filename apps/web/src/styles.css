@@ -4263,6 +4263,46 @@ body:has(.game-shell.has-gameplay-chrome),
 }
 .analytics-heading .muted { margin: 0; font-size: 0.78rem; }
 .analytics-heading > .ui-btn { margin-top: 4px; }
+.analytics-window {
+  display: grid;
+  grid-template-columns: minmax(154px, 0.8fr) minmax(300px, 1.35fr) minmax(300px, 1.55fr);
+  align-items: center;
+  gap: 18px 28px;
+  margin: 0 0 clamp(30px, 5vw, 52px);
+  padding: 15px 0;
+  border-top: 1px solid var(--sub-2);
+  border-bottom: 1px solid var(--sub-2);
+}
+.analytics-window__copy { display: grid; gap: 5px; }
+.analytics-window__copy > span,
+.analytics-window__fields label > span {
+  color: var(--sub);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.analytics-window__copy small { color: var(--sub); font-size: 0.59rem; line-height: 1.55; }
+.analytics-window__presets { display: flex; flex-wrap: wrap; gap: 4px; }
+.analytics-window__presets .ui-btn { min-height: 28px; padding-inline: 9px; font-size: 0.6rem; }
+.analytics-window__fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; gap: 8px; }
+.analytics-window__fields label { display: grid; gap: 5px; min-width: 0; }
+.analytics-window__fields .ui-input {
+  min-width: 0;
+  height: 34px;
+  padding-inline: 8px;
+  color-scheme: dark;
+  font-size: 0.66rem;
+}
+.analytics-window__fields .ui-btn { min-height: 34px; padding-inline: 13px; }
+.analytics-window__error,
+.analytics-window__notice {
+  margin: -10px 0 clamp(26px, 4vw, 38px);
+  color: #d87f65;
+  font-size: 0.64rem;
+  line-height: 1.65;
+}
+.analytics-window__notice { border-left: 2px solid currentColor; padding-left: 10px; }
 .analytics-overview {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -4431,6 +4471,8 @@ body:has(.game-shell.has-gameplay-chrome),
   .analytics-section__header { gap: 12px; }
   .analytics-section__note { font-size: 0.57rem; }
   .analytics-settings { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .analytics-window { grid-template-columns: 1fr; gap: 12px; }
+  .analytics-window__fields { max-width: 620px; }
 }
 
 @media (max-width: 430px) {
@@ -4439,6 +4481,8 @@ body:has(.game-shell.has-gameplay-chrome),
   .analytics-private { display: none; }
   .analytics-heading { align-items: flex-end; gap: 12px; }
   .analytics-heading > .ui-btn { flex: 0 0 auto; }
+  .analytics-window__fields { grid-template-columns: 1fr; align-items: stretch; }
+  .analytics-window__fields .ui-btn { width: 100%; }
   .analytics-section__header { align-items: flex-end; }
   .analytics-section__note { max-width: 112px; }
   .analytics-retention { gap: 8px; }

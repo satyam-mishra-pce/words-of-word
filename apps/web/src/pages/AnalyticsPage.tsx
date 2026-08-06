@@ -1,7 +1,8 @@
-import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Button } from '../components/ui';
 import {
   AnalyticsReport,
+  AnalyticsReportWindow,
   AnalyticsUnauthorizedError,
   CounterMap,
   DailyMetric,
@@ -59,6 +60,100 @@ function formattedDate(value: string): string {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.valueOf())) return 'just now';
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(parsed);
+}
+
+function toDateTimeInput(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) return '';
+  const local = new Date(date.valueOf() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+}
+
+function toUtcIso(value: string): string | undefined {
+  const date = new Date(value);
+  return Number.isNaN(date.valueOf()) ? undefined : date.toISOString();
+}
+
+function reportWindowLabel(window: AnalyticsReport['window']): string {
+  if (window.isAllTime) return 'all time';
+  return `${formattedDate(window.from)} – ${formattedDate(window.to)}`;
+}
+
+function recentWindow(milliseconds: number): AnalyticsReportWindow {
+  const to = new Date();
+  return { from: new Date(to.valueOf() - milliseconds).toISOString(), to: to.toISOString() };
+}
+
+type TimeWindowPickerProps = {
+  disabled: boolean;
+  value: AnalyticsReportWindow | undefined;
+  onChange: (value: AnalyticsReportWindow | undefined) => void;
+};
+
+function TimeWindowPicker({ disabled, onChange, value }: TimeWindowPickerProps): JSX.Element {
+  const [from, setFrom] = useState(() => value ? toDateTimeInput(value.from) : '');
+  const [to, setTo] = useState(() => value ? toDateTimeInput(value.to) : '');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    setFrom(value ? toDateTimeInput(value.from) : '');
+    setTo(value ? toDateTimeInput(value.to) : '');
+    setError('');
+  }, [value?.from, value?.to]);
+
+  const apply = (): void => {
+    if (!from && !to) {
+      setError('');
+      onChange(undefined);
+      return;
+    }
+    const fromIso = toUtcIso(from);
+    const toIso = toUtcIso(to);
+    if (!fromIso || !toIso) {
+      setError('Choose both a start and end time.');
+      return;
+    }
+    if (Date.parse(fromIso) >= Date.parse(toIso)) {
+      setError('The end time must be after the start time.');
+      return;
+    }
+    setError('');
+    onChange({ from: fromIso, to: toIso });
+  };
+
+  const choosePreset = (next: AnalyticsReportWindow | undefined): void => {
+    setError('');
+    setFrom(next ? toDateTimeInput(next.from) : '');
+    setTo(next ? toDateTimeInput(next.to) : '');
+    onChange(next);
+  };
+
+  return (
+    <section className="analytics-window" aria-label="Analytics time window">
+      <div className="analytics-window__copy">
+        <span>Time window</span>
+        <small>Times are interpreted in your local time; reports are stored in UTC.</small>
+      </div>
+      <div className="analytics-window__presets" aria-label="Time window presets">
+        <Button disabled={disabled} onClick={() => { choosePreset(undefined); }} size="sm" type="button" variant="ghost">All time</Button>
+        <Button disabled={disabled} onClick={() => { choosePreset(recentWindow(24 * 60 * 60_000)); }} size="sm" type="button" variant="ghost">24 hours</Button>
+        <Button disabled={disabled} onClick={() => { choosePreset(recentWindow(7 * 24 * 60 * 60_000)); }} size="sm" type="button" variant="ghost">7 days</Button>
+        <Button disabled={disabled} onClick={() => { choosePreset(recentWindow(30 * 24 * 60 * 60_000)); }} size="sm" type="button" variant="ghost">30 days</Button>
+      </div>
+      <div className="analytics-window__fields">
+        <label>
+          <span>Start</span>
+          <input className="ui-input" disabled={disabled} onChange={(event) => { setFrom(event.currentTarget.value); setError(''); }} type="datetime-local" value={from} />
+        </label>
+        <label>
+          <span>End</span>
+          <input className="ui-input" disabled={disabled} onChange={(event) => { setTo(event.currentTarget.value); setError(''); }} type="datetime-local" value={to} />
+        </label>
+        <Button disabled={disabled} onClick={apply} size="sm" type="button" variant="secondary">Apply</Button>
+      </div>
+      {error && <p className="analytics-window__error" role="alert">{error}</p>}
+    </section>
+  );
 }
 
 type MetricProps = {
@@ -132,7 +227,7 @@ function BarList({ entries, empty = 'No activity recorded yet.' }: { entries: Ba
 }
 
 function TrafficChart({ daily }: { daily: DailyMetric[] }): JSX.Element {
-  const series = daily.slice(-45);
+  const series = daily;
   const hasActivity = series.some((point) => point.uniqueVisitors > 0 || point.gamesStarted > 0);
   if (!hasActivity) return <p className="analytics-empty analytics-empty--chart">Traffic appears here after the first visit or game.</p>;
 
@@ -158,7 +253,7 @@ function TrafficChart({ daily }: { daily: DailyMetric[] }): JSX.Element {
 
   return (
     <>
-      <div className="analytics-traffic" role="img" aria-label="Unique visitors and games started over the last 45 days">
+      <div className="analytics-traffic" role="img" aria-label="Unique visitors and games started in the selected time window">
         <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
           {[0, 0.5, 1].map((step) => {
             const y = pad.top + innerHeight - innerHeight * step;
@@ -355,13 +450,16 @@ function LoginPanel({ onAuthenticated }: { onAuthenticated: () => Promise<void> 
   );
 }
 
-function Dashboard({ onEndSession, onRefresh, refreshing, report }: {
+function Dashboard({ onEndSession, onRefresh, onWindowChange, refreshing, report, window }: {
   onEndSession: () => Promise<void>;
   onRefresh: () => Promise<void>;
+  onWindowChange: (value: AnalyticsReportWindow | undefined) => void;
   refreshing: boolean;
   report: AnalyticsReport;
+  window: AnalyticsReportWindow | undefined;
 }): JSX.Element {
-  const completion = rate(total(report, 'gamesFinished'), total(report, 'gamesStarted')); 
+  const isScoped = !report.window.isAllTime;
+  const completion = rate(total(report, 'gamesFinished'), total(report, 'gamesStarted'));
   const averageRounds = rate(report.engagement.playerRounds, report.engagement.participantsInStartedGames);
   const activeDropOff = rate(report.engagement.activeGameDepartures, report.engagement.playerDepartures);
   const roomSizeEntries = Object.entries(report.engagement.roomSizeAtGameStart).map(([label, value]) => ({ label: compactLabel(label), value }));
@@ -387,27 +485,41 @@ function Dashboard({ onEndSession, onRefresh, refreshing, report }: {
         <div>
           <p className="eyebrow">first-party product analytics</p>
           <h1 id="analytics-title">The game, in numbers.</h1>
-          <p className="muted">Updated {formattedDate(report.updatedAt)} · all time unless noted.</p>
+          <p className="muted">Updated {formattedDate(report.updatedAt)} · {reportWindowLabel(report.window)}.</p>
         </div>
         <Button isLoading={refreshing} onClick={() => { void onRefresh(); }} size="sm" variant="secondary">Refresh</Button>
       </header>
 
+      <TimeWindowPicker disabled={refreshing} onChange={onWindowChange} value={window} />
+
+      {!report.window.exactMetricsAvailable && isScoped && (
+        <p className="analytics-window__notice" role="status">
+          Detailed metrics are available from {formattedDate(report.window.metricsRecordedFrom)}. Earlier selected activity is retained in the traffic series, but cannot be reconstructed into an exact window.
+        </p>
+      )}
+
       <section className="analytics-overview" aria-label="Analytics overview">
-        <Metric detail={`${count(report.audience.active7d)} active this week`} label="Known players" value={count(report.audience.knownVisitors)} emphasis />
-        <Metric detail={`${count(report.audience.sessionsToday)} sessions today`} label="Active · 30d" value={count(report.audience.active30d)} />
+        <Metric detail={isScoped ? 'pseudonymous installations' : `${count(report.audience.active7d)} active this week`} label={isScoped ? 'Players in window' : 'Known players'} value={count(report.audience.knownVisitors)} emphasis />
+        <Metric detail={isScoped ? 'server-confirmed sessions' : `${count(report.audience.sessionsToday)} sessions today`} label={isScoped ? 'Sessions in window' : 'Active · 30d'} value={count(isScoped ? total(report, 'visitorSessions') : report.audience.active30d)} />
         <Metric detail={`${count(report.totals.roomsPlayable)} rooms reached 2+`} label="Games started" value={count(report.totals.gamesStarted)} />
         <Metric detail={`${count(report.totals.gamesFinished)} completed`} label="Completion" value={percent(completion)} />
       </section>
 
-      <AnalyticsSection eyebrow="traffic" note="last 45 days · UTC" title="Audience and games">
+      <AnalyticsSection eyebrow="traffic" note={`${isScoped ? 'selected window' : 'all recorded history'} · UTC day view`} title="Audience and games">
         <TrafficChart daily={report.trends.daily} />
       </AnalyticsSection>
 
       <div className="analytics-grid analytics-grid--two">
-        <AnalyticsSection eyebrow="return rate" note="exact anonymous cohorts" title="Retention">
-          <Retention retention={report.audience.retention} />
-          <p className="analytics-definition">A return is an active visit exactly 1, 7, or 30 days after the first recorded visit.</p>
-        </AnalyticsSection>
+        {isScoped ? (
+          <AnalyticsSection eyebrow="return rate" note="all-time UTC-day cohort signal" title="Retention">
+            <p className="analytics-definition">Retention uses full UTC-day cohorts, so it remains an all-time signal while a date/time window is selected.</p>
+          </AnalyticsSection>
+        ) : (
+          <AnalyticsSection eyebrow="return rate" note="exact anonymous cohorts" title="Retention">
+            <Retention retention={report.audience.retention} />
+            <p className="analytics-definition">A return is an active visit exactly 1, 7, or 30 days after the first recorded visit.</p>
+          </AnalyticsSection>
+        )}
         <AnalyticsSection eyebrow="room health" title="Lobby to finish">
           <Funnel report={report} />
         </AnalyticsSection>
@@ -431,7 +543,7 @@ function Dashboard({ onEndSession, onRefresh, refreshing, report }: {
         </AnalyticsSection>
       </div>
 
-      <AnalyticsSection eyebrow="timing" note="sessions by UTC hour" title="When players show up">
+      <AnalyticsSection eyebrow="timing" note={isScoped ? 'sessions in the selected window · UTC' : 'sessions by UTC hour'} title="When players show up">
         <PeakHeatmap points={report.trends.hourOfWeek} />
       </AnalyticsSection>
 
@@ -440,7 +552,7 @@ function Dashboard({ onEndSession, onRefresh, refreshing, report }: {
       </AnalyticsSection>
 
       <div className="analytics-grid analytics-grid--two">
-        <AnalyticsSection eyebrow="product behavior" title="Feature adoption">
+        <AnalyticsSection eyebrow="product behavior" title={isScoped ? 'Feature adoption in window' : 'Feature adoption'}>
           <BarList entries={featureEntries} empty="Feature usage appears as players use the app." />
         </AnalyticsSection>
         <AnalyticsSection eyebrow="game setup" title="Most-used settings">
@@ -461,15 +573,20 @@ export default function AnalyticsPage(): JSX.Element | null {
   const [state, setState] = useState<'loading' | 'unauthenticated' | 'ready' | 'error'>('loading');
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [analyticsWindow, setAnalyticsWindow] = useState<AnalyticsReportWindow | undefined>();
+  const latestRequest = useRef(0);
 
   const refresh = useCallback(async (): Promise<void> => {
+    const request = ++latestRequest.current;
     setRefreshing(true);
     setError('');
     try {
-      const nextReport = await loadAnalyticsReport();
+      const nextReport = await loadAnalyticsReport(analyticsWindow);
+      if (request !== latestRequest.current) return;
       setReport(nextReport);
       setState('ready');
     } catch (reason) {
+      if (request !== latestRequest.current) return;
       setReport(undefined);
       if (reason instanceof AnalyticsUnauthorizedError) {
         setState('unauthenticated');
@@ -478,15 +595,16 @@ export default function AnalyticsPage(): JSX.Element | null {
         setError(reason instanceof Error ? reason.message : 'Could not load analytics.');
       }
     } finally {
-      setRefreshing(false);
+      if (request === latestRequest.current) setRefreshing(false);
     }
-  }, []);
+  }, [analyticsWindow]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
   const endSession = useCallback(async (): Promise<void> => {
+    latestRequest.current += 1;
     try {
       await endAnalyticsSession();
     } finally {
@@ -522,5 +640,14 @@ export default function AnalyticsPage(): JSX.Element | null {
     );
   }
 
-  return report ? <Dashboard onEndSession={endSession} onRefresh={refresh} refreshing={refreshing} report={report} /> : null;
+  return report ? (
+    <Dashboard
+      onEndSession={endSession}
+      onRefresh={refresh}
+      onWindowChange={(value) => { latestRequest.current += 1; setAnalyticsWindow(value); }}
+      refreshing={refreshing}
+      report={report}
+      window={analyticsWindow}
+    />
+  ) : null;
 }
