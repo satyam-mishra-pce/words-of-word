@@ -5,6 +5,7 @@ import { readStoredValue, writeStoredValue } from '../services/storage';
 import { getDailyChallengeUrl } from '../services/platform';
 import { shareContent } from '../services/nativeShare';
 import { trackFeatureUsage } from '../services/aggregateAnalytics';
+import { validateDailyWord } from '../services/dailyWord';
 
 const DAILY_SECONDS = 30;
 const DAILY_WORDS = [
@@ -114,6 +115,7 @@ export default function DailyWordPage(): JSX.Element {
   );
   const [shareStatus, setShareStatus] = useState('');
   const [isWordInputFocused, setIsWordInputFocused] = useState(false);
+  const [isValidatingWord, setIsValidatingWord] = useState(false);
   const timerRef = useRef<number | undefined>();
   const inputRef = useRef<HTMLInputElement>(null);
   const inputFocusRequestedRef = useRef(false);
@@ -193,6 +195,7 @@ export default function DailyWordPage(): JSX.Element {
     setInputWord('');
     setTimeLeft(DAILY_SECONDS);
     setIsFinished(false);
+    setIsValidatingWord(false);
     inputFocusRequestedRef.current = true;
     setIsRunning(true);
     setShareStatus('');
@@ -208,9 +211,9 @@ export default function DailyWordPage(): JSX.Element {
     }, 250);
   }
 
-  function submitWord(event: FormEvent<HTMLFormElement>): void {
+  async function submitWord(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    if (!isRunning || !attemptRef.current) return;
+    if (!isRunning || !attemptRef.current || isValidatingWord) return;
 
     const word = inputWord.trim().toLowerCase();
     setInputWord('');
@@ -229,12 +232,35 @@ export default function DailyWordPage(): JSX.Element {
       return;
     }
 
-    const nextWords = [...attemptRef.current.words, word].sort();
-    attemptRef.current = { ...attemptRef.current, words: nextWords };
-    saveDailyAttempt(attemptRef.current);
-    setWords(nextWords);
-    setMessage(`Accepted: ${word}`);
-    requestAnimationFrame(() => inputRef.current?.focus());
+    setIsValidatingWord(true);
+    try {
+      const validation = await validateDailyWord(sourceWord, word);
+      const currentAttempt = attemptRef.current;
+      if (!currentAttempt || currentAttempt.finished) return;
+      if (currentAttempt.endsAt <= Date.now()) {
+        finishAttempt(currentAttempt.words);
+        return;
+      }
+      if (!validation.isValid) {
+        setMessage(validation.message);
+        return;
+      }
+      if (currentAttempt.words.includes(validation.normalizedWord)) {
+        setMessage('You already made that word.');
+        return;
+      }
+
+      const nextWords = [...currentAttempt.words, validation.normalizedWord].sort();
+      attemptRef.current = { ...currentAttempt, words: nextWords };
+      saveDailyAttempt(attemptRef.current);
+      setWords(nextWords);
+      setMessage(`Accepted: ${validation.normalizedWord}`);
+    } catch {
+      setMessage('Could not validate that word. Check your connection and try again.');
+    } finally {
+      setIsValidatingWord(false);
+      requestAnimationFrame(() => inputRef.current?.focus());
+    }
   }
 
   async function shareScore(): Promise<void> {
@@ -321,7 +347,7 @@ export default function DailyWordPage(): JSX.Element {
               enterKeyHint="done"
             />
           </div>
-          <Button variant="primary" type="submit" disabled={!isRunning || !inputWord.trim()}>Go</Button>
+          <Button variant="primary" type="submit" disabled={!isRunning || isValidatingWord || !inputWord.trim()}>{isValidatingWord ? 'Checking…' : 'Go'}</Button>
         </form>
 
         <div className="words-card daily-result-card">
@@ -359,6 +385,7 @@ export default function DailyWordPage(): JSX.Element {
         <ul>
           <li>Everyone gets the same source word.</li>
           <li>Use each letter no more than it appears.</li>
+          <li>Only real words of at least 2 letters count.</li>
           <li>Find as many words as you can in 30 seconds.</li>
           <li>Resubmit anytime to beat your score.</li>
         </ul>

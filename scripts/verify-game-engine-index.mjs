@@ -12,6 +12,7 @@ const require = createRequire(new URL('../apps/server/package.json', import.meta
 const dictionary = require('an-array-of-english-words');
 const sources = [
   'astronaut',
+  'transformation',
   'characteristically',
   'counterrevolutionaries',
   'pneumonoultramicroscopicsilicovolcanoconiosis',
@@ -29,5 +30,9 @@ for (const source of sources) {
   if (!equivalent) {
     throw new Error(`Indexed lookup disagrees with the compatibility path for ${source}.`);
   }
-  console.log(`${source}: ${actual.size} valid words (match).`);
+  const oneLetterWords = [...actual].filter((word) => word.length === 1);
+  if (oneLetterWords.length > 0) {
+    throw new Error(`Indexed lookup should not accept one-letter submissions for ${source}: ${oneLetterWords.join(', ')}`);
+  }
+  console.log(`${source}: ${actual.size} valid words (match, no one-letter words).`);
 }

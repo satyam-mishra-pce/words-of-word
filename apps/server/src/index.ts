@@ -54,11 +54,15 @@ import {
 import { AggregateAnalyticsStore, type AnalyticsVisitorIdentity } from './aggregateAnalytics.js';
 import { createAnalyticsPersistence } from './analyticsPersistence.js';
 import {
+  canMakeWord,
   chooseSourceWord,
   createValidWordIndex,
   createValidWordsFromIndex,
   DUPLICATE_WORD_PENALTY,
   evaluateSubmission,
+  isAlphabeticWord,
+  MINIMUM_ACCEPTED_WORD_LENGTH,
+  normalizeWord,
   POINTS_PER_WORD,
   scoreWord,
   type ValidWordIndex
@@ -123,6 +127,10 @@ const AnalyticsVisitorIdentitySchema = z.object({
   visitorId: z.string().uuid(),
   sessionId: z.string().uuid()
 }).strict();
+const DailyWordValidationPayloadSchema = z.object({
+  sourceWord: z.string().trim().min(1).max(40),
+  word: z.string().trim().min(1).max(40)
+}).strict();
 const ONLINE_ROOM_SETTINGS: GameSettings = {
   minWordLength: 5,
   timePerRound: 30,
@@ -159,6 +167,7 @@ const requireDictionary = createRequire(import.meta.url);
 const rawWords: unknown = requireDictionary('an-array-of-english-words');
 const words = z.array(z.string()).parse(rawWords);
 const validWordIndex = createValidWordIndex(words);
+const dictionaryWordSet = new Set(validWordIndex.words);
 
 /**
  * A deterministic source word is available only to the local capacity harness.
@@ -176,6 +185,43 @@ function localLoadTestSourceWord(): string | undefined {
 }
 
 const LOCAL_LOAD_TEST_SOURCE_WORD = localLoadTestSourceWord();
+
+interface DailyWordValidationResult {
+  isValid: boolean;
+  normalizedWord: string;
+  message: string;
+}
+
+function evaluateDailyWordSubmission(sourceWord: string, word: string): DailyWordValidationResult {
+  const normalizedSource = normalizeWord(sourceWord);
+  const normalizedWord = normalizeWord(word);
+
+  if (!normalizedWord) {
+    return { isValid: false, normalizedWord, message: 'Enter a word first.' };
+  }
+
+  if (!isAlphabeticWord(normalizedWord)) {
+    return { isValid: false, normalizedWord, message: 'Words can only contain letters.' };
+  }
+
+  if (!isAlphabeticWord(normalizedSource)) {
+    return { isValid: false, normalizedWord, message: 'The daily word is unavailable right now.' };
+  }
+
+  if (normalizedWord.length < MINIMUM_ACCEPTED_WORD_LENGTH) {
+    return { isValid: false, normalizedWord, message: `Words must be at least ${MINIMUM_ACCEPTED_WORD_LENGTH} letters.` };
+  }
+
+  if (!canMakeWord(normalizedWord, normalizedSource)) {
+    return { isValid: false, normalizedWord, message: 'That word cannot be made from the daily word.' };
+  }
+
+  if (!dictionaryWordSet.has(normalizedWord)) {
+    return { isValid: false, normalizedWord, message: 'That is not in the word list.' };
+  }
+
+  return { isValid: true, normalizedWord, message: 'Word accepted!' };
+}
 
 type TypedIo = Server<ClientToServerEvents, ServerToClientEvents>;
 type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
@@ -2096,6 +2142,20 @@ async function sendAnalyticsApplication(reply: import('fastify').FastifyReply): 
 fastify.get('/health', async () => ({ ok: true }));
 
 fastify.get('/stats', async () => ({ ok: true, data: analytics.publicStats() }));
+
+fastify.post('/api/daily/validate-word', async (request, reply) => {
+  const payload = DailyWordValidationPayloadSchema.safeParse(request.body);
+  if (!payload.success) {
+    return reply
+      .header('Cache-Control', 'no-store')
+      .code(400)
+      .send({ ok: false, error: validationMessage(payload.error.issues[0]?.message ?? 'Invalid daily word validation request.') });
+  }
+
+  return reply
+    .header('Cache-Control', 'no-store')
+    .send({ ok: true, data: evaluateDailyWordSubmission(payload.data.sourceWord, payload.data.word) });
+});
 
 fastify.post('/admin/analytics/session', async (request, reply) => {
   const configuredToken = process.env.ANALYTICS_TOKEN;

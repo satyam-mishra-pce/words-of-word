@@ -8,6 +8,7 @@ export interface WordSubmissionEvaluation {
 
 export const POINTS_PER_WORD = 3;
 export const DUPLICATE_WORD_PENALTY = -3;
+export const MINIMUM_ACCEPTED_WORD_LENGTH = 2;
 
 export function normalizeWord(word: string): string {
   return word.trim().toLowerCase();
@@ -81,7 +82,7 @@ export function createValidWordIndex(dictionary: readonly string[]): ValidWordIn
 
   for (const dictionaryWord of dictionary) {
     const normalizedWord = normalizeWord(dictionaryWord);
-    if (!isAlphabeticWord(normalizedWord)) continue;
+    if (!isAlphabeticWord(normalizedWord) || normalizedWord.length < MINIMUM_ACCEPTED_WORD_LENGTH) continue;
 
     const { counts: letterCounts, mask } = sourceLetterCounts(normalizedWord);
     words.push(normalizedWord);
@@ -136,7 +137,11 @@ export function createValidWords(sourceWord: string, dictionary: readonly string
 
   for (const dictionaryWord of dictionary) {
     const normalizedDictionaryWord = normalizeWord(dictionaryWord);
-    if (isAlphabeticWord(normalizedDictionaryWord) && canMakeWord(normalizedDictionaryWord, normalizedSource)) {
+    if (
+      isAlphabeticWord(normalizedDictionaryWord) &&
+      normalizedDictionaryWord.length >= MINIMUM_ACCEPTED_WORD_LENGTH &&
+      canMakeWord(normalizedDictionaryWord, normalizedSource)
+    ) {
       validWords.add(normalizedDictionaryWord);
     }
   }
@@ -174,6 +179,14 @@ export function evaluateSubmission(
       isValid: false,
       normalizedWord,
       message: 'Words can only contain letters.'
+    };
+  }
+
+  if (normalizedWord.length < MINIMUM_ACCEPTED_WORD_LENGTH) {
+    return {
+      isValid: false,
+      normalizedWord,
+      message: `Words must be at least ${MINIMUM_ACCEPTED_WORD_LENGTH} letters.`
     };
   }
 
