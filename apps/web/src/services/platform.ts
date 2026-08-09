@@ -1,6 +1,8 @@
 import { Capacitor } from '@capacitor/core';
 
 const ROOM_ID_PATTERN = /^[A-Z0-9]{3,16}$/;
+const PRODUCTION_WEB_ORIGIN = 'https://wordsofword.in';
+const PRODUCTION_SERVER_ORIGIN = 'https://words-of-word.onrender.com';
 
 export const isNativeApp = Capacitor.isNativePlatform();
 export const nativePlatform = Capacitor.getPlatform();
@@ -18,7 +20,11 @@ export function getGameServerUrl(): string {
   const configured = configuredUrl(import.meta.env.VITE_SOCKET_URL);
   if (configured) return configured;
 
-  if (!isNativeApp) return window.location.origin;
+  if (!isNativeApp) {
+    const hostname = window.location.hostname;
+    if (hostname === 'wordsofword.in' || hostname.endsWith('.vercel.app')) return PRODUCTION_SERVER_ORIGIN;
+    return window.location.origin;
+  }
 
   // Native release builds are blocked by the mobile build script if this is missing.
   // Keep a clear, non-local fallback so we never accidentally target capacitor://localhost.
@@ -28,7 +34,10 @@ export function getGameServerUrl(): string {
 export function getCanonicalWebUrl(): string | undefined {
   const configured = configuredUrl(import.meta.env.VITE_PUBLIC_WEB_URL);
   if (configured) return configured;
-  return isNativeApp ? undefined : window.location.origin;
+  if (isNativeApp) return undefined;
+  return window.location.hostname === 'wordsofword.in' || window.location.hostname.endsWith('.vercel.app')
+    ? PRODUCTION_WEB_ORIGIN
+    : window.location.origin;
 }
 
 export function getRoomInviteUrl(roomId: string): string {

@@ -1,213 +1,224 @@
-import { FormEvent, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { PlayerAvatarEditor } from '../components/PlayerAvatarEditor';
-import { NativeNotificationPrompt } from '../components/NativeNotificationPrompt';
-import { ThemePicker } from '../components/ThemePicker';
-import { Alert, Avatar, Button, Input } from '../components/ui';
-import { loadPlayerAvatar, loadUsername, savePlayerAvatar, saveUsername } from '../services/session';
-import { getGameServerUrl } from '../services/platform';
-import { trackFeatureUsage } from '../services/aggregateAnalytics';
+import { useState } from 'react';
+import { Alert } from '../components/ui';
+import { GAME_MODE_INFO } from '../data/gameModes';
 
 const FLOAT_CHARS = ['W', 'O', 'R', 'D', 'S', '?'];
-const statsUrl = `${getGameServerUrl()}/stats`;
+const GAME_URL = 'https://wordsofword.in/';
 
-interface PublicStats {
-  activePlayers: number;
-  activeGames: number;
-  wordsFound: number;
-}
+const socialLinks = [
+  { label: 'YouTube', href: 'https://www.youtube.com/@Jugaad-e-Harshit' },
+  { label: 'Instagram', href: 'https://www.instagram.com/words.of.word/' },
+  { label: 'LinkedIn', href: 'https://www.linkedin.com/in/harshit-sharma-55ab311a5' },
+  { label: 'X / Twitter', href: 'https://x.com/Harshit01631557' },
+  { label: 'Email', href: 'mailto:harshit.sharma259999@gmail.com' },
+];
 
-function ArrowIcon(): JSX.Element {
-  return (
-    <svg viewBox="0 0 18 18" aria-hidden="true">
-      <path d="M3 9h11M10 4l5 5-5 5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
-    </svg>
-  );
-}
+const waysToPlay = [
+  {
+    title: 'Multiplayer',
+    copy: 'Create a room, choose your rules, share the room code, and battle friends in real time.',
+  },
+  {
+    title: 'Daily Word',
+    copy: 'A shared daily challenge where everyone gets the same word and can compare results.',
+  },
+];
 
-function EditIcon(): JSX.Element {
-  return (
-    <svg viewBox="0 0 18 18" aria-hidden="true">
-      <path d="m11.8 3.2 3 3M3.5 14.5l2.4-.5 8.5-8.5-2-2L3.9 12l-.4 2.5Z" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.55" />
-    </svg>
-  );
-}
+const gameModes = GAME_MODE_INFO;
 
-function DailyWordIcon(): JSX.Element {
-  return (
-    <svg viewBox="0 0 18 18" aria-hidden="true">
-      <rect x="3" y="3.5" width="12" height="11.5" rx="2" fill="none" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M6 2v3M12 2v3M3.5 7h11" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5" />
-      <path d="m9 9 .55 1.45L11 11l-1.45.55L9 13l-.55-1.45L7 11l1.45-.55L9 9Z" fill="currentColor" />
-    </svg>
-  );
-}
+const screenshots = [
+  { src: '/media/gameplay.png', alt: 'Words of Word gameplay screen' },
+  { src: '/media/final-standings.png', alt: 'Final standings screen' },
+  { src: '/media/game-settings.png', alt: 'Game settings screen' },
+  { src: '/media/daily-word-preview.png', alt: 'Daily Word preview' },
+];
 
 export default function HomePage(): JSX.Element {
-  const navigate = useNavigate();
-  const [username, setUsername] = useState(loadUsername());
-  const [avatar, setAvatar] = useState(loadPlayerAvatar());
-  const [error, setError] = useState('');
-  const [stats, setStats] = useState<PublicStats | undefined>();
-  const [isAvatarEditorOpen, setAvatarEditorOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState<number | undefined>();
+  const [copyNotice, setCopyNotice] = useState('');
+  const activeScreenshot = lightboxIndex === undefined ? undefined : screenshots[lightboxIndex];
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadStats(): Promise<void> {
-      try {
-        const response = await fetch(statsUrl);
-        const payload = await response.json() as { ok: boolean; data?: PublicStats };
-        if (!cancelled && payload.ok) setStats(payload.data);
-      } catch {
-        // Stats are only social proof; never block the home page.
-      }
-    }
-
-    void loadStats();
-    const timer = window.setInterval(loadStats, 15_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, []);
-
-  function updateAvatar(nextAvatar: typeof avatar): void {
-    setAvatar(nextAvatar);
-    savePlayerAvatar(nextAvatar);
+  function showPrevious(): void {
+    setLightboxIndex((current) => current === undefined ? 0 : (current + screenshots.length - 1) % screenshots.length);
   }
 
-  function requireUsername(): string | undefined {
-    const trimmed = username.trim();
-    if (!trimmed) {
-      setError('Choose a player name to enter the room.');
-      return undefined;
-    }
-    saveUsername(trimmed);
-    savePlayerAvatar(avatar);
-    return trimmed;
+  function showNext(): void {
+    setLightboxIndex((current) => current === undefined ? 0 : (current + 1) % screenshots.length);
   }
 
-  function createRoom(): void {
-    if (!requireUsername()) return;
-    trackFeatureUsage('home_create_private_selected');
-    navigate('/settings');
-  }
-
-  function onlineRoom(): void {
-    if (!requireUsername()) return;
-    trackFeatureUsage('home_online_multiplayer_selected');
-    navigate('/online');
-  }
-
-  function joinRoom(): void {
-    if (!requireUsername()) return;
-    trackFeatureUsage('home_join_private_selected');
-    navigate('/join');
-  }
-
-  function submit(event: FormEvent<HTMLFormElement>): void {
-    event.preventDefault();
-    onlineRoom();
+  async function copyShareLink(): Promise<void> {
+    await navigator.clipboard?.writeText(window.location.href);
+    setCopyNotice('Link copied.');
+    window.setTimeout(() => setCopyNotice(''), 1800);
   }
 
   return (
-    <main className="starter-shell">
-      <div className="starter-letter-field" aria-hidden="true">
-        {FLOAT_CHARS.map((char, index) => <span key={`${char}-${index}`}>{char}</span>)}
+    <main className="site-shell">
+      <div className="float-letters" aria-hidden="true">
+        {FLOAT_CHARS.map((char) => (
+          <span key={char} className="float-letter">{char}</span>
+        ))}
       </div>
 
-      <header className="starter-header">
-        <a className="starter-brand" href="/" aria-label="Words of Word home">
-          words <i>of</i> word
-        </a>
-        <div className="starter-header__actions">
-          {stats && (
-            <span className="starter-live-count" title={`${stats.activeGames} live rooms`}>
-              <i /> {stats.activePlayers} playing
-            </span>
-          )}
-          <button type="button" className="starter-daily-link" onClick={() => navigate('/daily')} aria-label="Play the Daily Word challenge">
-            <span className="starter-daily-link__icon"><DailyWordIcon /></span>
-            <span><b>Daily</b> <em>word</em></span>
-            <ArrowIcon />
-          </button>
+      <nav className="site-nav" aria-label="Main navigation">
+        <a className="brand-mark" href="#top">words<span>of</span>word</a>
+        <div className="site-nav__links">
+          <a href={GAME_URL}>play</a>
+          <a href="#ways">ways</a>
+          <a href="#modes">modes</a>
+          <a href="#media">media</a>
+          <a href="#press">press</a>
+          <a href="#creator">creator</a>
         </div>
-      </header>
+      </nav>
 
-      <div className="starter-center">
-        <section className="starter-stage" aria-labelledby="starter-title">
-          <div className="starter-intro">
-            <p className="starter-kicker">word battle · real-time</p>
-            <h1 id="starter-title">words of word</h1>
-            <p>One enormous word. Hundreds hiding inside it. Race your friends to find them all before the clock hits zero.</p>
-            {stats && (
-              <div className="starter-proof" aria-label="Live game stats">
-                <span><strong>{stats.activeGames}</strong> rooms live</span>
-                <span><strong>{stats.wordsFound.toLocaleString()}</strong> words found</span>
-              </div>
-            )}
+      <section id="top" className="portfolio-hero">
+        <div className="portfolio-hero__copy">
+          <p className="eyebrow">word battle · real-time · daily challenge</p>
+          <h1>Words of Word</h1>
+          <p className="hero-copy">
+            A fast multiplayer word game where everyone races to find hidden words inside one big source word.
+          </p>
+          <div className="hero-live-card">
+            <span>live playable build</span>
+            <strong>Play in browser — no install needed.</strong>
           </div>
+          <div className="hero-actions">
+            <a className="ui-btn ui-btn-primary ui-btn-lg hero-primary-cta" href={GAME_URL}>Play the game →</a>
+            <a className="ui-btn ui-btn-secondary ui-btn-lg" href="#media">Watch trailer</a>
+            <button className="ui-btn ui-btn-ghost ui-btn-lg" type="button" onClick={copyShareLink}>Share</button>
+          </div>
+          {copyNotice && <Alert variant="success" style={{ marginTop: 14, maxWidth: 220 }}>{copyNotice}</Alert>}
+        </div>
 
-          <form className="starter-console" onSubmit={submit}>
-            <div className="starter-profile">
-              <button
-                type="button"
-                className="starter-avatar-button"
-                onClick={() => { trackFeatureUsage('avatar_editor_opened'); setAvatarEditorOpen(true); }}
-                aria-label="Customize your player character"
-              >
-                <span className="starter-avatar-frame">
-                  <Avatar name={username} avatar={avatar} size="lg" />
-                  <span className="starter-avatar-edit"><EditIcon /></span>
-                </span>
-              </button>
+        <div className="hero-media-card">
+          <video controls playsInline poster="/media/website-hero-preview.png">
+            <source src="/media/trailer.mp4" type="video/mp4" />
+          </video>
+          <p>official gameplay trailer</p>
+        </div>
+      </section>
 
-              <div className="starter-name-field">
-                <Input
-                  id="username"
-                  aria-label="Player name"
-                  value={username}
-                  onChange={(event) => { setUsername(event.currentTarget.value); setError(''); }}
-                  placeholder="Player name"
-                  maxLength={20}
-                  autoComplete="nickname"
-                  hasError={Boolean(error)}
-                />
-              </div>
-            </div>
+      <section className="section-grid two-col">
+        <article className="site-card">
+          <span className="eyebrow">the idea</span>
+          <h2>What is the game?</h2>
+          <p>
+            Words of Word gives every player the same source word. Your goal is to find as many valid words hidden inside it as possible before time runs out. Short words are safe. Long words are risky. Smart words win.
+          </p>
+        </article>
+        <article className="site-card accent-card">
+          <span className="eyebrow">why it works</span>
+          <h2>Simple to start, hard to master.</h2>
+          <p>
+            It feels casual in the first few seconds, then becomes a battle of speed, vocabulary, memory, and pressure as the leaderboard changes in real time.
+          </p>
+        </article>
+      </section>
 
-            {error && <Alert variant="error">{error}</Alert>}
+      <section id="play" className="play-panel play-panel--centered">
+        <div>
+          <span className="eyebrow">play the game</span>
+          <h2>Jump into a match</h2>
+          <p className="muted">Learn the setup, watch every mode, then jump straight into the live game on wordsofword.in.</p>
+        </div>
+        <div className="play-cta-card">
+          <a className="ui-btn ui-btn-primary ui-btn-lg ui-btn-full" href={GAME_URL}>Open playable website</a>
+          <a className="ui-btn ui-btn-secondary ui-btn-lg ui-btn-full" href={`${GAME_URL}daily`}>Try Daily Word</a>
+        </div>
+      </section>
 
-            <Button variant="primary" size="lg" fullWidth type="submit" className="starter-primary-action">
-              Online Multiplayer <ArrowIcon />
-            </Button>
+      <section id="how" className="site-section">
+        <span className="eyebrow">how to play</span>
+        <h2>Three steps. The clock starts ticking.</h2>
+        <div className="steps-grid">
+          <div><strong>01</strong><h3>Read the source word</h3><p>Everyone receives the same big word at the start of the round.</p></div>
+          <div><strong>02</strong><h3>Type hidden words</h3><p>Submit real words using only letters from the source word.</p></div>
+          <div><strong>03</strong><h3>Climb the scoreboard</h3><p>Score with quantity, speed, and longer discoveries before time runs out.</p></div>
+        </div>
+      </section>
 
-            <div className="starter-private-actions" aria-label="Private room actions">
-              <Button variant="secondary" size="md" type="button" onClick={createRoom}>
-                Create Private Room
-              </Button>
-              <Button variant="secondary" size="md" type="button" onClick={joinRoom}>
-                Join Private Room
-              </Button>
-            </div>
+      <section id="ways" className="site-section">
+        <span className="eyebrow">ways to play</span>
+        <h2>Play with friends or take the daily challenge</h2>
+        <div className="modes-grid modes-grid--two">
+          {waysToPlay.map((mode) => (
+            <article className="site-card" key={mode.title}>
+              <h3>{mode.title}</h3>
+              <p>{mode.copy}</p>
+            </article>
+          ))}
+        </div>
+      </section>
 
-            <NativeNotificationPrompt />
-          </form>
-        </section>
-      </div>
+      <section id="modes" className="site-section">
+        <span className="eyebrow">modes</span>
+        <h2>All modes for different kinds of chaos</h2>
+        <div className="modes-grid modes-grid--seven">
+          {gameModes.map((mode) => (
+            <article className="site-card mode-card" key={mode.value}>
+              {mode.videoSrc && (
+                <video className="mode-card__video" controls muted playsInline preload="metadata" poster={mode.posterSrc}>
+                  <source src={mode.videoSrc} type="video/mp4" />
+                </video>
+              )}
+              <h3>{mode.label}</h3>
+              <p>{mode.description}</p>
+            </article>
+          ))}
+        </div>
+      </section>
 
-      <footer className="home-theme-footer home-theme-footer--starter">
-        <ThemePicker />
-      </footer>
+      <section id="media" className="site-section">
+        <span className="eyebrow">media</span>
+        <h2>Screenshots, clips, and stream material</h2>
+        <div className="media-grid">
+          {screenshots.map((shot, index) => (
+            <button className="media-thumb" type="button" key={shot.src} onClick={() => setLightboxIndex(index)}>
+              <img src={shot.src} alt={shot.alt} />
+            </button>
+          ))}
+        </div>
+      </section>
 
-      <PlayerAvatarEditor
-        open={isAvatarEditorOpen}
-        onClose={() => setAvatarEditorOpen(false)}
-        avatar={avatar}
-        name={username}
-        onChange={updateAvatar}
-      />
+      <section id="press" className="press-panel">
+        <div>
+          <span className="eyebrow">press kit</span>
+          <h2>For streamers, creators, and coverage</h2>
+          <p className="muted">Use this page as the official source for the game description, screenshots, trailer, logo, and creator links.</p>
+        </div>
+        <dl className="fact-sheet">
+          <div><dt>Game</dt><dd>Words of Word</dd></div>
+          <div><dt>Genre</dt><dd>Multiplayer word / typing battle</dd></div>
+          <div><dt>Platform</dt><dd>Web browser</dd></div>
+          <div><dt>Status</dt><dd>Playable build</dd></div>
+          <div><dt>Best for</dt><dd>Friends, stream challenges, daily scores</dd></div>
+        </dl>
+      </section>
+
+      <section id="creator" className="creator-panel">
+        <div>
+          <span className="eyebrow">about the creator</span>
+          <h2>Built by Harshit Sharma</h2>
+          <p>
+            I am building Words of Word as a clean, competitive, shareable word game that people can play casually with friends or turn into a high-score challenge on stream.
+          </p>
+        </div>
+        <div className="social-grid">
+          {socialLinks.map((link) => (
+            <a key={link.label} href={link.href} target="_blank" rel="noreferrer">{link.label}</a>
+          ))}
+        </div>
+      </section>
+
+      {activeScreenshot && (
+        <div className="lightbox" role="dialog" aria-modal="true" aria-label="Screenshot preview" onClick={() => setLightboxIndex(undefined)}>
+          <button className="lightbox__close" type="button" onClick={() => setLightboxIndex(undefined)} aria-label="Close preview">×</button>
+          <button className="lightbox__nav lightbox__nav--prev" type="button" onClick={(event) => { event.stopPropagation(); showPrevious(); }} aria-label="Previous screenshot">‹</button>
+          <img src={activeScreenshot.src} alt={activeScreenshot.alt} onClick={(event) => event.stopPropagation()} />
+          <button className="lightbox__nav lightbox__nav--next" type="button" onClick={(event) => { event.stopPropagation(); showNext(); }} aria-label="Next screenshot">›</button>
+        </div>
+      )}
     </main>
   );
 }

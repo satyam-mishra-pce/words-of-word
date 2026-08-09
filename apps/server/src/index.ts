@@ -2,8 +2,8 @@ import cors from '@fastify/cors';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { createReadStream, existsSync } from 'node:fs';
+import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { customAlphabet } from 'nanoid';
@@ -2276,8 +2276,43 @@ const contentTypes: Record<string, string> = {
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
   '.ico': 'image/x-icon',
-  '.json': 'application/json; charset=utf-8'
+  '.json': 'application/json; charset=utf-8',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm'
 };
+
+function staticCacheControl(filePath: string): string {
+  const normalizedPath = filePath.replace(/\\/g, '/');
+  if (normalizedPath.endsWith('/index.html')) return 'no-cache';
+  if (normalizedPath.includes('/assets/')) return 'public, max-age=31536000, immutable';
+  if (normalizedPath.includes('/media/')) return 'public, max-age=86400';
+  return 'public, max-age=3600';
+}
+
+function parseByteRange(rangeHeader: string | undefined, fileSize: number): { start: number; end: number } | undefined | 'invalid' {
+  if (!rangeHeader) return undefined;
+
+  const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
+  if (!match) return 'invalid';
+
+  const [, startValue, endValue] = match;
+  if (!startValue && !endValue) return 'invalid';
+
+  let start: number;
+  let end: number;
+  if (!startValue) {
+    const suffixLength = Number(endValue);
+    if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) return 'invalid';
+    start = Math.max(0, fileSize - suffixLength);
+    end = fileSize - 1;
+  } else {
+    start = Number(startValue);
+    end = endValue ? Number(endValue) : fileSize - 1;
+  }
+
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start || start >= fileSize) return 'invalid';
+  return { start, end: Math.min(end, fileSize - 1) };
+}
 
 fastify.get('/*', async (request, reply) => {
   if (!existsSync(WEB_DIST_DIR)) {
@@ -2289,8 +2324,32 @@ fastify.get('/*', async (request, reply) => {
   const requestedFile = join(WEB_DIST_DIR, safePath === '/' ? 'index.html' : safePath);
   const filePath = existsSync(requestedFile) ? requestedFile : join(WEB_DIST_DIR, 'index.html');
   const extension = extname(filePath);
-  reply.type(contentTypes[extension] ?? 'application/octet-stream');
-  return reply.send(await readFile(filePath));
+  const fileStats = await stat(filePath);
+  const range = parseByteRange(request.headers.range, fileStats.size);
+
+  reply
+    .type(contentTypes[extension] ?? 'application/octet-stream')
+    .header('Accept-Ranges', 'bytes')
+    .header('Cache-Control', staticCacheControl(filePath));
+
+  if (range === 'invalid') {
+    return reply
+      .code(416)
+      .header('Content-Range', `bytes */${fileStats.size}`)
+      .send();
+  }
+
+  if (range) {
+    return reply
+      .code(206)
+      .header('Content-Length', range.end - range.start + 1)
+      .header('Content-Range', `bytes ${range.start}-${range.end}/${fileStats.size}`)
+      .send(createReadStream(filePath, { start: range.start, end: range.end }));
+  }
+
+  return reply
+    .header('Content-Length', fileStats.size)
+    .send(createReadStream(filePath));
 });
 
 const io: TypedIo = new Server(fastify.server, {

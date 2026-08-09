@@ -4,6 +4,7 @@ import { GameSettings } from '@wow/shared';
 import socket from '../services/socket';
 import { loadPlayerAvatar, loadUsername } from '../services/session';
 import { Alert, Button, Dialog, Label, Select, Textarea } from '../components/ui';
+import { ROOM_GAME_MODE_INFO } from '../data/gameModes';
 
 const DEFAULT_SETTINGS: GameSettings = {
   minWordLength: 5,
@@ -27,25 +28,6 @@ const DEFAULT_SETTINGS: GameSettings = {
   }
 };
 
-const GAME_MODE_INFO: Array<{ value: GameSettings['gameMode']; label: string; description: string }> = [
-  { value: 'classic', label: 'Classic', description: 'Standard rules: every accepted word gives 3 points.' },
-  { value: 'arcade', label: 'Score Attack', description: 'Reward bigger finds: every word gives 3 points plus bonus points equal to word length.' },
-  { value: 'precision', label: 'Precision', description: 'Accepted words score 3 plus word length, wrong words lose 3 plus word length, and duplicates lose 3 points.' },
-  { value: 'teams', label: 'Teams', description: 'Players pick Red or Blue before the game. Team totals and individual scores are both shown.' },
-  { value: 'betting', label: 'Betting', description: 'Before each round, bet how many words you will make. Hit it for big points, miss it and lose the stake.' },
-  { value: 'fastestNWords', label: 'Word Sprint', description: 'First player to reach the target word count ends the round and earns a 10 point bonus.' },
-  { value: 'battleRoyale', label: 'Knockout', description: 'Lowest scoring players are eliminated after each round until a winner emerges.' },
-  { value: 'typist', label: 'Blind Type', description: 'Your typed word stays hidden until you submit it.' },
-  { value: 'category', label: 'Theme Challenge', description: 'Source words come from the selected theme or your custom list.' },
-  { value: 'oneWordForAll', label: 'Claim Mode', description: 'Once any player claims a word, no one else can use it.' },
-  { value: 'busted', label: 'Busted Mode', description: 'Each player’s first word becomes their bust word. Type another player’s bust word and your round score explodes to 0. Matching first words are safe.' },
-  { value: 'commonWord', label: 'Common Word', description: 'Unique words score +3, rare unique words with 5+ letters score +5. If two or more players make the same word, everyone who used it gets -3 for that word.' },
-  { value: 'intuition', label: 'Intuition Mode', description: 'The source word starts hidden and unlocks one random letter at a time over the round. You can guess words from the hidden letters before they appear.' },
-  { value: 'lightning', label: 'Lightning Mode', description: 'Each player gets their own 10-second timer. Your valid words add 1 second to your timer. If your timer hits zero, you are out for that round.' },
-  { value: 'bingo', label: 'Bingo Board', description: 'Everyone gets the same 7 hard tasks from a bigger pool: Pictureka-style word hunts plus rare letters, lengths, exact positions, edge letters, vowel traps, and pattern challenges. Every task is validated to be possible without using the source word itself. Each task gives 10 points; one word can complete multiple matching tasks. Complete all 7 for a 100 point bonus, then every extra valid word scores 3 points.' },
-  { value: 'mix', label: 'Mix Mode', description: 'Choose Classic or Score Attack scoring, then stack compatible modifiers: Teams, Word Sprint, Blind Type, Claim, Busted, Intuition, and Lightning.' }
-];
-
 export default function SettingsPage(): JSX.Element {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -55,7 +37,7 @@ export default function SettingsPage(): JSX.Element {
   const [settings, setSettings] = useState<GameSettings>(DEFAULT_SETTINGS);
   const [error, setError] = useState('');
   const [isCreating, setIsCreating] = useState(false);
-  const [infoMode, setInfoMode] = useState<(typeof GAME_MODE_INFO)[number] | undefined>();
+  const [infoMode, setInfoMode] = useState<(typeof ROOM_GAME_MODE_INFO)[number] | undefined>();
   const battleRoyaleWarning = settings.gameMode === 'battleRoyale' && settings.eliminationsPerRound * settings.rounds >= settings.maxPlayers
     ? 'Knockout would finish before all rounds are played. Lower eliminations, lower rounds, or increase max players.'
     : '';
@@ -133,7 +115,7 @@ export default function SettingsPage(): JSX.Element {
               <Label htmlFor="game-mode">Game mode</Label>
               <button
                 type="button"
-                onClick={() => setInfoMode(GAME_MODE_INFO.find((mode) => mode.value === settings.gameMode))}
+                onClick={() => setInfoMode(ROOM_GAME_MODE_INFO.find((mode) => mode.value === settings.gameMode))}
                 title="About selected game mode"
                 aria-label="About selected game mode"
                 style={{
