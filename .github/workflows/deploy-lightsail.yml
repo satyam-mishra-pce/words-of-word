@@ -1,0 +1,79 @@
+name: Deploy to Lightsail
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: production-lightsail
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Build and deploy
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.LIGHTSAIL_SSH_KEY }}
+          LIGHTSAIL_HOST: ${{ secrets.LIGHTSAIL_HOST }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/lightsail
+          chmod 600 ~/.ssh/lightsail
+          ssh-keyscan -H "$LIGHTSAIL_HOST" >> ~/.ssh/known_hosts
+
+      - name: Upload source
+        env:
+          LIGHTSAIL_HOST: ${{ secrets.LIGHTSAIL_HOST }}
+        run: |
+          tar \
+            --exclude=.git \
+            --exclude=node_modules \
+            --exclude=dist \
+            --exclude=.turbo \
+            -czf /tmp/words-of-word-source.tar.gz .
+          scp -i ~/.ssh/lightsail /tmp/words-of-word-source.tar.gz \
+            "ubuntu@$LIGHTSAIL_HOST:/tmp/words-of-word-source.tar.gz"
+
+      - name: Build and restart application
+        env:
+          LIGHTSAIL_HOST: ${{ secrets.LIGHTSAIL_HOST }}
+        run: |
+          ssh -i ~/.ssh/lightsail "ubuntu@$LIGHTSAIL_HOST" 'bash -s' <<'REMOTE'
+            set -euo pipefail
+            sudo rm -rf /opt/words-of-word
+            sudo mkdir -p /opt/words-of-word/data
+            sudo tar -xzf /tmp/words-of-word-source.tar.gz -C /opt/words-of-word
+            cd /opt/words-of-word
+            sudo docker build -t words-of-word:latest .
+            sudo docker rm -f words-of-word || true
+            sudo docker run -d \
+              --name words-of-word \
+              --restart unless-stopped \
+              -p 80:7860 \
+              -v /opt/words-of-word/data:/data \
+              -e ANALYTICS_AGGREGATE_FILE=/data/aggregate-analytics.json \
+              words-of-word:latest
+            sudo docker ps --filter name=words-of-word
+          REMOTE
+
+      - name: Verify public deployment
+        env:
+          LIGHTSAIL_HOST: ${{ secrets.LIGHTSAIL_HOST }}
+        run: |
+          for attempt in {1..12}; do
+            if curl --fail --silent --show-error --max-time 15 "http://$LIGHTSAIL_HOST/" | grep -q 'Words of Word'; then
+              exit 0
+            fi
+            sleep 5
+          done
+          exit 1

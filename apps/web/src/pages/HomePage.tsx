@@ -3,7 +3,8 @@ import { Alert } from '../components/ui';
 import { GAME_MODE_INFO } from '../data/gameModes';
 
 const FLOAT_CHARS = ['W', 'O', 'R', 'D', 'S', '?'];
-const GAME_URL = 'https://wordsofword.in/';
+// Keep game navigation on whichever host serves this deployment.
+const GAME_URL = '/';
 
 const socialLinks = [
   { label: 'YouTube', href: 'https://www.youtube.com/@Jugaad-e-Harshit' },
