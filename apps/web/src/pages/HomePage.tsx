@@ -4,7 +4,7 @@ import { GAME_MODE_INFO } from '../data/gameModes';
 
 const FLOAT_CHARS = ['W', 'O', 'R', 'D', 'S', '?'];
 // Keep game navigation on whichever host serves this deployment.
-const GAME_URL = '/';
+const GAME_URL = '/play';
 
 const socialLinks = [
   { label: 'YouTube', href: 'https://www.youtube.com/@Jugaad-e-Harshit' },
@@ -121,7 +121,7 @@ export default function HomePage(): JSX.Element {
         <div>
           <span className="eyebrow">play the game</span>
           <h2>Jump into a match</h2>
-          <p className="muted">Learn the setup, watch every mode, then jump straight into the live game on wordsofword.in.</p>
+          <p className="muted">Learn the setup, watch every mode, then jump straight into the live game.</p>
         </div>
         <div className="play-cta-card">
           <a className="ui-btn ui-btn-primary ui-btn-lg ui-btn-full" href={GAME_URL}>Open playable website</a>
