@@ -17,11 +17,6 @@ RUN pnpm install --frozen-lockfile
 COPY apps apps
 COPY packages packages
 
-# Lightsail serves the game experience at its root route. Vercel builds omit
-# this argument and continue to serve the separate portfolio homepage.
-ARG VITE_APP_MODE=game
-ENV VITE_APP_MODE=$VITE_APP_MODE
-
 RUN pnpm --filter @wow/shared build \
   && pnpm --filter @wow/game-engine build \
   && pnpm --filter @wow/server build \

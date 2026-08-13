@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import AboutPage from './pages/AboutPage';
 import DailyWordPage from './pages/DailyWordPage';
@@ -8,15 +9,29 @@ import SettingsPage from './pages/SettingsPage';
 import OnlinePage from './pages/OnlinePage';
 import { FeatureUsageRouteTracker } from './components/FeatureUsageRouteTracker';
 
-export default function App(): JSX.Element {
-  const isGameDeployment = import.meta.env.VITE_APP_MODE === 'game';
+function PlayRedirect(): JSX.Element {
+  useEffect(() => {
+    window.location.replace('https://wordsofword.in/');
+  }, []);
 
+  return (
+    <main className="page-shell">
+      <section className="panel-card">
+        <p className="eyebrow">redirecting</p>
+        <h1>Opening Words of Word</h1>
+        <p className="muted">Taking you to wordsofword.in…</p>
+      </section>
+    </main>
+  );
+}
+
+export default function App(): JSX.Element {
   return (
     <>
       <FeatureUsageRouteTracker />
       <Routes>
-        <Route path="/" element={isGameDeployment ? <Navigate to="/online" replace /> : <HomePage />} />
-        <Route path="/play" element={<Navigate to="/online" replace />} />
+        <Route path="/" element={<HomePage />} />
+        <Route path="/play" element={<PlayRedirect />} />
         <Route path="/about" element={<AboutPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/online" element={<OnlinePage />} />

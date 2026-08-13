@@ -3,7 +3,6 @@ import { Alert } from '../components/ui';
 import { GAME_MODE_INFO } from '../data/gameModes';
 
 const FLOAT_CHARS = ['W', 'O', 'R', 'D', 'S', '?'];
-// The portfolio always links players to the public game domain, not infrastructure.
 const GAME_URL = 'https://wordsofword.in/';
 
 const socialLinks = [
@@ -121,7 +120,7 @@ export default function HomePage(): JSX.Element {
         <div>
           <span className="eyebrow">play the game</span>
           <h2>Jump into a match</h2>
-          <p className="muted">Learn the setup, watch every mode, then jump straight into the live game.</p>
+          <p className="muted">Learn the setup, watch every mode, then jump straight into the live game on wordsofword.in.</p>
         </div>
         <div className="play-cta-card">
           <a className="ui-btn ui-btn-primary ui-btn-lg ui-btn-full" href={GAME_URL}>Open playable website</a>
