@@ -27,7 +27,9 @@ function PlayRedirect(): JSX.Element {
 }
 
 export default function App(): JSX.Element {
-  const isGameDeployment = import.meta.env.VITE_DEPLOYMENT_SURFACE === 'game';
+  // The game is the default for local development and AWS. Vercel explicitly
+  // sets this to "portfolio" for the separate marketing site.
+  const isGameDeployment = import.meta.env.VITE_DEPLOYMENT_SURFACE !== 'portfolio';
 
   return (
     <>
