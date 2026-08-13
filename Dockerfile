@@ -17,6 +17,11 @@ RUN pnpm install --frozen-lockfile
 COPY apps apps
 COPY packages packages
 
+# The same source also produces the separate Vercel portfolio. The Lightsail
+# image is built as the game application, whose root route is GameHomePage.
+ARG VITE_DEPLOYMENT_SURFACE=game
+ENV VITE_DEPLOYMENT_SURFACE=$VITE_DEPLOYMENT_SURFACE
+
 RUN pnpm --filter @wow/shared build \
   && pnpm --filter @wow/game-engine build \
   && pnpm --filter @wow/server build \

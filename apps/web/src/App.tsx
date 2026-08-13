@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import AboutPage from './pages/AboutPage';
 import DailyWordPage from './pages/DailyWordPage';
 import HomePage from './pages/HomePage';
+import GameHomePage from './pages/GameHomePage';
 import JoinPage from './pages/JoinPage';
 import RoomPage from './pages/RoomPage';
 import SettingsPage from './pages/SettingsPage';
@@ -26,11 +27,13 @@ function PlayRedirect(): JSX.Element {
 }
 
 export default function App(): JSX.Element {
+  const isGameDeployment = import.meta.env.VITE_DEPLOYMENT_SURFACE === 'game';
+
   return (
     <>
       <FeatureUsageRouteTracker />
       <Routes>
-        <Route path="/" element={<HomePage />} />
+        <Route path="/" element={isGameDeployment ? <GameHomePage /> : <HomePage />} />
         <Route path="/play" element={<PlayRedirect />} />
         <Route path="/about" element={<AboutPage />} />
         <Route path="/settings" element={<SettingsPage />} />
