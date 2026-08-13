@@ -1,0 +1,41 @@
+{
+  "name": "@wow/lexicon",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "files": [
+    "dist/index.js",
+    "dist/index.d.ts",
+    "dist/index.d.ts.map"
+  ],
+  "exports": {
+    ".": {
+      "development": { "types": "./src/index.ts", "import": "./src/index.ts" },
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "pnpm typecheck",
+    "test": "tsx --test src/**/*.test.ts",
+    "artifact:build": "tsx src/tools/import-sources.ts",
+    "artifact:validate": "tsx src/tools/validate-release.ts",
+    "artifact:fetch": "tsx src/tools/fetch-release.ts",
+    "artifact:pin-manifest": "tsx src/tools/pin-manifest.ts",
+    "ai:generate": "tsx src/tools/generate-missing.ts",
+    "ai:merge": "tsx src/tools/merge-shards.ts"
+  },
+  "dependencies": {
+    "better-sqlite3": "13.0.3"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "7.6.13",
+    "@types/node": "^22.15.29",
+    "an-array-of-english-words": "2.0.0",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3",
+    "wordnet-db": "3.1.14"
+  }
+}

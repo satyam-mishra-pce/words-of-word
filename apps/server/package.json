@@ -14,8 +14,8 @@
   "dependencies": {
     "@fastify/cors": "^10.1.0",
     "@wow/game-engine": "workspace:*",
+    "@wow/lexicon": "workspace:*",
     "@wow/shared": "workspace:*",
-    "an-array-of-english-words": "^2.0.0",
     "fastify": "^5.4.0",
     "nanoid": "^5.1.5",
     "pg": "^8.22.0",

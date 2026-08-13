@@ -9,7 +9,6 @@
 
 import { execFile } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
@@ -19,8 +18,9 @@ import { io } from 'socket.io-client';
 const execFileAsync = promisify(execFile);
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, '../../..');
-const serverRequire = createRequire(new URL('../../server/package.json', import.meta.url));
-const rawDictionary = serverRequire('an-array-of-english-words');
+const { loadPlayableWordsFromManifest } = await import('../../../packages/lexicon/dist/index.js');
+const manifestPath = resolve(process.env.LEXICON_MANIFEST_PATH ?? resolve(repoRoot, 'packages/lexicon/artifacts/manifest.json'));
+const rawDictionary = loadPlayableWordsFromManifest({ manifestPath, ...(process.env.LEXICON_DB_PATH ? { artifactPath: process.env.LEXICON_DB_PATH } : {}) });
 const dictionary = rawDictionary.filter((word) => typeof word === 'string' && /^[a-z]+$/.test(word));
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);

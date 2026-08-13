@@ -19,7 +19,6 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { performance } from 'node:perf_hooks';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createRequire } from 'node:module';
 import { io } from 'socket.io-client';
 
 const PRODUCTION_ORIGIN = 'https://words-of-word.onrender.com';
@@ -39,8 +38,9 @@ const ACTION_SLO_SUCCESS_RATE = 0.99;
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, '../../..');
 const outputDirectory = resolve(repoRoot, 'logs');
-const serverRequire = createRequire(new URL('../../server/src/index.ts', import.meta.url));
-const rawDictionary = serverRequire('an-array-of-english-words');
+const { loadPlayableWordsFromManifest } = await import('../../../packages/lexicon/dist/index.js');
+const manifestPath = resolve(process.env.LEXICON_MANIFEST_PATH ?? resolve(repoRoot, 'packages/lexicon/artifacts/manifest.json'));
+const rawDictionary = loadPlayableWordsFromManifest({ manifestPath, ...(process.env.LEXICON_DB_PATH ? { artifactPath: process.env.LEXICON_DB_PATH } : {}) });
 const dictionary = rawDictionary.filter((word) => typeof word === 'string' && /^[a-z]+$/.test(word));
 
 const dryRun = process.env.CAPACITY_DRY_RUN === '1';

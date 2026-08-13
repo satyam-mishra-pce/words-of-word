@@ -1,15 +1,16 @@
 #!/usr/bin/env node
 
-import { createRequire } from 'node:module';
 import { performance } from 'node:perf_hooks';
 import {
   createValidWordIndex,
   createValidWords,
   createValidWordsFromIndex
 } from '../packages/game-engine/dist/index.js';
+import { loadPlayableWordsFromManifest } from '../packages/lexicon/dist/index.js';
+import { localLexiconOptions } from './lexicon-path.mjs';
 
-const require = createRequire(new URL('../apps/server/package.json', import.meta.url));
-const dictionary = require('an-array-of-english-words');
+const { manifestPath, artifactPath } = localLexiconOptions(import.meta.url);
+const dictionary = loadPlayableWordsFromManifest({ manifestPath, artifactPath });
 const sources = [
   'astronaut',
   'transformation',

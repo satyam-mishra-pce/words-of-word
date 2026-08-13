@@ -1,0 +1,9 @@
+{
+  "artifactVersion": "0.1.0",
+  "schemaVersion": 1,
+  "fileName": "words-of-word-lexicon-v0.1.0.sqlite",
+  "sha256": "585c58bffb72b433a2cff75cf1f02e7d7696776aa85ce90ce5d54b318a7f35b9",
+  "downloadUrl": null,
+  "releaseStatus": "partial",
+  "note": "Unpublished deterministic Phase-1 artifact. Build locally with pnpm lexicon:build; publishing requires an immutable URL and a separately reviewed release."
+}

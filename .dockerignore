@@ -13,3 +13,8 @@ coverage
 .DS_Store
 apps/web/android
 apps/web/ios
+packages/lexicon/artifacts/*.sqlite
+packages/lexicon/artifacts/*.sqlite.*
+packages/lexicon/work
+**/tasks*.jsonl
+**/drafts*.jsonl

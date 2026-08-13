@@ -1,7 +1,6 @@
 import cors from '@fastify/cors';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { createRequire } from 'node:module';
 import { createReadStream, existsSync } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
@@ -67,6 +66,7 @@ import {
   scoreWord,
   type ValidWordIndex
 } from '@wow/game-engine';
+import { loadPlayableWordsFromManifest } from '@wow/lexicon';
 
 const PORT = Number(process.env.PORT ?? 4000);
 const WEB_DIST_DIR = fileURLToPath(new URL('../../web/dist', import.meta.url));
@@ -163,9 +163,11 @@ const CATEGORY_WORDS: Record<string, string[]> = {
   medical: ['hospital', 'doctor', 'nursing', 'therapy', 'vaccine', 'surgery', 'clinic', 'patient', 'medicine', 'diagnosis']
 };
 const createRoomId = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 6);
-const requireDictionary = createRequire(import.meta.url);
-const rawWords: unknown = requireDictionary('an-array-of-english-words');
-const words = z.array(z.string()).parse(rawWords);
+const lexiconManifestPath = process.env.LEXICON_MANIFEST_PATH?.trim() || fileURLToPath(new URL('../../../packages/lexicon/artifacts/manifest.json', import.meta.url));
+const words = loadPlayableWordsFromManifest({
+  manifestPath: lexiconManifestPath,
+  ...(process.env.LEXICON_DB_PATH?.trim() ? { artifactPath: process.env.LEXICON_DB_PATH.trim() } : {})
+});
 const validWordIndex = createValidWordIndex(words);
 const dictionaryWordSet = new Set(validWordIndex.words);
 

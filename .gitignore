@@ -15,3 +15,10 @@ logs
 .pi-subagents
 pics and videos
 apps/web/public/.DS_Store
+
+# Lexicon release downloads/builds and resumable AI work (manifest stays tracked)
+packages/lexicon/artifacts/*.sqlite
+packages/lexicon/artifacts/*.sqlite.*
+packages/lexicon/work/
+*.sqlite-wal
+*.sqlite-shm

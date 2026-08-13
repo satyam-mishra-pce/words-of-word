@@ -4,9 +4,11 @@ import { createRequire } from 'node:module';
 import { performance } from 'node:perf_hooks';
 
 const require = createRequire(new URL('../apps/web/package.json', import.meta.url));
-const serverRequire = createRequire(new URL('../apps/server/package.json', import.meta.url));
 const { io } = require('socket.io-client');
-const dictionary = serverRequire('an-array-of-english-words');
+const { loadPlayableWordsFromManifest } = await import('../packages/lexicon/dist/index.js');
+const { localLexiconOptions } = await import('./lexicon-path.mjs');
+const { manifestPath, artifactPath } = localLexiconOptions(import.meta.url);
+const dictionary = loadPlayableWordsFromManifest({ manifestPath, artifactPath });
 const target = new URL(process.env.TARGET_URL ?? 'http://127.0.0.1:4100');
 
 if (target.protocol !== 'http:' || !['127.0.0.1', 'localhost', '::1'].includes(target.hostname)) {
@@ -56,7 +58,7 @@ function findValidSubmission(sourceWord) {
   const sourceCounts = new Map();
   for (const letter of sourceWord.toLowerCase()) sourceCounts.set(letter, (sourceCounts.get(letter) ?? 0) + 1);
   const candidate = dictionary.find((word) => {
-    if (typeof word !== 'string' || !/^[a-z]+$/.test(word) || word.length > 40) return false;
+    if (typeof word !== 'string' || !/^[a-z]+$/.test(word) || word.length < 2 || word.length > 40) return false;
     const counts = new Map();
     for (const letter of word) counts.set(letter, (counts.get(letter) ?? 0) + 1);
     return [...counts].every(([letter, count]) => (sourceCounts.get(letter) ?? 0) >= count);
