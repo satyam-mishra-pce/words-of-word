@@ -10,7 +10,7 @@ export interface GameModeInfo {
 }
 
 export const GAME_MODE_INFO: GameModeInfo[] = [
-  { value: 'classic', label: 'Classic', tagline: 'The pure word race.', description: 'Standard rules: every accepted word gives 3 points. Best for first games and fast friend battles.', videoSrc: '/marketing/classic-mode-video.mp4', posterSrc: '/marketing/classic-mode-preview.png' },
+  { value: 'classic', label: 'Classic', tagline: 'The pure word race.', description: 'Standard rules: every accepted word gives 3 points. Best for quick first games and fast friend battles.', videoSrc: '/marketing/classic-mode-video.mp4', posterSrc: '/marketing/classic-mode-preview.png' },
   { value: 'arcade', label: 'Score Attack', tagline: 'Longer words hit harder.', description: 'Reward bigger finds: every word gives 3 points plus bonus points equal to word length.', videoSrc: '/marketing/arcade-mode-score-attack-video.mp4', posterSrc: '/marketing/arcade-mode-score-attack-preview.png' },
   { value: 'precision', label: 'Precision', tagline: 'Accuracy matters.', description: 'Accepted words score 3 plus word length, wrong words lose 3 plus word length, and duplicates lose 3 points.', videoSrc: '/marketing/precision-mode-video.mp4', posterSrc: '/marketing/precision-mode-preview.png' },
   { value: 'teams', label: 'Teams', tagline: 'Red vs Blue.', description: 'Players pick Red or Blue before the game. Team totals and individual scores are both shown.', videoSrc: '/marketing/teams-mode-video.mp4', posterSrc: '/marketing/teams-mode-preview.png' },
