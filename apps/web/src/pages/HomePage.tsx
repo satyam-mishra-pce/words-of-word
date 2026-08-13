@@ -3,8 +3,8 @@ import { Alert } from '../components/ui';
 import { GAME_MODE_INFO } from '../data/gameModes';
 
 const FLOAT_CHARS = ['W', 'O', 'R', 'D', 'S', '?'];
-// The portfolio can override this with its production game domain in Vercel.
-const GAME_URL = import.meta.env.VITE_GAME_URL || 'http://13.232.36.47/';
+// The portfolio always links players to the public game domain, not infrastructure.
+const GAME_URL = 'https://wordsofword.in/';
 
 const socialLinks = [
   { label: 'YouTube', href: 'https://www.youtube.com/@Jugaad-e-Harshit' },
