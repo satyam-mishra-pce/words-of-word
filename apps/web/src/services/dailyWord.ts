@@ -22,17 +22,27 @@ function isDailyWordValidationResult(value: unknown): value is DailyWordValidati
   );
 }
 
+const DAILY_WORD_VALIDATION_TIMEOUT_MS = 10_000;
+
 export async function validateDailyWord(sourceWord: string, word: string): Promise<DailyWordValidationResult> {
-  const response = await fetch(`${getGameServerUrl()}/api/daily/validate-word`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sourceWord, word })
-  });
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), DAILY_WORD_VALIDATION_TIMEOUT_MS);
 
-  const payload = await response.json().catch(() => undefined) as DailyWordValidationResponse | undefined;
-  if (!response.ok || !payload?.ok || !isDailyWordValidationResult(payload.data)) {
-    throw new Error(payload?.error ?? 'Unable to validate the word.');
+  try {
+    const response = await fetch(`${getGameServerUrl()}/api/daily/validate-word`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sourceWord, word }),
+      signal: controller.signal
+    });
+
+    const payload = await response.json().catch(() => undefined) as DailyWordValidationResponse | undefined;
+    if (!response.ok || !payload?.ok || !isDailyWordValidationResult(payload.data)) {
+      throw new Error(payload?.error ?? 'Unable to validate the word.');
+    }
+
+    return payload.data;
+  } finally {
+    window.clearTimeout(timeout);
   }
-
-  return payload.data;
 }

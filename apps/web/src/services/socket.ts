@@ -19,7 +19,9 @@ const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io(socketUrl,
     ...(analyticsIdentity ? { analytics: analyticsIdentity } : {})
   },
   reconnection: true,
-  reconnectionAttempts: 8,
+  // Keep retrying after transport failures. The previous cap of eight attempts
+  // left a player permanently disconnected until they reloaded the app.
+  reconnectionAttempts: Infinity,
   reconnectionDelay: 600,
   reconnectionDelayMax: 3000,
   timeout: 15000
