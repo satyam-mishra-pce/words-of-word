@@ -9,11 +9,13 @@ import OnlinePage from './pages/OnlinePage';
 import { FeatureUsageRouteTracker } from './components/FeatureUsageRouteTracker';
 
 export default function App(): JSX.Element {
+  const isGameDeployment = import.meta.env.VITE_APP_MODE === 'game';
+
   return (
     <>
       <FeatureUsageRouteTracker />
       <Routes>
-        <Route path="/" element={<HomePage />} />
+        <Route path="/" element={isGameDeployment ? <Navigate to="/online" replace /> : <HomePage />} />
         <Route path="/play" element={<Navigate to="/online" replace />} />
         <Route path="/about" element={<AboutPage />} />
         <Route path="/settings" element={<SettingsPage />} />

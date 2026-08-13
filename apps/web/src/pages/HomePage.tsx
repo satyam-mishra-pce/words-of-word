@@ -3,8 +3,8 @@ import { Alert } from '../components/ui';
 import { GAME_MODE_INFO } from '../data/gameModes';
 
 const FLOAT_CHARS = ['W', 'O', 'R', 'D', 'S', '?'];
-// Keep game navigation on whichever host serves this deployment.
-const GAME_URL = '/play';
+// The portfolio can override this with its production game domain in Vercel.
+const GAME_URL = import.meta.env.VITE_GAME_URL || 'http://13.232.36.47/';
 
 const socialLinks = [
   { label: 'YouTube', href: 'https://www.youtube.com/@Jugaad-e-Harshit' },
