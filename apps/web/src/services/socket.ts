@@ -2,10 +2,10 @@ import { io, Socket } from 'socket.io-client';
 import { ClientToServerEvents, ServerToClientEvents } from '@wow/shared';
 import { getInstallationId } from './identity';
 import { getAnalyticsIdentity } from './analyticsIdentity';
-import { getGameServerUrl, isNativeApp } from './platform';
+import { getGameSocketUrl, isNativeApp } from './platform';
 import { getStoredPushRegistration } from './nativePush';
 
-const socketUrl = getGameServerUrl();
+const socketUrl = getGameSocketUrl();
 const clientId = isNativeApp ? getInstallationId() : undefined;
 const analyticsIdentity = getAnalyticsIdentity();
 let appIsActive = true;

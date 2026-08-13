@@ -14,11 +14,11 @@ pnpm mobile:ios
 pnpm mobile:android
 ```
 
-`cap:build` refuses to build if `VITE_SOCKET_URL` or `VITE_PUBLIC_WEB_URL` is missing or non-HTTPS. A packaged app must never fall back to `capacitor://localhost` for Socket.IO or invitation links.
+`cap:build` refuses to build if `VITE_GAME_SERVER_URL` (or the legacy `VITE_SOCKET_URL`) or `VITE_PUBLIC_WEB_URL` is missing, is non-HTTPS, or is not a pathless origin. A packaged app must never fall back to `capacitor://localhost` for Socket.IO, HTTP APIs, or invitation links.
 
-`VITE_SOCKET_URL` is the Fastify/Socket.IO origin. `VITE_PUBLIC_WEB_URL` is the canonical public web origin used in shared room links. They can be the same origin when Fastify serves the web bundle. `cap:build` verifies that the public URL host exactly matches both the Android App Link filters and iOS `APP_LINK_HOST`, preventing a mismatched release bundle.
+`VITE_GAME_SERVER_URL` is the preferred Fastify/Socket.IO origin; `VITE_SOCKET_URL` remains a backwards-compatible fallback. `VITE_PUBLIC_WEB_URL` is the canonical public web origin used in shared room links. They can be the same origin when Fastify serves the web bundle. `cap:build` verifies that the public URL host exactly matches both the Android App Link filters and iOS `APP_LINK_HOST`, preventing a mismatched release bundle.
 
-If production sets `CLIENT_ORIGIN` instead of leaving CORS open, include the Capacitor WebView origins alongside the public site (normally `capacitor://localhost` for iOS and `https://localhost` for Android), then verify them on real devices.
+If production sets `CLIENT_ORIGIN` instead of leaving CORS open, include the public web origin plus `capacitor://localhost` for iOS and `https://localhost` for Android (comma-separated), then verify them on real devices. Leaving `CLIENT_ORIGIN` unset preserves the current permissive default.
 
 ## Native project setup
 

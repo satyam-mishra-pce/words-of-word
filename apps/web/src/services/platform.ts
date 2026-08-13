@@ -16,8 +16,13 @@ function configuredUrl(value: string | undefined): string | undefined {
   return trimmed ? trimTrailingSlash(trimmed) : undefined;
 }
 
-export function getGameServerUrl(): string {
-  const configured = configuredUrl(import.meta.env.VITE_SOCKET_URL);
+/**
+ * Socket.IO always needs an origin. A configured game-server origin is
+ * authoritative for split web deployments and native apps.
+ */
+export function getGameSocketUrl(): string {
+  const configured = configuredUrl(import.meta.env.VITE_GAME_SERVER_URL)
+    ?? configuredUrl(import.meta.env.VITE_SOCKET_URL);
   if (configured) return configured;
 
   if (!isNativeApp) {
@@ -27,8 +32,18 @@ export function getGameServerUrl(): string {
   }
 
   // Native release builds are blocked by the mobile build script if this is missing.
-  // Keep a clear, non-local fallback so we never accidentally target capacitor://localhost.
+  // Keep a clear, non-local fallback so we never target capacitor://localhost.
   return 'https://unconfigured.words-of-word.invalid';
+}
+
+/**
+ * Browser HTTP calls stay same-origin so Vite/Vercel can proxy them and strict
+ * admin cookies work. Native apps have no same-origin server, so use the
+ * configured HTTPS game-server origin there.
+ */
+export function getGameApiUrl(path: `/api/${string}`): string {
+  if (!isNativeApp) return path;
+  return `${getGameSocketUrl()}${path}`;
 }
 
 export function getCanonicalWebUrl(): string | undefined {
@@ -59,15 +74,26 @@ export function getDailyChallengeUrl(): string {
 export function routeFromExternalUrl(rawUrl: string): string | undefined {
   try {
     const url = new URL(rawUrl);
+    if (url.username || url.password || url.search || url.hash) return undefined;
+
     const isAppScheme = url.protocol === 'wordsofword:' || url.protocol === 'com.wordsofword.game:';
+    const canonicalWebUrl = getCanonicalWebUrl();
+    const isApprovedWebUrl = url.protocol === 'https:'
+      && Boolean(canonicalWebUrl)
+      && url.origin === new URL(canonicalWebUrl as string).origin;
+    if (!isAppScheme && !isApprovedWebUrl) return undefined;
+
     const pathSegments = url.pathname.split('/').filter(Boolean);
-    if ((isAppScheme && url.hostname === 'daily') || url.pathname === '/daily') {
+    if (
+      (isAppScheme && url.hostname === 'daily' && pathSegments.length === 0)
+      || (isApprovedWebUrl && url.hostname && pathSegments.length === 1 && pathSegments[0] === 'daily')
+    ) {
       return '/daily';
     }
 
-    const roomId = isAppScheme && url.hostname === 'join'
+    const roomId = isAppScheme && url.hostname === 'join' && pathSegments.length === 1
       ? pathSegments[0]
-      : url.pathname.startsWith('/join/')
+      : isApprovedWebUrl && pathSegments.length === 2 && pathSegments[0] === 'join'
         ? pathSegments[1]
         : undefined;
 

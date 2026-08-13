@@ -6,9 +6,10 @@
     "VITE_DEPLOYMENT_SURFACE": "portfolio",
     "VITE_PUBLIC_WEB_URL": "https://portfolio.wordsofword.in",
     "VITE_GAME_URL": "https://wordsofword.in/",
-    "VITE_SOCKET_URL": "https://words-of-word.onrender.com"
+    "VITE_GAME_SERVER_URL": "https://words-of-word.onrender.com"
   },
   "rewrites": [
+    { "source": "/api/:path*", "destination": "https://words-of-word.onrender.com/api/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

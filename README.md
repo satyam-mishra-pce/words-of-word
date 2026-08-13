@@ -28,7 +28,7 @@ The React app is packaged with Capacitor in `apps/web/ios` and `apps/web/android
 
 ```bash
 cp apps/web/.env.mobile.example apps/web/.env.mobile
-# Set public HTTPS VITE_SOCKET_URL and VITE_PUBLIC_WEB_URL first.
+# Set public HTTPS VITE_GAME_SERVER_URL and VITE_PUBLIC_WEB_URL first.
 pnpm mobile:sync
 pnpm mobile:ios
 pnpm mobile:android
@@ -67,7 +67,7 @@ putting the token in a URL:
 
 ```bash
 curl -H "Authorization: Bearer $ANALYTICS_TOKEN" \
-  https://your-domain.example/admin/analytics
+  https://your-domain.example/api/admin/analytics
 ```
 
 The endpoint is unavailable when no token is configured and responses use
@@ -90,7 +90,7 @@ is unavailable. Local development can omit both variables and uses
 non-durable fallback.
 
 The dashboard's **Time window** control sends an explicit UTC `[from, to)`
-range to `GET /admin/analytics`; the browser converts the local date/time
+range to `GET /api/admin/analytics`; the browser converts the local date/time
 inputs to UTC. New aggregate metrics and traffic can be filtered exactly by
 that range. Retention intentionally remains an all-time, full-UTC-day cohort
 signal. On a new database, startup imports `ANALYTICS_AGGREGATE_FILE` once if

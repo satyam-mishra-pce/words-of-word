@@ -1,4 +1,4 @@
-import { getGameServerUrl } from './platform';
+import { getGameApiUrl } from './platform';
 
 export type CounterMap = Record<string, number>;
 
@@ -122,7 +122,7 @@ export class AnalyticsUnauthorizedError extends Error {
 }
 
 function analyticsUrl(path = '', window?: AnalyticsReportWindow): string {
-  const base = `${getGameServerUrl()}/admin/analytics${path}`;
+  const base = getGameApiUrl(`/api/admin/analytics${path}`);
   if (!window) return base;
   const query = new URLSearchParams({ from: window.from, to: window.to });
   return `${base}?${query.toString()}`;

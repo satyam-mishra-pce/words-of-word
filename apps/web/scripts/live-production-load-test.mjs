@@ -404,7 +404,7 @@ async function captureHealth(label, { critical = false, timeoutMs = HEALTH_TIMEO
 }
 
 async function captureStats(label, { timeoutMs = HEALTH_TIMEOUT_MS } = {}) {
-  const result = await fetchJson('/stats', timeoutMs);
+  const result = await fetchJson('/api/stats', timeoutMs);
   const observation = { at: nowIso(), label, timeoutMs, ...result };
   metrics.stats.push(observation);
   return observation;

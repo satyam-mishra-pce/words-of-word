@@ -1,4 +1,4 @@
-import { getGameServerUrl } from './platform';
+import { getGameApiUrl } from './platform';
 
 export interface DailyWordValidationResult {
   isValid: boolean;
@@ -29,7 +29,7 @@ export async function validateDailyWord(sourceWord: string, word: string): Promi
   const timeout = window.setTimeout(() => controller.abort(), DAILY_WORD_VALIDATION_TIMEOUT_MS);
 
   try {
-    const response = await fetch(`${getGameServerUrl()}/api/daily/validate-word`, {
+    const response = await fetch(getGameApiUrl('/api/daily/validate-word'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sourceWord, word }),

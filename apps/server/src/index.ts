@@ -2098,10 +2098,10 @@ function isSecureRequest(forwardedProtocol: string | string[] | undefined): bool
     || values.some((value) => value?.split(',').some((protocol) => protocol.trim() === 'https'));
 }
 
-function analyticsSessionCookie(value: string, secure: boolean, clear = false): string {
+function analyticsSessionCookie(value: string, secure: boolean, path: '/api/admin/analytics' | '/admin/analytics', clear = false): string {
   return [
     `${ANALYTICS_SESSION_COOKIE}=${value}`,
-    'Path=/admin/analytics',
+    `Path=${path}`,
     'HttpOnly',
     'SameSite=Strict',
     ...(secure ? ['Secure'] : []),
@@ -2143,7 +2143,9 @@ async function sendAnalyticsApplication(reply: import('fastify').FastifyReply): 
 
 fastify.get('/health', async () => ({ ok: true }));
 
-fastify.get('/stats', async () => ({ ok: true, data: analytics.publicStats() }));
+const publicStats = async () => ({ ok: true, data: analytics.publicStats() });
+fastify.get('/api/stats', publicStats);
+fastify.get('/stats', publicStats);
 
 fastify.post('/api/daily/validate-word', async (request, reply) => {
   const payload = DailyWordValidationPayloadSchema.safeParse(request.body);
@@ -2159,49 +2161,57 @@ fastify.post('/api/daily/validate-word', async (request, reply) => {
     .send({ ok: true, data: evaluateDailyWordSubmission(payload.data.sourceWord, payload.data.word) });
 });
 
-fastify.post('/admin/analytics/session', async (request, reply) => {
-  const configuredToken = process.env.ANALYTICS_TOKEN;
-  if (!configuredToken) return reply.code(404).send({ ok: false, error: 'Not found.' });
+function startAnalyticsSession(cookiePath: '/api/admin/analytics' | '/admin/analytics') {
+  return async (request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> => {
+    const configuredToken = process.env.ANALYTICS_TOKEN;
+    if (!configuredToken) return reply.code(404).send({ ok: false, error: 'Not found.' });
 
-  const payload = AnalyticsPasswordPayloadSchema.safeParse(request.body);
-  if (!payload.success || !secretsMatch(payload.data.password, configuredToken)) {
+    const payload = AnalyticsPasswordPayloadSchema.safeParse(request.body);
+    if (!payload.success || !secretsMatch(payload.data.password, configuredToken)) {
+      return reply
+        .header('Cache-Control', 'no-store')
+        .code(401)
+        .send({ ok: false, error: 'Unauthorized.' });
+    }
+
     return reply
       .header('Cache-Control', 'no-store')
-      .code(401)
-      .send({ ok: false, error: 'Unauthorized.' });
-  }
+      .header('Set-Cookie', analyticsSessionCookie(
+        analyticsSessionValue(configuredToken),
+        isSecureRequest(request.headers['x-forwarded-proto']),
+        cookiePath
+      ))
+      .send({ ok: true });
+  };
+}
 
-  return reply
-    .header('Cache-Control', 'no-store')
-    .header('Set-Cookie', analyticsSessionCookie(
-      analyticsSessionValue(configuredToken),
-      isSecureRequest(request.headers['x-forwarded-proto'])
-    ))
-    .send({ ok: true });
-});
+function endAnalyticsSession() {
+  return async (request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> => {
+    if (!process.env.ANALYTICS_TOKEN) return reply.code(404).send({ ok: false, error: 'Not found.' });
 
-fastify.post('/admin/analytics/session/logout', async (request, reply) => {
-  if (!process.env.ANALYTICS_TOKEN) return reply.code(404).send({ ok: false, error: 'Not found.' });
+    const secure = isSecureRequest(request.headers['x-forwarded-proto']);
+    return reply
+      .header('Cache-Control', 'no-store')
+      // Clear both paths so sessions created through the legacy endpoint cannot
+      // survive logout after the browser migrates to the /api namespace.
+      .header('Set-Cookie', [
+        analyticsSessionCookie('', secure, '/api/admin/analytics', true),
+        analyticsSessionCookie('', secure, '/admin/analytics', true)
+      ])
+      .send({ ok: true });
+  };
+}
 
-  return reply
-    .header('Cache-Control', 'no-store')
-    .header('Set-Cookie', analyticsSessionCookie(
-      '',
-      isSecureRequest(request.headers['x-forwarded-proto']),
-      true
-    ))
-    .send({ ok: true });
-});
+fastify.post('/api/admin/analytics/session', startAnalyticsSession('/api/admin/analytics'));
+fastify.post('/api/admin/analytics/session/logout', endAnalyticsSession());
+fastify.post('/admin/analytics/session', startAnalyticsSession('/admin/analytics'));
+fastify.post('/admin/analytics/session/logout', endAnalyticsSession());
 
-async function handleAnalyticsReport(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
+async function analyticsReport(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
   const configuredToken = process.env.ANALYTICS_TOKEN;
   if (!configuredToken) {
     return reply.code(404).send({ ok: false, error: 'Not found.' });
   }
-
-  // The browser view is the existing React application. Its own private route
-  // handles the session prompt, while JSON clients retain bearer/session access.
-  if (prefersHtml(request.headers.accept)) return sendAnalyticsApplication(reply);
 
   const hasAccess = hasAnalyticsAdminAccess(request.headers.authorization)
     || hasAnalyticsSessionAccess(request.headers.cookie);
@@ -2229,8 +2239,16 @@ async function handleAnalyticsReport(request: FastifyRequest, reply: FastifyRepl
     .send({ ok: true, data: await analytics.report(window) });
 }
 
-fastify.get('/admin/analytics', handleAnalyticsReport);
-fastify.get('/admin/analytics/', handleAnalyticsReport);
+async function handleLegacyAnalyticsReport(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> {
+  if (!process.env.ANALYTICS_TOKEN) return reply.code(404).send({ ok: false, error: 'Not found.' });
+  // Preserve the existing browser route while JSON clients migrate to /api.
+  if (prefersHtml(request.headers.accept)) return sendAnalyticsApplication(reply);
+  return analyticsReport(request, reply);
+}
+
+fastify.get('/api/admin/analytics', analyticsReport);
+fastify.get('/admin/analytics', handleLegacyAnalyticsReport);
+fastify.get('/admin/analytics/', handleLegacyAnalyticsReport);
 
 fastify.get('/.well-known/apple-app-site-association', async (_request, reply) => {
   if (!IOS_APP_TEAM_ID) {

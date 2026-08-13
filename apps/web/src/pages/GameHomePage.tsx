@@ -5,11 +5,11 @@ import { NativeNotificationPrompt } from '../components/NativeNotificationPrompt
 import { ThemePicker } from '../components/ThemePicker';
 import { Alert, Avatar, Button, Input } from '../components/ui';
 import { loadPlayerAvatar, loadUsername, savePlayerAvatar, saveUsername } from '../services/session';
-import { getGameServerUrl } from '../services/platform';
+import { getGameApiUrl } from '../services/platform';
 import { trackFeatureUsage } from '../services/aggregateAnalytics';
 
 const FLOAT_CHARS = ['W', 'O', 'R', 'D', 'S', '?'];
-const statsUrl = `${getGameServerUrl()}/stats`;
+const statsUrl = getGameApiUrl('/api/stats');
 
 interface PublicStats {
   activePlayers: number;
