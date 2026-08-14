@@ -138,6 +138,10 @@ export const SubmitWordPayloadSchema = z.object({
   word: z.string().trim().min(1).max(40)
 });
 
+export const DictionaryLookupPayloadSchema = z.object({
+  words: z.array(z.string().trim().min(1).max(40).regex(/^[a-z]+$/i)).min(1).max(100)
+}).strict();
+
 export const EmoteSchema = z.enum(['fire', 'clap', 'mindBlown', 'laugh', 'sweat', 'party', 'sideEye', 'taunt']);
 
 // These legacy transport IDs stay stable so the visual tray can evolve without
@@ -234,6 +238,7 @@ export type JoinRoomPayload = z.infer<typeof JoinRoomPayloadSchema>;
 export type QuickJoinRoomPayload = z.infer<typeof QuickJoinRoomPayloadSchema>;
 export type StartGamePayload = z.infer<typeof StartGamePayloadSchema>;
 export type SubmitWordPayload = z.infer<typeof SubmitWordPayloadSchema>;
+export type DictionaryLookupPayload = z.infer<typeof DictionaryLookupPayloadSchema>;
 export type Emote = z.infer<typeof EmoteSchema>;
 export type SendEmotePayload = z.infer<typeof SendEmotePayloadSchema>;
 export type UpdateTeamPayload = z.infer<typeof UpdateTeamPayloadSchema>;
@@ -286,6 +291,9 @@ export interface RoomSnapshot {
   status: RoomStatus;
   phase: RoomPhase;
   currentWord: string;
+  sourceDefinition?: {
+    definition: string;
+  };
   timeLeft: number;
   lightningTimeLeft: Record<string, number>;
   currentRound: number;
@@ -392,8 +400,32 @@ export interface HostChangedPayload {
   snapshot: RoomSnapshot;
 }
 
+export type DictionaryPartOfSpeech = 'noun' | 'verb' | 'adjective' | 'adverb' | 'other' | 'unknown';
+
+export interface DictionarySense {
+  partOfSpeech: DictionaryPartOfSpeech;
+  definition: string;
+  examples: string[];
+}
+
+export interface DictionaryEntry {
+  word: string;
+  shortDefinition?: string;
+  shortPartOfSpeech?: DictionaryPartOfSpeech;
+  senses: DictionarySense[];
+  /** True when unusually large source data was bounded for transport. */
+  truncated?: boolean;
+}
+
+export interface DictionaryLookupResponse {
+  entries: Record<string, DictionaryEntry>;
+}
+
 export interface RoundStartedPayload {
   currentWord: string;
+  sourceDefinition?: {
+    definition: string;
+  };
   timeLeft: number;
   currentRound: number;
   totalRounds: number;

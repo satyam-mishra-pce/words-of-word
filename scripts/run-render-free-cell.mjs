@@ -145,7 +145,7 @@ try {
       CONTAINER_NAME: containerName,
       SOURCE_WORD: sourceWord,
       FIXED_SOURCE: fixedSource ? '1' : '0',
-      LEXICON_DB_PATH: process.env.LEXICON_DB_PATH ?? 'packages/lexicon/artifacts/words-of-word-lexicon-v0.1.0.sqlite',
+      LEXICON_DB_PATH: process.env.LEXICON_DB_PATH ?? 'packages/lexicon/artifacts/words-of-word-lexicon-v0.2.0.sqlite',
       LEXICON_MANIFEST_PATH: process.env.LEXICON_MANIFEST_PATH ?? 'packages/lexicon/artifacts/manifest.json',
       REPORT_PATH: reportPath
     },

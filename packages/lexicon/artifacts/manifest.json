@@ -1,9 +1,9 @@
 {
-  "artifactVersion": "0.1.0",
+  "artifactVersion": "0.2.0",
   "schemaVersion": 1,
-  "fileName": "words-of-word-lexicon-v0.1.0.sqlite",
-  "sha256": "585c58bffb72b433a2cff75cf1f02e7d7696776aa85ce90ce5d54b318a7f35b9",
+  "fileName": "words-of-word-lexicon-v0.2.0.sqlite",
+  "sha256": "1ffd05433b2b874800f4d5f019c01731be00a5f98f4aeaa8f4dc72513a847999",
   "downloadUrl": null,
-  "releaseStatus": "partial",
-  "note": "Unpublished deterministic Phase-1 artifact. Build locally with pnpm lexicon:build; publishing requires an immutable URL and a separately reviewed release."
+  "releaseStatus": "complete",
+  "note": "Unpublished deterministic full-coverage artifact. Generated definitions are pinned to run 7497b731-5494-4796-8999-12ac1c641d76; publishing requires an immutable URL and separate release review."
 }

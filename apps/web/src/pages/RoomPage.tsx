@@ -1,13 +1,15 @@
 import { CSSProperties, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { EMOTE_OPTIONS, FinalScore, GameSettings, type EmotePlayedPayload, type PlayerAvatar, RoomSnapshot, RoundResultPlayer, TeamScore } from '@wow/shared';
+import { EMOTE_OPTIONS, FinalScore, GameSettings, type DictionaryEntry, type EmotePlayedPayload, type PlayerAvatar, RoomSnapshot, type RoundStartedPayload, RoundResultPlayer, TeamScore } from '@wow/shared';
 import socket from '../services/socket';
 import { loadUsername } from '../services/session';
 import { hapticError, hapticLight, hapticMedium, hapticSelection, hapticSuccess, hapticWarning } from '../services/nativeFeedback';
 import { getRoomInviteUrl } from '../services/platform';
 import { copyTextToClipboard } from '../services/nativeShare';
 import { trackFeatureUsage } from '../services/aggregateAnalytics';
+import { lookupDictionaryWords } from '../services/dictionary';
+import { WordDefinitionSheet } from '../components/WordDefinitionSheet';
 import '../styles/game-score-feedback.css';
 import {
   Alert,
@@ -343,6 +345,11 @@ export default function RoomPage(): JSX.Element {
   const [scoreBursts, setScoreBursts] = useState<ScoreBurst[]>([]);
   const [emoteBursts, setEmoteBursts] = useState<EmoteBurst[]>([]);
   const [isInviteCopied, setIsInviteCopied] = useState(false);
+  const [sourceDefinition, setSourceDefinition] = useState<RoundStartedPayload['sourceDefinition']>();
+  const [definitionWord, setDefinitionWord] = useState<string>();
+  const [definitionEntry, setDefinitionEntry] = useState<DictionaryEntry>();
+  const [definitionLoading, setDefinitionLoading] = useState(false);
+  const [definitionError, setDefinitionError] = useState('');
   const shouldReduceMotion = useReducedMotion();
 
   // Keep a ref to the word input so we can restore focus after submit
@@ -355,6 +362,8 @@ export default function RoomPage(): JSX.Element {
   const emoteBurstIdRef = useRef(0);
   const emoteBurstTimersRef = useRef<Map<number, number>>(new Map());
   const inviteCopiedTimerRef = useRef<number | undefined>();
+  const definitionCacheRef = useRef<Map<string, DictionaryEntry>>(new Map());
+  const definitionRequestRef = useRef(0);
 
   const currentPlayerId = socket.id;
   const currentPlayer = useMemo(
@@ -491,20 +500,31 @@ export default function RoomPage(): JSX.Element {
   }
 
   function renderWordBadge(word: string, style?: CSSProperties): JSX.Element {
+    const pointsTitle = isBingoMode ? 'Bingo words only score when they complete a task' : `${wordPoints(word)} points`;
     return (
-      <Badge key={word} variant="word" className="scored-word-badge" style={style} title={isBingoMode ? 'Bingo words only score when they complete a task' : `${wordPoints(word)} points`}>
-        <span>{word}</span>
-        {isBingoMode ? null : isLengthBonusMode ? (
-          <span className="word-score-formula" aria-label={`3 plus ${word.length} equals ${wordPoints(word)} points`}>
-            <strong>3+{word.length}</strong>
-            <span>= {wordPoints(word)}</span>
-          </span>
-        ) : isCommonWordMode && word.length >= 5 ? (
-          <span className="word-score-formula">+5</span>
-        ) : (
-          <span className="word-score-formula">+3</span>
-        )}
-      </Badge>
+      <button
+        key={word}
+        type="button"
+        className="accepted-word-button"
+        style={style}
+        title={`${pointsTitle}. View definition`}
+        aria-label={`${word}. ${pointsTitle}. View definition`}
+        onClick={() => { void openWordDefinition(word); }}
+      >
+        <Badge variant="word" className="scored-word-badge">
+          <span>{word}</span>
+          {isBingoMode ? null : isLengthBonusMode ? (
+            <span className="word-score-formula" aria-label={`3 plus ${word.length} equals ${wordPoints(word)} points`}>
+              <strong>3+{word.length}</strong>
+              <span>= {wordPoints(word)}</span>
+            </span>
+          ) : isCommonWordMode && word.length >= 5 ? (
+            <span className="word-score-formula">+5</span>
+          ) : (
+            <span className="word-score-formula">+3</span>
+          )}
+        </Badge>
+      </button>
     );
   }
 
@@ -545,6 +565,54 @@ export default function RoomPage(): JSX.Element {
         ))}
       </span>
     );
+  }
+
+  async function prefetchDefinitions(words: readonly string[]): Promise<void> {
+    const missing = Array.from(new Set(words.map((word) => word.trim().toLowerCase())))
+      .filter((word) => /^[a-z]+$/.test(word) && !definitionCacheRef.current.has(word));
+    for (let index = 0; index < missing.length; index += 100) {
+      try {
+        const entries = await lookupDictionaryWords(missing.slice(index, index + 100));
+        for (const [word, entry] of Object.entries(entries)) definitionCacheRef.current.set(word, entry);
+      } catch {
+        return;
+      }
+    }
+  }
+
+  async function openWordDefinition(input: string): Promise<void> {
+    const word = input.trim().toLowerCase();
+    const requestId = definitionRequestRef.current + 1;
+    definitionRequestRef.current = requestId;
+    setDefinitionWord(word);
+    setDefinitionError('');
+    const cached = definitionCacheRef.current.get(word);
+    if (cached) {
+      setDefinitionEntry(cached);
+      setDefinitionLoading(false);
+      return;
+    }
+
+    setDefinitionEntry(undefined);
+    setDefinitionLoading(true);
+    try {
+      const entries = await lookupDictionaryWords([word]);
+      const entry = entries[word] ?? { word, senses: [] };
+      definitionCacheRef.current.set(word, entry);
+      if (definitionRequestRef.current === requestId) setDefinitionEntry(entry);
+    } catch {
+      if (definitionRequestRef.current === requestId) setDefinitionError('Could not load this definition. Check your connection and try again.');
+    } finally {
+      if (definitionRequestRef.current === requestId) setDefinitionLoading(false);
+    }
+  }
+
+  function closeDefinitionSheet(): void {
+    definitionRequestRef.current += 1;
+    setDefinitionWord(undefined);
+    setDefinitionEntry(undefined);
+    setDefinitionLoading(false);
+    setDefinitionError('');
   }
 
   function renderNegativeWordBadge(entry: NegativeMarkedWord, index: number): JSX.Element {
@@ -602,6 +670,7 @@ export default function RoomPage(): JSX.Element {
           return;
         }
         setSnapshot(response.data.snapshot);
+        setSourceDefinition(response.data.snapshot.sourceDefinition);
         previousPhaseRef.current = response.data.snapshot.phase;
         currentWordRef.current = response.data.snapshot.currentWord;
         setWaitingSeconds(response.data.snapshot.waitingSeconds);
@@ -624,6 +693,7 @@ export default function RoomPage(): JSX.Element {
       }
       previousPhaseRef.current = payload.snapshot.phase;
       setSnapshot(payload.snapshot);
+      setSourceDefinition(payload.snapshot.sourceDefinition);
       currentWordRef.current = payload.snapshot.currentWord;
       setWaitingSeconds(payload.snapshot.waitingSeconds);
     };
@@ -638,9 +708,11 @@ export default function RoomPage(): JSX.Element {
       setNotice(p.hostId === socket.id ? 'You are now the host.' : 'Host changed.');
     });
     socket.on('roundStarted', (p) => {
+      closeDefinitionSheet();
       if (p.currentRound === 1) {
         resetClientGameState();
       }
+      setSourceDefinition(p.sourceDefinition);
       previousPhaseRef.current = p.snapshot.phase;
       setSnapshot(p.snapshot);
       currentWordRef.current = p.currentWord;
@@ -712,6 +784,7 @@ export default function RoomPage(): JSX.Element {
       });
     });
     socket.on('roundEnded', (p) => {
+      void prefetchDefinitions(p.results.flatMap((result) => result.words));
       previousPhaseRef.current = p.snapshot.phase;
       setSnapshot(p.snapshot);
       setRoundResults(p.results);
@@ -730,6 +803,7 @@ export default function RoomPage(): JSX.Element {
       ]);
     });
     socket.on('gameOver', (p) => {
+      if (p.results) void prefetchDefinitions(p.results.flatMap((result) => result.words));
       previousPhaseRef.current = p.snapshot.phase;
       setSnapshot(p.snapshot);
       setFinalScores(p.finalScores);
@@ -769,6 +843,8 @@ export default function RoomPage(): JSX.Element {
     });
     socket.on('emotePlayed', onEmotePlayed);
     socket.on('gameRestarted', (p) => {
+      closeDefinitionSheet();
+      setSourceDefinition(undefined);
       previousPhaseRef.current = p.snapshot.phase;
       setSnapshot(p.snapshot);
       resetClientGameState();
@@ -824,6 +900,7 @@ export default function RoomPage(): JSX.Element {
   }
 
   function startGame(): void {
+    closeDefinitionSheet();
     socket.emit('startGame', { roomId }, (r) => {
       if (!r.ok) setError(r.error);
       else setError('');
@@ -865,6 +942,7 @@ export default function RoomPage(): JSX.Element {
   }
 
   function restartGame(): void {
+    closeDefinitionSheet();
     socket.emit('restartGame', { roomId, autoStart: true }, (r) => {
       if (!r.ok) setError(r.error);
     });
@@ -1014,6 +1092,8 @@ export default function RoomPage(): JSX.Element {
   }
 
   function resetClientGameState(): void {
+    closeDefinitionSheet();
+    setSourceDefinition(undefined);
     clearScoreBursts();
     clearEmoteBursts();
     setRoundResults(undefined);
@@ -1504,6 +1584,11 @@ export default function RoomPage(): JSX.Element {
                 ? renderIntuitionWord(snapshot.currentWord)
                 : <span className="current-word-waiting">Waiting to start…</span>
               }
+              {sourceDefinition && snapshot.currentWord && (
+                <p className="current-word-definition" title={sourceDefinition.definition}>
+                  {sourceDefinition.definition}
+                </p>
+              )}
               {isIntuitionMode && snapshot.phase === 'round' && snapshot.currentWord && (
                 <span className="intuition-unlock-note">
                   Unlocking randomly: one letter every {(snapshot.settings.timePerRound / snapshot.currentWord.length).toFixed(1)}s
@@ -1903,9 +1988,17 @@ export default function RoomPage(): JSX.Element {
         <Button variant="secondary" fullWidth onClick={() => setInfoMode(undefined)}>Got it</Button>
       </Dialog>
 
+      <WordDefinitionSheet
+        word={definitionWord}
+        entry={definitionEntry}
+        loading={definitionLoading}
+        error={definitionError}
+        onClose={closeDefinitionSheet}
+      />
+
       {/* ── ROUND HISTORY MODAL ── */}
       <Dialog
-        open={showRoundHistory}
+        open={showRoundHistory && !definitionWord}
         onClose={() => setShowRoundHistory(false)}
         size="lg"
         ariaLabel="Round history"

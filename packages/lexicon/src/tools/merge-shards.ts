@@ -48,7 +48,7 @@ function validatedAttempt(work: Database.Database, run: RunRow, attempt: Accepte
 }
 
 /** Merge validated shards into a new artifact and publish it atomically without replacing an existing path. */
-export function mergeShards(options: { sourceArtifact: string; outputArtifact: string; workPaths: string[] }): { mergedEntries:number; generatedWords:number } {
+export function mergeShards(options: { sourceArtifact: string; outputArtifact: string; workPaths: string[]; artifactVersion?: string; allowPartial?: boolean }): { mergedEntries:number; generatedWords:number } {
   const sourcePath = resolve(options.sourceArtifact); const outputPath = resolve(options.outputArtifact);
   if (sourcePath === outputPath) throw new Error('Merge output must be a new immutable artifact path.');
   if (existsSync(outputPath)) throw new Error(`Refusing to overwrite immutable artifact: ${outputPath}`);
@@ -95,13 +95,15 @@ export function mergeShards(options: { sourceArtifact: string; outputArtifact: s
         }
       }
       generatedWords = (artifact.prepare('SELECT count(DISTINCT game_word_id) value FROM generated_senses').get() as {value:number}).value;
-      const missing = (artifact.prepare('SELECT count(*) value FROM game_words g WHERE NOT EXISTS (SELECT 1 FROM wordnet_senses w WHERE w.game_word_id=g.id) AND NOT EXISTS (SELECT 1 FROM generated_senses a WHERE a.game_word_id=g.id)').get() as {value:number}).value;
+      const missing = (artifact.prepare('SELECT count(*) value FROM game_words g WHERE g.gameplay_eligible=1 AND NOT EXISTS (SELECT 1 FROM wordnet_senses w WHERE w.game_word_id=g.id) AND NOT EXISTS (SELECT 1 FROM generated_senses a WHERE a.game_word_id=g.id)').get() as {value:number}).value;
       artifact.prepare("UPDATE artifact_metadata SET value=? WHERE key='generated_word_count'").run(String(generatedWords));
       artifact.prepare("UPDATE artifact_metadata SET value=? WHERE key='missing_definition_count'").run(String(missing));
+      artifact.prepare("UPDATE artifact_metadata SET value=? WHERE key='release_status'").run(missing === 0 ? 'complete' : 'partial');
+      if (options.artifactVersion) artifact.prepare("UPDATE artifact_metadata SET value=? WHERE key='artifact_version'").run(options.artifactVersion);
       if (canonicalRun && entries.length) artifact.prepare('UPDATE provenance SET output_sha256=? WHERE id=?').run(canonicalGeneratedHash(artifact),`ai:${canonicalRun.run_id}`);
     });
     transaction(); artifact.close();
-    validateRelease(temporary);
+    validateRelease(temporary, undefined, { allowPartial: options.allowPartial === true });
     try { linkSync(temporary, outputPath); } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw new Error(`Refusing to overwrite immutable artifact: ${outputPath}`);
       throw error;
@@ -112,6 +114,6 @@ export function mergeShards(options: { sourceArtifact: string; outputArtifact: s
 }
 
 if (process.argv[1]?.endsWith('merge-shards.ts') || process.argv[1]?.endsWith('merge-shards.js')) {
-  const result=mergeShards({sourceArtifact:requiredOption('artifact'),outputArtifact:requiredOption('output'),workPaths:requiredOption('work').split(',')});
+  const result=mergeShards({sourceArtifact:requiredOption('artifact'),outputArtifact:requiredOption('output'),workPaths:requiredOption('work').split(','),artifactVersion:requiredOption('version')});
   console.log(JSON.stringify(result));
 }

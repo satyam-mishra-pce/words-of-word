@@ -10,7 +10,7 @@ function expectedSensePos(senseKey: string): string {
   if (!pos) throw new Error(`Unknown sense-key POS: ${senseKey}`);
   return pos;
 }
-export function validateRelease(path: string, expected?: { version?: string; sha256?: string }): Record<string, string | number> {
+export function validateRelease(path: string, expected?: { version?: string; sha256?: string }, options: { allowPartial?: boolean } = {}): Record<string, string | number> {
   if (expected?.sha256 && sha256File(path) !== expected.sha256.toLowerCase()) throw new Error('artifact SHA-256 mismatch');
   const db = new Database(path, { readonly: true, fileMustExist: true });
   const fail = (message: string): never => { throw new Error(message); };
@@ -36,8 +36,11 @@ export function validateRelease(path: string, expected?: { version?: string; sha
       const value = (db.prepare(`SELECT count(DISTINCT game_word_id) value FROM ${table}`).get() as {value:number}).value;
       if (Number(metadata[key]) !== value) fail(`${key} coverage mismatch`);
     }
-    const missing = (db.prepare('SELECT count(*) value FROM game_words g WHERE NOT EXISTS (SELECT 1 FROM wordnet_senses w WHERE w.game_word_id=g.id) AND NOT EXISTS (SELECT 1 FROM generated_senses a WHERE a.game_word_id=g.id)').get() as {value:number}).value;
+    const missing = (db.prepare('SELECT count(*) value FROM game_words g WHERE g.gameplay_eligible=1 AND NOT EXISTS (SELECT 1 FROM wordnet_senses w WHERE w.game_word_id=g.id) AND NOT EXISTS (SELECT 1 FROM generated_senses a WHERE a.game_word_id=g.id)').get() as {value:number}).value;
     if (Number(metadata.missing_definition_count) !== missing) fail('missing coverage mismatch');
+    const expectedStatus = missing === 0 ? 'complete' : 'partial';
+    if (metadata.release_status !== expectedStatus) fail('release status mismatch');
+    if (missing !== 0 && !options.allowPartial) fail(`release has ${missing} playable words without definitions`);
     return { artifactVersion:metadata.artifact_version!, releaseStatus:metadata.release_status!, words:words.length, eligible:eligible.length, wordnetBacked:Number(metadata.wordnet_backed_word_count), generated:Number(metadata.generated_word_count), missing, sensePosMismatches:mismatches.length, sha256:sha256File(path) };
   } finally { db.close(); }
 }

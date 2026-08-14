@@ -11,6 +11,8 @@ import { z } from 'zod';
 import {
   CheckRoomPayloadSchema,
   ClientToServerEvents,
+  DictionaryLookupPayloadSchema,
+  DictionaryLookupResponse,
   CreateRoomPayloadSchema,
   EmptyResult,
   Emote,
@@ -52,6 +54,7 @@ import {
 } from '@wow/shared';
 import { AggregateAnalyticsStore, type AnalyticsVisitorIdentity } from './aggregateAnalytics.js';
 import { createAnalyticsPersistence } from './analyticsPersistence.js';
+import { DictionaryEntryCache, firstSourceDefinition, FixedWindowRateLimiter, lookupDictionaryEntries } from './dictionaryDefinitions.js';
 import {
   canMakeWord,
   chooseSourceWord,
@@ -66,7 +69,7 @@ import {
   scoreWord,
   type ValidWordIndex
 } from '@wow/game-engine';
-import { loadPlayableWordsFromManifest } from '@wow/lexicon';
+import { loadPlayableWordsFromManifest, openDefinitionStore, resolveLocalArtifact } from '@wow/lexicon';
 
 const PORT = Number(process.env.PORT ?? 4000);
 const WEB_DIST_DIR = fileURLToPath(new URL('../../web/dist', import.meta.url));
@@ -164,9 +167,17 @@ const CATEGORY_WORDS: Record<string, string[]> = {
 };
 const createRoomId = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 6);
 const lexiconManifestPath = process.env.LEXICON_MANIFEST_PATH?.trim() || fileURLToPath(new URL('../../../packages/lexicon/artifacts/manifest.json', import.meta.url));
+const artifactPathOverride = process.env.LEXICON_DB_PATH?.trim();
+const resolvedLexicon = resolveLocalArtifact(lexiconManifestPath);
+const lexiconArtifactPath = artifactPathOverride || resolvedLexicon.path;
 const words = loadPlayableWordsFromManifest({
   manifestPath: lexiconManifestPath,
-  ...(process.env.LEXICON_DB_PATH?.trim() ? { artifactPath: process.env.LEXICON_DB_PATH.trim() } : {})
+  ...(artifactPathOverride ? { artifactPath: artifactPathOverride } : {})
+});
+const definitionStore = openDefinitionStore({
+  path: lexiconArtifactPath,
+  expectedArtifactVersion: resolvedLexicon.manifest.artifactVersion,
+  expectedSha256: resolvedLexicon.manifest.sha256
 });
 const validWordIndex = createValidWordIndex(words);
 const dictionaryWordSet = new Set(validWordIndex.words);
@@ -241,6 +252,7 @@ interface InternalRoom {
   isPublic: boolean;
   phase: RoomSnapshot['phase'];
   currentWord: string;
+  sourceDefinition: RoundStartedPayload['sourceDefinition'];
   timeLeft: number;
   lightningTimeLeft: Map<string, number>;
   currentRound: number;
@@ -721,6 +733,7 @@ class GameRoomManager {
       isPublic,
       phase: 'lobby',
       currentWord: '',
+      sourceDefinition: undefined,
       timeLeft: this.roundSecondsFor(settings),
       lightningTimeLeft: new Map<string, number>(),
       currentRound: 0,
@@ -927,6 +940,7 @@ class GameRoomManager {
     room.lightningTimeLeft.clear();
     room.currentRound = 0;
     room.currentWord = '';
+    room.sourceDefinition = undefined;
     room.validWords = new Set<string>();
     room.waitingSeconds = 0;
     room.players = room.players.map((player, index) => {
@@ -1044,6 +1058,7 @@ class GameRoomManager {
       }
       room.phase = 'lobby';
       room.currentWord = '';
+      room.sourceDefinition = undefined;
       room.currentRound = 0;
       room.timeLeft = this.roundSecondsFor(room.settings);
       room.lightningTimeLeft.clear();
@@ -1117,6 +1132,7 @@ class GameRoomManager {
     this.resetScores(room);
     room.currentRound = 0;
     room.currentWord = '';
+    room.sourceDefinition = undefined;
     room.timeLeft = this.roundSecondsFor(room.settings);
     room.validWords = new Set<string>();
     room.waitingSeconds = 0;
@@ -1345,6 +1361,7 @@ class GameRoomManager {
     this.resetScores(room);
     room.phase = 'lobby';
     room.currentWord = '';
+    room.sourceDefinition = undefined;
     room.currentRound = 0;
     room.timeLeft = this.roundSecondsFor(room.settings);
     room.lightningTimeLeft.clear();
@@ -1414,6 +1431,7 @@ class GameRoomManager {
 
     room.phase = 'betting';
     room.currentWord = '';
+    room.sourceDefinition = undefined;
     room.timeLeft = BETTING_SECONDS;
     room.lightningTimeLeft.clear();
     room.validWords = new Set<string>();
@@ -1471,6 +1489,7 @@ class GameRoomManager {
     room.currentRound += 1;
     room.phase = 'round';
     room.currentWord = sourceWord.toLowerCase();
+    room.sourceDefinition = firstSourceDefinition(definitionStore, room.currentWord);
     room.timeLeft = this.roundSecondsFor(room.settings);
     room.lightningTimeLeft = this.usesLightning(room.settings)
       ? new Map(this.activePlayers(room).map((player) => [player.id, LIGHTNING_SECONDS]))
@@ -1490,6 +1509,7 @@ class GameRoomManager {
 
     this.io.to(room.id).emit('roundStarted', {
       currentWord: room.currentWord,
+      ...(room.sourceDefinition ? { sourceDefinition: room.sourceDefinition } : {}),
       timeLeft: room.timeLeft,
       currentRound: room.currentRound,
       totalRounds: room.settings.rounds,
@@ -1842,6 +1862,7 @@ class GameRoomManager {
       },
       phase: room.phase,
       currentWord: room.currentWord,
+      ...(room.sourceDefinition ? { sourceDefinition: room.sourceDefinition } : {}),
       timeLeft: room.timeLeft,
       lightningTimeLeft: Object.fromEntries(room.lightningTimeLeft),
       currentRound: room.currentRound,
@@ -2146,6 +2167,38 @@ fastify.get('/health', async () => ({ ok: true }));
 const publicStats = async () => ({ ok: true, data: analytics.publicStats() });
 fastify.get('/api/stats', publicStats);
 fastify.get('/stats', publicStats);
+
+const dictionaryEntryCache = new DictionaryEntryCache(2_000);
+// This service runs behind different reverse proxies in production. Until each
+// deployment has an explicit trusted-proxy policy, use a generous process-wide
+// safety ceiling rather than grouping unrelated players by the proxy socket IP.
+const dictionaryLookupRateLimiter = new FixedWindowRateLimiter(6_000, 60_000, 1);
+
+fastify.post('/api/dictionary/lookup', async (request, reply) => {
+  const limit = dictionaryLookupRateLimiter.consume('global');
+  if (!limit.allowed) {
+    return reply
+      .header('Cache-Control', 'no-store')
+      .header('Retry-After', String(limit.retryAfterSeconds))
+      .code(429)
+      .send({ ok: false, error: 'Too many dictionary lookups. Please try again shortly.' });
+  }
+
+  const payload = DictionaryLookupPayloadSchema.safeParse(request.body);
+  if (!payload.success) {
+    return reply
+      .header('Cache-Control', 'no-store')
+      .code(400)
+      .send({ ok: false, error: validationMessage(payload.error.issues[0]?.message ?? 'Invalid dictionary lookup request.') });
+  }
+
+  const response: DictionaryLookupResponse = {
+    entries: lookupDictionaryEntries(definitionStore, payload.data.words, dictionaryEntryCache)
+  };
+  return reply
+    .header('Cache-Control', 'private, max-age=300')
+    .send({ ok: true, data: response });
+});
 
 fastify.post('/api/daily/validate-word', async (request, reply) => {
   const payload = DailyWordValidationPayloadSchema.safeParse(request.body);
@@ -2865,12 +2918,15 @@ async function shutdown(signal: 'SIGINT' | 'SIGTERM'): Promise<void> {
   isShuttingDown = true;
   fastify.log.info({ signal }, 'shutting down');
 
-  try {
-    await analytics.close();
-    await fastify.close();
-  } finally {
-    process.exit(0);
+  const results = await Promise.allSettled([
+    fastify.close(),
+    Promise.resolve().then(() => definitionStore.close()),
+    analytics.close()
+  ]);
+  for (const result of results) {
+    if (result.status === 'rejected') fastify.log.error({ error: result.reason }, 'shutdown cleanup failed');
   }
+  process.exit(results.some((result) => result.status === 'rejected') ? 1 : 0);
 }
 
 process.once('SIGINT', () => { void shutdown('SIGINT'); });
