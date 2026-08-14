@@ -1,11 +1,14 @@
 import { FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { DictionaryEntry } from '@wow/shared';
 import { Link } from 'react-router-dom';
+import { WordDefinitionSheet } from '../components/WordDefinitionSheet';
 import { Badge, Button, Input, Label, Progress } from '../components/ui';
 import { readStoredValue, writeStoredValue } from '../services/storage';
 import { getDailyChallengeUrl } from '../services/platform';
 import { shareContent } from '../services/nativeShare';
 import { trackFeatureUsage } from '../services/aggregateAnalytics';
 import { validateDailyWord } from '../services/dailyWord';
+import { lookupDictionaryWords } from '../services/dictionary';
 
 const DAILY_SECONDS = 30;
 const DAILY_WORDS = [
@@ -116,11 +119,53 @@ export default function DailyWordPage(): JSX.Element {
   const [shareStatus, setShareStatus] = useState('');
   const [isWordInputFocused, setIsWordInputFocused] = useState(false);
   const [isValidatingWord, setIsValidatingWord] = useState(false);
+  const [sourceDefinition, setSourceDefinition] = useState('');
+  const [definitionWord, setDefinitionWord] = useState<string>();
+  const [definitionEntry, setDefinitionEntry] = useState<DictionaryEntry>();
+  const [definitionLoading, setDefinitionLoading] = useState(false);
+  const [definitionError, setDefinitionError] = useState('');
   const timerRef = useRef<number | undefined>();
   const inputRef = useRef<HTMLInputElement>(null);
   const inputFocusRequestedRef = useRef(false);
   const attemptRef = useRef<DailyAttempt | undefined>(existingAttempt);
   const dailyCompletionTrackedRef = useRef(Boolean(existingAttempt?.finished));
+  const definitionCacheRef = useRef<Map<string, DictionaryEntry>>(new Map());
+  const definitionRequestRef = useRef(0);
+
+  function closeDefinitionSheet(): void {
+    definitionRequestRef.current += 1;
+    setDefinitionWord(undefined);
+    setDefinitionEntry(undefined);
+    setDefinitionLoading(false);
+    setDefinitionError('');
+  }
+
+  async function openWordDefinition(input: string): Promise<void> {
+    const word = input.trim().toLowerCase();
+    const requestId = definitionRequestRef.current + 1;
+    definitionRequestRef.current = requestId;
+    setDefinitionWord(word);
+    setDefinitionError('');
+    const cached = definitionCacheRef.current.get(word);
+    if (cached) {
+      setDefinitionEntry(cached);
+      setDefinitionLoading(false);
+      return;
+    }
+
+    setDefinitionEntry(undefined);
+    setDefinitionLoading(true);
+    try {
+      const entries = await lookupDictionaryWords([word]);
+      const entry = entries[word] ?? { word, senses: [] };
+      definitionCacheRef.current.set(word, entry);
+      if (definitionRequestRef.current === requestId) setDefinitionEntry(entry);
+    } catch {
+      if (definitionRequestRef.current === requestId) setDefinitionError('Could not load this definition. Check your connection and try again.');
+    } finally {
+      if (definitionRequestRef.current === requestId) setDefinitionLoading(false);
+    }
+  }
 
   function finishAttempt(finalWords = words): void {
     const wasFinished = Boolean(attemptRef.current?.finished);
@@ -174,8 +219,26 @@ export default function DailyWordPage(): JSX.Element {
     inputRef.current?.focus();
   }, [isRunning]);
 
+  useEffect(() => {
+    let active = true;
+    const lookupWords = Array.from(new Set([sourceWord, ...words]));
+    void (async () => {
+      for (let index = 0; index < lookupWords.length; index += 100) {
+        const entries = await lookupDictionaryWords(lookupWords.slice(index, index + 100));
+        for (const [word, entry] of Object.entries(entries)) definitionCacheRef.current.set(word, entry);
+        if (!active) return;
+        const sourceEntry = entries[sourceWord];
+        if (sourceEntry) setSourceDefinition(sourceEntry.shortDefinition ?? sourceEntry.senses[0]?.definition ?? '');
+      }
+    })().catch(() => undefined);
+    return () => { active = false; };
+  }, [sourceWord, words]);
+
+  useEffect(() => () => { definitionRequestRef.current += 1; }, []);
+
   function start(): void {
     if (isRunning) return;
+    closeDefinitionSheet();
 
     const now = Date.now();
     const attempt: DailyAttempt = {
@@ -314,6 +377,7 @@ export default function DailyWordPage(): JSX.Element {
         <div className="current-word-card">
           <span className="current-word-label">Today&apos;s word</span>
           <span className="current-word-text" title={sourceWord}>{sourceWord}</span>
+          {sourceDefinition && <p className="current-word-definition" title={sourceDefinition}>{sourceDefinition}</p>}
         </div>
 
         <div className={`timer-section${timeLeft <= 5 && isRunning ? ' urgent' : ''}`}>
@@ -356,7 +420,18 @@ export default function DailyWordPage(): JSX.Element {
             <span className="words-count">{pluralizeWords(words.length)}</span>
           </div>
           <div className="word-chip-list">
-            {words.length > 0 ? words.map((word) => <Badge key={word} variant="word">{word}</Badge>) : <em>No words yet.</em>}
+            {words.length > 0 ? words.map((word) => (
+              <button
+                key={word}
+                type="button"
+                className="accepted-word-button"
+                title={`View definition of ${word}`}
+                aria-label={`${word}. View definition`}
+                onClick={() => { void openWordDefinition(word); }}
+              >
+                <Badge variant="word">{word}</Badge>
+              </button>
+            )) : <em>No words yet.</em>}
           </div>
         </div>
 
@@ -390,6 +465,14 @@ export default function DailyWordPage(): JSX.Element {
           <li>Resubmit anytime to beat your score.</li>
         </ul>
       </aside>
+
+      <WordDefinitionSheet
+        word={definitionWord}
+        entry={definitionEntry}
+        loading={definitionLoading}
+        error={definitionError}
+        onClose={closeDefinitionSheet}
+      />
     </main>
   );
 }
