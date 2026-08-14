@@ -19,6 +19,7 @@ apps/web/public/.DS_Store
 # Lexicon release downloads/builds and resumable AI work (manifest stays tracked)
 packages/lexicon/artifacts/*.sqlite
 packages/lexicon/artifacts/*.sqlite.*
+!packages/lexicon/artifacts/words-of-word-lexicon-v0.2.0.sqlite.gz
 packages/lexicon/work/
 *.sqlite-wal
 *.sqlite-shm

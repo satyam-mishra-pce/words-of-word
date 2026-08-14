@@ -3,7 +3,7 @@
   "schemaVersion": 1,
   "fileName": "words-of-word-lexicon-v0.2.0.sqlite",
   "sha256": "1ffd05433b2b874800f4d5f019c01731be00a5f98f4aeaa8f4dc72513a847999",
-  "downloadUrl": null,
+  "downloadUrl": "https://github.com/harshit259999/words-of-word/releases/download/lexicon-v0.2.0/words-of-word-lexicon-v0.2.0.sqlite",
   "releaseStatus": "complete",
-  "note": "Unpublished deterministic full-coverage artifact. Generated definitions are pinned to run 7497b731-5494-4796-8999-12ac1c641d76; publishing requires an immutable URL and separate release review."
+  "note": "Deterministic full-coverage artifact with a versioned compressed copy bundled for deployment. Generated definitions are pinned to run 7497b731-5494-4796-8999-12ac1c641d76."
 }

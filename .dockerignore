@@ -16,6 +16,7 @@ apps/web/ios
 packages/lexicon/artifacts/*.sqlite
 !packages/lexicon/artifacts/words-of-word-lexicon-v0.2.0.sqlite
 packages/lexicon/artifacts/*.sqlite.*
+!packages/lexicon/artifacts/words-of-word-lexicon-v0.2.0.sqlite.gz
 packages/lexicon/work
 **/tasks*.jsonl
 **/drafts*.jsonl

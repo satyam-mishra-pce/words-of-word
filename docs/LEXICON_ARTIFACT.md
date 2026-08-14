@@ -23,7 +23,7 @@ pnpm test:lexicon
 
 `lexicon:build` constructs only the deterministic WordNet base artifact used as generation input; it does not recreate the generated release or rewrite the tracked manifest. `lexicon:pin-release` is an explicit release-authoring operation that updates the trust-root checksum and must be reviewed separately.
 
-The tracked manifest contains the checksum of the reviewed full-coverage artifact but no download URL because it has not been published. `pnpm lexicon:ensure` uses a local artifact when present and otherwise delegates to checksum-verifying `lexicon:fetch`, which fails closed until an immutable URL is configured.
+The tracked manifest pins the reviewed full-coverage artifact to an immutable, access-controlled GitHub release URL and SHA-256 checksum. The repository also tracks a compressed copy so private remote builders do not require separate GitHub release credentials. `pnpm lexicon:ensure` uses an existing artifact when present and otherwise delegates to `lexicon:fetch`, which expands the bundled copy (or downloads the release fallback) and verifies the final checksum.
 
 Runtime variables are optional in the repository layout:
 
@@ -50,4 +50,4 @@ Work databases, tasks, drafts, SQLite sidecars, and generated artifacts are excl
 
 ## Deployment note
 
-Local Docker builds may include the ignored `0.2.0` artifact in their build context. Remote Docker/Render builds fail closed through `lexicon:ensure` until the checksum-pinned artifact receives an immutable download URL. Runtime keeps only the final artifact plus production dependencies and still uses the in-memory gameplay index.
+Local Docker builds may include the ignored expanded `0.2.0` artifact in their build context. Remote Docker/Render builds expand the tracked compressed copy through `lexicon:ensure` and reject any checksum mismatch. Runtime keeps only the final expanded artifact plus production dependencies and still uses the in-memory gameplay index.
