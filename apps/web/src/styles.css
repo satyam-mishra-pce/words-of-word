@@ -4783,3 +4783,162 @@ body:has(.game-shell.has-gameplay-chrome),
   .about-hero__grid { grid-template-columns: 1fr; }
   .about-hero__video { max-height: none; }
 }
+
+/* ── Procedural game sound lab ─────────────────────────────────────────── */
+.sound-lab-dialog .ui-dialog-content {
+  display: grid;
+  gap: 20px;
+}
+
+.sound-lab-dialog .muted {
+  color: color-mix(in srgb, var(--text) 82%, var(--bg-sub));
+}
+
+.sound-lab-dialog .dialog-header h2 {
+  margin: 2px 0 8px;
+  font-size: clamp(1.65rem, 5vw, 2.4rem);
+  line-height: 0.95;
+}
+
+.sound-lab-master {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--sub-2);
+  border-radius: 14px;
+  background: var(--bg-3);
+}
+
+.sound-lab-master > div {
+  display: grid;
+  gap: 2px;
+}
+
+.sound-lab-master .muted {
+  font-size: 0.78rem;
+  color: color-mix(in srgb, var(--text) 82%, var(--bg-sub));
+}
+
+.sound-lab-volume {
+  display: grid;
+  gap: 9px;
+}
+
+.sound-lab-volume label {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sound-lab-volume input[type='range'] {
+  width: 100%;
+  accent-color: var(--main);
+  min-height: 28px;
+  cursor: pointer;
+}
+
+.sound-preview-heading h3 {
+  margin: 0 0 9px;
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sound-preview-button {
+  min-width: 0;
+  border: 1px solid var(--sub-2);
+  color: var(--text);
+  background: var(--bg-3);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
+}
+
+.sound-preview-button:hover,
+.sound-preview-button:focus-visible {
+  border-color: var(--main);
+  background: var(--main-10);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.sound-preview-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  border-color: var(--sub-2);
+  background: var(--bg-3);
+}
+
+.sound-preview-button span {
+  color: color-mix(in srgb, var(--text) 82%, var(--bg-sub));
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.sound-preview-heading p {
+  margin: -5px 0 10px;
+  font-size: 0.75rem;
+}
+
+.sound-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.sound-preview-button {
+  display: grid;
+  gap: 3px;
+  padding: 11px 12px;
+  border-radius: 10px;
+}
+
+.sound-preview-button strong {
+  overflow: hidden;
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sound-preview-button--bomb {
+  border-color: rgba(255, 90, 90, 0.55);
+  background: rgba(255, 90, 90, 0.08);
+}
+
+.sound-lab-dialog .dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 4px;
+}
+
+.sound-lab-dialog .dialog-footer p {
+  margin: 0;
+  font-size: 0.73rem;
+}
+
+@media (max-width: 640px) {
+  .sound-pack-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sound-pack-option {
+    min-height: 0;
+  }
+
+  .sound-preview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sound-lab-dialog .dialog-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

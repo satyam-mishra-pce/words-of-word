@@ -10,6 +10,15 @@ import { copyTextToClipboard } from '../services/nativeShare';
 import { trackFeatureUsage } from '../services/aggregateAnalytics';
 import { lookupDictionaryWords } from '../services/dictionary';
 import { WordDefinitionSheet } from '../components/WordDefinitionSheet';
+import { SoundLabDialog } from '../components/SoundLabDialog';
+import {
+  classifyAcceptedSound,
+  classifyNoticeSound,
+  classifyRejectedSound,
+  playGameSound,
+  stopGameAudio,
+  suspendGameAudio
+} from '../services/gameAudio';
 import '../styles/game-score-feedback.css';
 import {
   Alert,
@@ -29,7 +38,7 @@ import {
 
 const RANK_ICONS: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉' };
 
-type GameActionIconName = 'share' | 'check' | 'rules' | 'stop' | 'exit';
+type GameActionIconName = 'share' | 'check' | 'rules' | 'sound' | 'stop' | 'exit';
 
 function GameActionIcon({ name }: { name: GameActionIconName }): JSX.Element {
   const svgProps = {
@@ -51,6 +60,8 @@ function GameActionIcon({ name }: { name: GameActionIconName }): JSX.Element {
       return <svg {...svgProps}><path d="m4 10 3.75 3.75L16 5.5" /></svg>;
     case 'rules':
       return <svg {...svgProps}><path d="M3.5 3.5h5a2 2 0 0 1 2 2v11a2 2 0 0 0-2-2h-5Z" /><path d="M16.5 3.5h-5a2 2 0 0 0-2 2v11a2 2 0 0 1 2-2h5Z" /></svg>;
+    case 'sound':
+      return <svg {...svgProps}><path d="M4 8h3l4-3v10l-4-3H4Z" /><path d="M14 7.25a4 4 0 0 1 0 5.5" /><path d="M16 5a7 7 0 0 1 0 10" /></svg>;
     case 'stop':
       return <svg {...svgProps}><rect x="5" y="5" width="10" height="10" rx="1.5" /></svg>;
     case 'exit':
@@ -329,6 +340,7 @@ export default function RoomPage(): JSX.Element {
   const [finalTeamScores, setFinalTeamScores] = useState<TeamScore[]>([]);
   const [showRoundHistory, setShowRoundHistory] = useState(false);
   const [showHowToPlay, setShowHowToPlay] = useState(false);
+  const [showSoundLab, setShowSoundLab] = useState(false);
   const [showStopConfirmation, setShowStopConfirmation] = useState(false);
   const [isStoppingGame, setIsStoppingGame] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
@@ -357,6 +369,10 @@ export default function RoomPage(): JSX.Element {
   // Track the source word at round-end time for history labelling
   const currentWordRef = useRef('');
   const previousPhaseRef = useRef<RoomSnapshot['phase'] | undefined>();
+  const audioSnapshotRef = useRef<RoomSnapshot>();
+  const playedTimerSoundsRef = useRef<Set<string>>(new Set());
+  const intuitionRevealedRef = useRef(0);
+  const sprintEndedRef = useRef(false);
   const scoreBurstIdRef = useRef(0);
   const scoreBurstTimersRef = useRef<Map<number, number>>(new Map());
   const emoteBurstIdRef = useRef(0);
@@ -658,6 +674,8 @@ export default function RoomPage(): JSX.Element {
     if (inviteCopiedTimerRef.current !== undefined) window.clearTimeout(inviteCopiedTimerRef.current);
   }, []);
 
+  useEffect(() => () => suspendGameAudio(), []);
+
   /* ── socket setup ── */
   useEffect(() => {
     if (!roomId) return;
@@ -671,6 +689,7 @@ export default function RoomPage(): JSX.Element {
         }
         setSnapshot(response.data.snapshot);
         setSourceDefinition(response.data.snapshot.sourceDefinition);
+        audioSnapshotRef.current = response.data.snapshot;
         previousPhaseRef.current = response.data.snapshot.phase;
         currentWordRef.current = response.data.snapshot.currentWord;
         setWaitingSeconds(response.data.snapshot.waitingSeconds);
@@ -691,7 +710,12 @@ export default function RoomPage(): JSX.Element {
       if (isNewBettingGame) {
         resetClientGameState();
       }
+      if (payload.snapshot.phase === 'betting' && previousPhase !== 'betting') {
+        setShowSoundLab(false);
+        playGameSound('bettingStart');
+      }
       previousPhaseRef.current = payload.snapshot.phase;
+      audioSnapshotRef.current = payload.snapshot;
       setSnapshot(payload.snapshot);
       setSourceDefinition(payload.snapshot.sourceDefinition);
       currentWordRef.current = payload.snapshot.currentWord;
@@ -701,9 +725,20 @@ export default function RoomPage(): JSX.Element {
     const onEmotePlayed = (payload: EmotePlayedPayload): void => queueEmoteBurst(payload);
 
     socket.on('roomSnapshot', onSnapshot);
-    socket.on('playerJoined', (p) => { setSnapshot(p.snapshot); setNotice(`${p.player.name} joined.`); });
-    socket.on('playerLeft', (p) => { setSnapshot(p.snapshot); setNotice('A player left.'); });
+    socket.on('playerJoined', (p) => {
+      audioSnapshotRef.current = p.snapshot;
+      setSnapshot(p.snapshot);
+      setNotice(`${p.player.name} joined.`);
+      playGameSound('playerJoin');
+    });
+    socket.on('playerLeft', (p) => {
+      audioSnapshotRef.current = p.snapshot;
+      setSnapshot(p.snapshot);
+      setNotice('A player left.');
+      playGameSound('playerLeave');
+    });
     socket.on('hostChanged', (p) => {
+      audioSnapshotRef.current = p.snapshot;
       setSnapshot(p.snapshot);
       setNotice(p.hostId === socket.id ? 'You are now the host.' : 'Host changed.');
     });
@@ -714,6 +749,11 @@ export default function RoomPage(): JSX.Element {
       }
       setSourceDefinition(p.sourceDefinition);
       previousPhaseRef.current = p.snapshot.phase;
+      audioSnapshotRef.current = p.snapshot;
+      playedTimerSoundsRef.current.clear();
+      intuitionRevealedRef.current = 0;
+      sprintEndedRef.current = false;
+      setShowSoundLab(false);
       setSnapshot(p.snapshot);
       currentWordRef.current = p.currentWord;
       setRoundResults(undefined);
@@ -724,16 +764,73 @@ export default function RoomPage(): JSX.Element {
       setNegativeMarkedWords([]);
       setBetInput('');
       setBustFlash(undefined);
+      playGameSound('roundStart');
       void hapticMedium();
       // Restore keyboard focus when a new round begins
       requestAnimationFrame(() => inputRef.current?.focus());
     });
     socket.on('timeUpdate', (p) => {
-      setSnapshot((s) => s ? { ...s, timeLeft: p.timeLeft, lightningTimeLeft: p.lightningTimeLeft ?? s.lightningTimeLeft } : s);
+      const audioSnapshot = audioSnapshotRef.current;
+      if (audioSnapshot?.phase === 'round') {
+        const usesLightning = audioSnapshot.settings.gameMode === 'lightning'
+          || (audioSnapshot.settings.gameMode === 'mix' && audioSnapshot.settings.mixModifiers.lightning);
+        const playerId = socket.id;
+        const previousPersonalTime = playerId ? audioSnapshot.lightningTimeLeft[playerId] : undefined;
+        const audibleTime = usesLightning && playerId
+          ? p.lightningTimeLeft?.[playerId] ?? previousPersonalTime ?? 0
+          : p.timeLeft;
+        const warningAt = usesLightning ? 5 : 10;
+        // Tick every second through the warning window, then the urgent
+        // final-3 tick takes over for 3-2-1.
+        if (audibleTime > 3 && audibleTime <= warningAt) {
+          const warningKey = `${audioSnapshot.currentRound}:warning:${audibleTime}`;
+          if (!playedTimerSoundsRef.current.has(warningKey)) {
+            playedTimerSoundsRef.current.add(warningKey);
+            playGameSound('timerWarning');
+          }
+        }
+        if (audibleTime > 0 && audibleTime <= 3) {
+          const tickKey = `${audioSnapshot.currentRound}:tick:${audibleTime}`;
+          if (!playedTimerSoundsRef.current.has(tickKey)) {
+            playedTimerSoundsRef.current.add(tickKey);
+            playGameSound('timerTick');
+          }
+        }
+        if (usesLightning && previousPersonalTime !== undefined && previousPersonalTime > 0 && audibleTime <= 0) {
+          const timeoutKey = `${audioSnapshot.currentRound}:lightning-timeout`;
+          if (!playedTimerSoundsRef.current.has(timeoutKey)) {
+            playedTimerSoundsRef.current.add(timeoutKey);
+            playGameSound('lightningTimeout');
+          }
+        }
+
+        const usesIntuition = audioSnapshot.settings.gameMode === 'intuition'
+          || (audioSnapshot.settings.gameMode === 'mix' && audioSnapshot.settings.mixModifiers.intuition);
+        if (usesIntuition && audioSnapshot.currentWord) {
+          const total = Math.max(1, audioSnapshot.settings.timePerRound);
+          // Monotonic per round: only fire when more letters than ever are shown,
+          // so a Lightning timer gain cannot replay an already-heard reveal.
+          const nextRevealed = Math.floor(((total - p.timeLeft) * audioSnapshot.currentWord.length) / total);
+          if (nextRevealed > intuitionRevealedRef.current && nextRevealed <= audioSnapshot.currentWord.length) {
+            intuitionRevealedRef.current = nextRevealed;
+            playGameSound('intuitionReveal');
+          }
+        }
+      }
+      setSnapshot((s) => {
+        if (!s) return s;
+        const next = { ...s, timeLeft: p.timeLeft, lightningTimeLeft: p.lightningTimeLeft ?? s.lightningTimeLeft };
+        audioSnapshotRef.current = next;
+        return next;
+      });
     });
     socket.on('wordAccepted', (p) => {
       setInputFeedback('success');
       if (p.playerId === socket.id && typeof p.scoreDelta === 'number') queueScoreBurst(p.scoreDelta);
+      const audioSnapshot = audioSnapshotRef.current;
+      const usesLightning = audioSnapshot?.settings.gameMode === 'lightning'
+        || (audioSnapshot?.settings.gameMode === 'mix' && audioSnapshot.settings.mixModifiers.lightning);
+      playGameSound(classifyAcceptedSound(p.message, Boolean(usesLightning)));
       void hapticLight();
       if (p.message) setNotice(p.message);
       if (p.message.includes('-3')) {
@@ -754,6 +851,7 @@ export default function RoomPage(): JSX.Element {
     socket.on('wordRejected', (p) => {
       setInputFeedback('error');
       if (p.penalty) queueScoreBurst(p.penalty);
+      playGameSound(classifyRejectedSound(p.message, p.penalty));
       void hapticError();
       setNotice(p.message);
       if (p.penalty && p.penalty < 0) {
@@ -765,7 +863,10 @@ export default function RoomPage(): JSX.Element {
     });
     socket.on('scoresUpdated', (p) => {
       setSnapshot((s) => {
-        if (p.snapshot) return p.snapshot;
+        if (p.snapshot) {
+          audioSnapshotRef.current = p.snapshot;
+          return p.snapshot;
+        }
         if (!s) return s;
         const scoreByPlayer = new Map(p.scores);
         return {
@@ -786,6 +887,14 @@ export default function RoomPage(): JSX.Element {
     socket.on('roundEnded', (p) => {
       void prefetchDefinitions(p.results.flatMap((result) => result.words));
       previousPhaseRef.current = p.snapshot.phase;
+      audioSnapshotRef.current = p.snapshot;
+      if (p.snapshot.settings.gameMode === 'betting') {
+        const localResult = p.results.find((result) => result.playerId === socket.id);
+        playGameSound(localResult?.bettingHit ? 'bettingWin' : 'bettingLoss');
+      } else if (!sprintEndedRef.current) {
+        playGameSound('roundEnd');
+      }
+      sprintEndedRef.current = false;
       setSnapshot(p.snapshot);
       setRoundResults(p.results);
       setWaitingSeconds(p.nextRoundStartsIn);
@@ -805,6 +914,20 @@ export default function RoomPage(): JSX.Element {
     socket.on('gameOver', (p) => {
       if (p.results) void prefetchDefinitions(p.results.flatMap((result) => result.words));
       previousPhaseRef.current = p.snapshot.phase;
+      audioSnapshotRef.current = p.snapshot;
+      const isTeamsGame = p.snapshot.settings.gameMode === 'teams'
+        || (p.snapshot.settings.gameMode === 'mix' && p.snapshot.settings.mixModifiers.teams);
+      let localWon: boolean;
+      if (isTeamsGame && p.snapshot.teamScores.length > 0) {
+        const me = p.snapshot.players.find((player) => player.id === socket.id);
+        const topTeamScore = Math.max(...p.snapshot.teamScores.map((team) => team.score));
+        const myTeam = me?.teamId ? p.snapshot.teamScores.find((team) => team.teamId === me.teamId) : undefined;
+        localWon = Boolean(myTeam && myTeam.score === topTeamScore);
+      } else {
+        localWon = p.finalScores.find((score) => score.playerId === socket.id)?.rank === 1;
+      }
+      stopGameAudio();
+      playGameSound(localWon ? 'victory' : 'gameOver');
       setSnapshot(p.snapshot);
       setFinalScores(p.finalScores);
       setFinalTeamScores(p.snapshot.teamScores);
@@ -835,8 +958,10 @@ export default function RoomPage(): JSX.Element {
       void hapticSuccess();
     });
     socket.on('playerBusted', (p) => {
+      audioSnapshotRef.current = p.snapshot;
       setSnapshot(p.snapshot);
       setInputFeedback(p.playerId === socket.id ? 'error' : null);
+      playGameSound(p.playerId === socket.id ? 'bombSelf' : 'bomb');
       setNotice(p.message);
       setBustFlash({ playerId: p.playerId, playerName: p.playerName, word: p.word, message: p.message });
       void hapticWarning();
@@ -844,13 +969,24 @@ export default function RoomPage(): JSX.Element {
     socket.on('emotePlayed', onEmotePlayed);
     socket.on('gameRestarted', (p) => {
       closeDefinitionSheet();
+      stopGameAudio();
       setSourceDefinition(undefined);
       previousPhaseRef.current = p.snapshot.phase;
+      audioSnapshotRef.current = p.snapshot;
+      playedTimerSoundsRef.current.clear();
+      intuitionRevealedRef.current = 0;
       setSnapshot(p.snapshot);
       resetClientGameState();
       setNotice(p.autoStart ? 'New round incoming.' : 'Reset to lobby.');
     });
-    socket.on('notice', (p) => setNotice(p.message));
+    socket.on('notice', (p) => {
+      setNotice(p.message);
+      const sound = classifyNoticeSound(p.message);
+      if (sound) {
+        if (sound === 'sprintWin' || sound === 'elimination') sprintEndedRef.current = true;
+        playGameSound(sound);
+      }
+    });
 
     return () => {
       socket.off('roomSnapshot', onSnapshot);
@@ -937,7 +1073,10 @@ export default function RoomPage(): JSX.Element {
     if (!Number.isInteger(bet)) return;
     socket.emit('updateBet', { roomId, bet }, (r) => {
       if (!r.ok) setError(r.error);
-      else setError('');
+      else {
+        setError('');
+        playGameSound('betLocked');
+      }
     });
   }
 
@@ -1347,6 +1486,14 @@ export default function RoomPage(): JSX.Element {
               <span className="game-header__action-label">Invite</span>
             </Button>
           </Tooltip>
+          {['lobby', 'betweenRounds', 'gameOver'].includes(roomPhase) && (
+            <Tooltip content="Sound settings" className="ui-tooltip-down">
+              <Button variant="mini" size="sm" type="button" className="game-header__action" onClick={() => setShowSoundLab(true)} aria-label="Sound settings and preview">
+                <GameActionIcon name="sound" />
+                <span className="game-header__action-label">Sound</span>
+              </Button>
+            </Tooltip>
+          )}
           <Tooltip content="How to play" className="ui-tooltip-down">
             <Button variant="mini" size="sm" type="button" className="game-header__action" onClick={openHowToPlay} aria-label="How to play">
               <GameActionIcon name="rules" />
@@ -1782,6 +1929,8 @@ export default function RoomPage(): JSX.Element {
           {renderGameFooter()}
         </div>
       )}
+
+      <SoundLabDialog open={showSoundLab} onClose={() => setShowSoundLab(false)} />
 
       {/* ── STOP GAME CONFIRMATION ── */}
       <Dialog

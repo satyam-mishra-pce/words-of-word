@@ -5,6 +5,7 @@ export const STORAGE_KEYS = {
   installationId: 'wow.installation-id',
   analyticsVisitorId: 'wow.analytics-visitor-id',
   pushRegistration: 'wow.push-registration',
+  soundPreferences: 'wow.sound-preferences',
   theme: 'wow-theme',
   username: 'wow.username',
   avatar: 'wow.avatar'

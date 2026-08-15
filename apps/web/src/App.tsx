@@ -9,6 +9,7 @@ import RoomPage from './pages/RoomPage';
 import SettingsPage from './pages/SettingsPage';
 import OnlinePage from './pages/OnlinePage';
 import { FeatureUsageRouteTracker } from './components/FeatureUsageRouteTracker';
+import { stopGameAudio, unlockGameAudio } from './services/gameAudio';
 
 function PlayRedirect(): JSX.Element {
   useEffect(() => {
@@ -27,6 +28,17 @@ function PlayRedirect(): JSX.Element {
 }
 
 export default function App(): JSX.Element {
+  useEffect(() => {
+    const unlock = (): void => { void unlockGameAudio(); };
+    window.addEventListener('pointerdown', unlock, { passive: true });
+    window.addEventListener('keydown', unlock);
+    return () => {
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+      stopGameAudio();
+    };
+  }, []);
+
   // The game is the default for local development and AWS. Vercel explicitly
   // sets this to "portfolio" for the separate marketing site.
   const isGameDeployment = import.meta.env.VITE_DEPLOYMENT_SURFACE !== 'portfolio';
