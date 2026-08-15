@@ -49,6 +49,24 @@ function isAnalyticsAdminPath(): boolean {
   return window.location.pathname.replace(/\/+$/, '') === '/admin/analytics';
 }
 
+/**
+ * Fade out and remove the inline splash overlay (index.html) once the app has
+ * painted, so the user never sees the crawlable skeleton get swapped for the
+ * real app. Runs after two frames to ensure React has committed and painted.
+ */
+function dismissSplash(): void {
+  const splash = document.getElementById('app-splash');
+  if (!splash) return;
+
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    splash.classList.add('is-ready');
+    const remove = (): void => splash.remove();
+    splash.addEventListener('transitionend', remove, { once: true });
+    // Fallback for reduced-motion / no transitionend firing.
+    window.setTimeout(remove, 400);
+  }));
+}
+
 async function bootstrap(): Promise<void> {
   const root = ReactDOM.createRoot(document.getElementById('root') ?? document.body);
 
@@ -61,6 +79,7 @@ async function bootstrap(): Promise<void> {
         <AnalyticsPage />
       </React.StrictMode>
     );
+    dismissSplash();
     return;
   }
 
@@ -81,6 +100,8 @@ async function bootstrap(): Promise<void> {
       </BrowserRouter>
     </React.StrictMode>
   );
+
+  dismissSplash();
 }
 
 void bootstrap();

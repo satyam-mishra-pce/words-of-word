@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+
+# Keep transient / private surfaces out of the index
+Disallow: /room/
+Disallow: /join
+Disallow: /settings
+Disallow: /admin/
+Disallow: /play
+
+Sitemap: https://wordsofword.in/sitemap.xml

@@ -139,9 +139,46 @@ html[data-native-app="true"] body::after {
   letter-spacing: 0.2em;
   text-transform: uppercase;
 }
+.app-boot h1 {
+  max-width: 22ch;
+  margin: 0;
+  color: var(--main);
+  font: 700 clamp(1.4rem, 5vw, 2.2rem) 'JetBrains Mono', monospace;
+  letter-spacing: -0.04em;
+  text-transform: none;
+  text-align: center;
+}
+.app-boot p {
+  max-width: 52ch;
+  margin: 0;
+  color: var(--sub);
+  font: 500 0.8rem/1.6 'JetBrains Mono', monospace;
+  letter-spacing: 0;
+  text-transform: none;
+  text-align: center;
+}
+.app-boot nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  justify-content: center;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.app-boot nav a {
+  color: var(--main);
+  font: 600 0.8rem 'JetBrains Mono', monospace;
+  text-decoration: none;
+}
+.app-boot-brand {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  margin-top: 6px;
+}
 .app-boot strong {
   color: var(--main);
-  font: 700 clamp(3.3rem, 18vw, 6rem) 'JetBrains Mono', monospace;
+  font: 700 clamp(2.2rem, 12vw, 4rem) 'JetBrains Mono', monospace;
   letter-spacing: -0.12em;
   text-transform: none;
 }

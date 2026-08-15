@@ -5,19 +5,208 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="color-scheme" content="dark" />
     <meta name="theme-color" content="#111111" />
+
+    <!-- Search engine verification -->
     <meta name="ory-verify" content="orynth-9496996a22a04726b706897953719adb" />
-    <meta name="description" content="Words of Word is a real-time multiplayer word battle with Classic, Score Attack, Precision, Teams, Betting, Word Sprint, Knockout, Blind Type, Theme, Claim, Busted, Common Word, Intuition, Lightning, Bingo, Mix, and Daily Word modes." />
+    <!-- TODO: paste the token from Google Search Console (Settings → Ownership verification → HTML tag) -->
+    <meta name="google-site-verification" content="REPLACE_WITH_GOOGLE_SEARCH_CONSOLE_TOKEN" />
+
+    <!-- Primary meta -->
+    <title>Words of Word — Real-Time Multiplayer Word Battle Game</title>
+    <meta name="description" content="Words of Word is a free real-time multiplayer word battle game. Race to spell hidden words from a source word across 18 modes — Classic, Score Attack, Teams, Knockout, Betting, Word Sprint, and the daily challenge. Play free in your browser." />
+    <meta name="keywords" content="word game, multiplayer word game, word battle, online word game, anagram game, daily word challenge, free word game, spelling game, word puzzle" />
+    <meta name="author" content="Words of Word" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <link rel="canonical" href="https://wordsofword.in/" />
-    <title>Words of Word — Real-Time Word Battle</title>
+
+    <!-- Favicons & PWA -->
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Words of Word" />
+    <meta property="og:title" content="Words of Word — Real-Time Multiplayer Word Battle Game" />
+    <meta property="og:description" content="A free real-time multiplayer word battle across 18 modes. Spell hidden words from a source word, race the clock, and climb the scoreboard. Play free in your browser." />
+    <meta property="og:url" content="https://wordsofword.in/" />
+    <meta property="og:image" content="https://wordsofword.in/og-image.png" />
+    <meta property="og:image:secure_url" content="https://wordsofword.in/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Words of Word — real-time multiplayer word battle game" />
+    <meta property="og:locale" content="en_US" />
+
+    <!-- Twitter / X -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Words of Word — Real-Time Multiplayer Word Battle Game" />
+    <meta name="twitter:description" content="A free real-time multiplayer word battle across 18 modes. Spell hidden words, race the clock, climb the scoreboard. Play free in your browser." />
+    <meta name="twitter:image" content="https://wordsofword.in/og-image.png" />
+    <meta name="twitter:image:alt" content="Words of Word — real-time multiplayer word battle game" />
+
+    <!-- Performance hints -->
+    <link rel="preconnect" href="https://words-of-word.onrender.com" crossorigin />
+    <link rel="dns-prefetch" href="https://words-of-word.onrender.com" />
+
+    <!-- Structured data: WebSite (sitelinks search box) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "Words of Word",
+      "alternateName": "W.o.W",
+      "url": "https://wordsofword.in/",
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": "https://wordsofword.in/?q={search_term_string}",
+        "query-input": "required name=search_term_string"
+      }
+    }
+    </script>
+    <!-- Structured data: VideoGame -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "VideoGame",
+      "name": "Words of Word",
+      "alternateName": "W.o.W",
+      "url": "https://wordsofword.in/",
+      "image": "https://wordsofword.in/og-image.png",
+      "description": "A free real-time multiplayer word battle game. Spell hidden words from a source word across 18 modes and race the clock.",
+      "genre": ["Word game", "Puzzle", "Multiplayer"],
+      "gamePlatform": ["Web browser", "Android", "iOS"],
+      "playMode": ["MultiPlayer", "SinglePlayer"],
+      "applicationCategory": "GameApplication",
+      "operatingSystem": "Any",
+      "inLanguage": "en",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "publisher": {
+        "@type": "Organization",
+        "name": "Words of Word",
+        "url": "https://wordsofword.in/"
+      }
+    }
+    </script>
+
     <script src="/theme-bootstrap.js"></script>
+
+    <!--
+      Critical CSS for the pre-hydration boot screen. Inlined so the crawlable
+      #root content is styled on the very first paint — the main stylesheet is
+      injected by JS in dev and loads async in prod, which otherwise causes a
+      flash of unstyled content. styles.css re-declares these with theme vars
+      and takes over once it loads.
+    -->
+    <style>
+      #root { min-height: 100dvh; }
+      .app-boot {
+        min-height: 100dvh;
+        display: grid; place-content: center; justify-items: center;
+        gap: 14px; padding: 24px; margin: 0;
+        background: #111111; color: #777777;
+        font: 500 0.65rem ui-monospace, 'JetBrains Mono', Menlo, monospace;
+        letter-spacing: 0.2em; text-transform: uppercase; text-align: center;
+      }
+      .app-boot h1 {
+        max-width: 22ch; margin: 0; color: #e2b714;
+        font: 700 clamp(1.4rem, 5vw, 2.2rem) ui-monospace, 'JetBrains Mono', Menlo, monospace;
+        letter-spacing: -0.04em; text-transform: none;
+      }
+      .app-boot p {
+        max-width: 52ch; margin: 0; color: #777777;
+        font: 500 0.8rem/1.6 ui-monospace, 'JetBrains Mono', Menlo, monospace;
+        letter-spacing: 0; text-transform: none;
+      }
+      .app-boot nav { display: flex; flex-wrap: wrap; gap: 10px 18px; justify-content: center; letter-spacing: 0; text-transform: none; }
+      .app-boot nav a { color: #e2b714; font: 600 0.8rem ui-monospace, 'JetBrains Mono', Menlo, monospace; text-decoration: none; }
+      .app-boot-brand { display: grid; justify-items: center; gap: 14px; margin-top: 6px; }
+      .app-boot strong {
+        color: #e2b714;
+        font: 700 clamp(2.2rem, 12vw, 4rem) ui-monospace, 'JetBrains Mono', Menlo, monospace;
+        letter-spacing: -0.12em; text-transform: none;
+      }
+      .app-boot i { display: block; width: 72px; height: 2px; background: #e2b714; }
+
+      /*
+        Splash overlay. Sibling of #root (React never touches it) so it can stay
+        painted across the async bootstrap and the moment React swaps the
+        crawlable skeleton for the real app — the user never sees that swap.
+        JS adds .is-ready to fade it out once the app has painted; the failsafe
+        animation guarantees it disappears even if the bundle fails to boot,
+        revealing the working crawlable content beneath.
+      */
+      #app-splash {
+        position: fixed; inset: 0; z-index: 2147483000;
+        display: grid; place-content: center; justify-items: center; gap: 14px;
+        background: #111111; color: #777777;
+        font: 500 0.65rem ui-monospace, 'JetBrains Mono', Menlo, monospace;
+        letter-spacing: 0.2em; text-transform: uppercase; text-align: center;
+        animation: app-splash-failsafe 0.45s ease 6s forwards;
+      }
+      #app-splash strong {
+        color: #e2b714;
+        font: 700 clamp(2.2rem, 12vw, 4rem) ui-monospace, 'JetBrains Mono', Menlo, monospace;
+        letter-spacing: -0.12em; text-transform: none;
+      }
+      #app-splash i {
+        display: block; width: 72px; height: 2px; background: #e2b714;
+        animation: app-splash-pulse 900ms ease-in-out infinite alternate;
+      }
+      #app-splash.is-ready {
+        opacity: 0; visibility: hidden;
+        transition: opacity 0.3s ease, visibility 0s linear 0.3s;
+      }
+      @keyframes app-splash-pulse { from { opacity: 0.24; transform: scaleX(0.55); } to { opacity: 1; transform: scaleX(1); } }
+      @keyframes app-splash-failsafe { to { opacity: 0; visibility: hidden; } }
+      @media (prefers-reduced-motion: reduce) {
+        #app-splash i { animation: none; }
+        #app-splash.is-ready { transition: none; }
+      }
+    </style>
   </head>
   <body>
     <div id="root">
-      <div class="app-boot" role="status" aria-label="Opening Words of Word">
-        <span>word battle</span>
-        <strong>W.o.W</strong>
-        <i></i>
-      </div>
+      <!--
+        Crawlable pre-render content. React mounts into #root via createRoot,
+        which replaces these children on hydration. Search engines and users on
+        slow connections get real, semantic content immediately. Keep this in
+        sync with the live homepage headline/description.
+      -->
+      <main class="app-boot" role="status" aria-label="Opening Words of Word">
+        <h1>Words of Word — Real-Time Multiplayer Word Battle</h1>
+        <p>
+          Words of Word is a free real-time multiplayer word game. Everyone gets the
+          same source word, then races the clock to spell as many hidden words as
+          possible. Play with friends across 18 modes — Classic, Score Attack,
+          Precision, Teams, Betting, Word Sprint, Knockout, Blind Type, Theme, Claim,
+          Busted, Common Word, Intuition, Lightning, Bingo, and Mix — or take on the
+          solo Daily Word challenge.
+        </p>
+        <nav aria-label="Primary">
+          <a href="/">Play now</a>
+          <a href="/daily">Daily Word challenge</a>
+          <a href="/online">Play online with friends</a>
+          <a href="/about">About the game</a>
+        </nav>
+        <span class="app-boot-brand" aria-hidden="true">
+          <span>word battle</span>
+          <strong>W.o.W</strong>
+          <i></i>
+        </span>
+      </main>
+    </div>
+    <div id="app-splash" role="status" aria-label="Loading Words of Word">
+      <span>word battle</span>
+      <strong>W.o.W</strong>
+      <i></i>
     </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

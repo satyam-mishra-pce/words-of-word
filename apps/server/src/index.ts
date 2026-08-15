@@ -2350,6 +2350,10 @@ const contentTypes: Record<string, string> = {
   '.jpeg': 'image/jpeg',
   '.ico': 'image/x-icon',
   '.json': 'application/json; charset=utf-8',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
+  '.xml': 'application/xml; charset=utf-8',
+  '.txt': 'text/plain; charset=utf-8',
+  '.webp': 'image/webp',
   '.mp4': 'video/mp4',
   '.webm': 'video/webm'
 };
@@ -2394,8 +2398,25 @@ fastify.get('/*', async (request, reply) => {
 
   const requestPath = request.url.split('?')[0] ?? '/';
   const safePath = normalize(decodeURIComponent(requestPath)).replace(/^(\.\.[/\\])+/, '');
-  const requestedFile = join(WEB_DIST_DIR, safePath === '/' ? 'index.html' : safePath);
-  const filePath = existsSync(requestedFile) ? requestedFile : join(WEB_DIST_DIR, 'index.html');
+  const spaFallback = join(WEB_DIST_DIR, 'index.html');
+  let filePath: string;
+  if (safePath === '/') {
+    filePath = spaFallback;
+  } else {
+    const requestedFile = join(WEB_DIST_DIR, safePath);
+    // Prerendered marketing routes are emitted as `<route>/index.html`
+    // (see apps/web/scripts/prerender-seo.mjs), so a directory match resolves
+    // to its static SEO page. A concrete file (asset, robots.txt, sitemap.xml,
+    // og-image.png, ...) is served directly. Everything else is the SPA shell.
+    const routeIndex = join(requestedFile, 'index.html');
+    if (existsSync(routeIndex)) {
+      filePath = routeIndex;
+    } else if (extname(requestedFile) !== '' && existsSync(requestedFile)) {
+      filePath = requestedFile;
+    } else {
+      filePath = spaFallback;
+    }
+  }
   const extension = extname(filePath);
   const fileStats = await stat(filePath);
   const range = parseByteRange(request.headers.range, fileStats.size);
