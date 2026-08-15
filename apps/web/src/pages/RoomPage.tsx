@@ -1671,9 +1671,23 @@ export default function RoomPage(): JSX.Element {
                 : <span className="current-word-waiting">Waiting to start…</span>
               }
               {sourceDefinition && snapshot.currentWord && (
-                <p className="current-word-definition" title={sourceDefinition.definition}>
-                  {sourceDefinition.definition}
-                </p>
+                isIntuitionMode
+                  ? (
+                    <p className="current-word-definition" title={sourceDefinition.definition}>
+                      {sourceDefinition.definition}
+                    </p>
+                  )
+                  : (
+                    <button
+                      type="button"
+                      className="current-word-definition current-word-definition--interactive"
+                      title="View full definition"
+                      aria-label={`View full definition of ${snapshot.currentWord}`}
+                      onClick={() => { void openWordDefinition(snapshot.currentWord); }}
+                    >
+                      {sourceDefinition.definition}
+                    </button>
+                  )
               )}
               {isIntuitionMode && snapshot.phase === 'round' && snapshot.currentWord && (
                 <span className="intuition-unlock-note">

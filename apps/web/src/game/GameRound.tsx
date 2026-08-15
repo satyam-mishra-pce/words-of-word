@@ -111,12 +111,30 @@ export function GameRound(props: GameRoundProps): JSX.Element {
         {props.sourceWord
           ? (props.renderSourceWord
               ? props.renderSourceWord(props.sourceWord)
-              : <span className="current-word-text" title={props.sourceWord}>{props.sourceWord}</span>)
+              : (
+                <button
+                  type="button"
+                  className="current-word-text current-word-text--interactive"
+                  title={`View definition of ${props.sourceWord}`}
+                  aria-label={`${props.sourceWord}. View definition`}
+                  onClick={() => { if (props.sourceWord) void definitions.openWordDefinition(props.sourceWord); }}
+                >
+                  {props.sourceWord}
+                </button>
+              ))
           : props.sourceWaitingLabel
             ? <span className="current-word-waiting">{props.sourceWaitingLabel}</span>
             : null}
         {props.sourceDefinition && props.sourceWord && (
-          <p className="current-word-definition" title={props.sourceDefinition}>{props.sourceDefinition}</p>
+          <button
+            type="button"
+            className="current-word-definition current-word-definition--interactive"
+            title="View full definition"
+            aria-label={`View full definition of ${props.sourceWord}`}
+            onClick={() => { if (props.sourceWord) void definitions.openWordDefinition(props.sourceWord); }}
+          >
+            {props.sourceDefinition}
+          </button>
         )}
         {props.sourceExtra}
       </div>

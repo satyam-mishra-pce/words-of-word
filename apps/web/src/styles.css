@@ -1525,6 +1525,35 @@ body:has(.game-shell.has-gameplay-chrome),
   font-style: italic;
   text-transform: lowercase;
 }
+/* Tapping the source word or its (possibly truncated) gloss opens the full
+   definition popup. Reset the button chrome so it stays visually identical. */
+.current-word-text--interactive,
+.current-word-definition--interactive {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.current-word-text--interactive { width: 100%; margin: 0; }
+.current-word-definition--interactive {
+  text-align: center;
+  transition: color 140ms var(--ease-out, ease);
+}
+.current-word-text--interactive:hover,
+.current-word-definition--interactive:hover {
+  color: var(--main);
+}
+.current-word-text--interactive:focus-visible,
+.current-word-definition--interactive:focus-visible {
+  outline: 2px solid var(--accent, currentColor);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
 .current-word-waiting {
   font-weight: 400;
   font-size: clamp(1.2rem,3.5vw,1.6rem);
