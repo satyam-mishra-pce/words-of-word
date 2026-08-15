@@ -58,6 +58,13 @@ function verifyDatabase(db: Database.Database, expectedVersion?: string): Record
   if ((db.pragma('foreign_key_check') as unknown[]).length) throw new Error('Lexicon foreign key check failed.');
   const metadata = metadataRecord(db);
   if (expectedVersion && metadata.artifact_version !== expectedVersion) throw new Error(`Expected lexicon ${expectedVersion}, found ${metadata.artifact_version ?? 'unknown'}.`);
+  // Refuse any partial artifact, on every server including production. This is
+  // version-agnostic: a build is only loadable once it defines every word, so
+  // an incomplete lexicon (e.g. the WordNet-only 0.1.0) can never be served and
+  // silently drop definitions for generated-only words.
+  if (metadata.release_status !== 'complete') throw new Error(`Refusing to load lexicon ${metadata.artifact_version ?? 'unknown'}: release_status is "${metadata.release_status ?? 'unknown'}", expected "complete". This artifact is missing generated definitions; build or fetch the complete release.`);
+  const missingDefinitions = Number(metadata.missing_definition_count);
+  if (!Number.isInteger(missingDefinitions) || missingDefinitions !== 0) throw new Error(`Refusing to load lexicon ${metadata.artifact_version ?? 'unknown'}: missing_definition_count is ${metadata.missing_definition_count ?? 'unknown'}, expected 0.`);
   const rows = db.prepare('SELECT spelling,gameplay_eligible FROM game_words ORDER BY source_ordinal').iterate() as Iterable<{spelling:string;gameplay_eligible:number}>;
   let count = 0; let eligibleCount = 0; const eligibleWords: string[] = [];
   for (const row of rows) { count += 1; if (row.gameplay_eligible) { eligibleCount += 1; eligibleWords.push(row.spelling); } }
