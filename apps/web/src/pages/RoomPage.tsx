@@ -1,24 +1,23 @@
 import { CSSProperties, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { EMOTE_OPTIONS, FinalScore, GameSettings, type DictionaryEntry, type EmotePlayedPayload, type PlayerAvatar, RoomSnapshot, type RoundStartedPayload, RoundResultPlayer, TeamScore } from '@wow/shared';
+import { EMOTE_OPTIONS, FinalScore, GameSettings, type EmotePlayedPayload, type PlayerAvatar, RoomSnapshot, type RoundStartedPayload, RoundResultPlayer, TeamScore } from '@wow/shared';
 import socket from '../services/socket';
 import { loadUsername } from '../services/session';
 import { hapticError, hapticLight, hapticMedium, hapticSelection, hapticSuccess, hapticWarning } from '../services/nativeFeedback';
 import { getRoomInviteUrl } from '../services/platform';
 import { copyTextToClipboard } from '../services/nativeShare';
 import { trackFeatureUsage } from '../services/aggregateAnalytics';
-import { lookupDictionaryWords } from '../services/dictionary';
 import { WordDefinitionSheet } from '../components/WordDefinitionSheet';
 import { SoundLabDialog } from '../components/SoundLabDialog';
 import {
-  classifyAcceptedSound,
   classifyNoticeSound,
-  classifyRejectedSound,
-  playGameSound,
   stopGameAudio,
   suspendGameAudio
 } from '../services/gameAudio';
+import { createSoundBus } from '../game/soundBus';
+import { useGameSounds } from '../game/useGameSounds';
+import { useWordDefinitions } from '../game/useWordDefinitions';
 import '../styles/game-score-feedback.css';
 import {
   Alert,
@@ -358,10 +357,12 @@ export default function RoomPage(): JSX.Element {
   const [emoteBursts, setEmoteBursts] = useState<EmoteBurst[]>([]);
   const [isInviteCopied, setIsInviteCopied] = useState(false);
   const [sourceDefinition, setSourceDefinition] = useState<RoundStartedPayload['sourceDefinition']>();
-  const [definitionWord, setDefinitionWord] = useState<string>();
-  const [definitionEntry, setDefinitionEntry] = useState<DictionaryEntry>();
-  const [definitionLoading, setDefinitionLoading] = useState(false);
-  const [definitionError, setDefinitionError] = useState('');
+  // Shared game core: one sound stream + one definition behaviour, identical to
+  // the single-player daily surface. Build a round feature here once and both get it.
+  const soundBus = useMemo(createSoundBus, []);
+  const definitions = useWordDefinitions();
+  const { openWordDefinition, closeDefinitionSheet, prefetchDefinitions } = definitions;
+  useGameSounds(soundBus);
   const shouldReduceMotion = useReducedMotion();
 
   // Keep a ref to the word input so we can restore focus after submit
@@ -378,8 +379,6 @@ export default function RoomPage(): JSX.Element {
   const emoteBurstIdRef = useRef(0);
   const emoteBurstTimersRef = useRef<Map<number, number>>(new Map());
   const inviteCopiedTimerRef = useRef<number | undefined>();
-  const definitionCacheRef = useRef<Map<string, DictionaryEntry>>(new Map());
-  const definitionRequestRef = useRef(0);
 
   const currentPlayerId = socket.id;
   const currentPlayer = useMemo(
@@ -583,54 +582,6 @@ export default function RoomPage(): JSX.Element {
     );
   }
 
-  async function prefetchDefinitions(words: readonly string[]): Promise<void> {
-    const missing = Array.from(new Set(words.map((word) => word.trim().toLowerCase())))
-      .filter((word) => /^[a-z]+$/.test(word) && !definitionCacheRef.current.has(word));
-    for (let index = 0; index < missing.length; index += 100) {
-      try {
-        const entries = await lookupDictionaryWords(missing.slice(index, index + 100));
-        for (const [word, entry] of Object.entries(entries)) definitionCacheRef.current.set(word, entry);
-      } catch {
-        return;
-      }
-    }
-  }
-
-  async function openWordDefinition(input: string): Promise<void> {
-    const word = input.trim().toLowerCase();
-    const requestId = definitionRequestRef.current + 1;
-    definitionRequestRef.current = requestId;
-    setDefinitionWord(word);
-    setDefinitionError('');
-    const cached = definitionCacheRef.current.get(word);
-    if (cached) {
-      setDefinitionEntry(cached);
-      setDefinitionLoading(false);
-      return;
-    }
-
-    setDefinitionEntry(undefined);
-    setDefinitionLoading(true);
-    try {
-      const entries = await lookupDictionaryWords([word]);
-      const entry = entries[word] ?? { word, senses: [] };
-      definitionCacheRef.current.set(word, entry);
-      if (definitionRequestRef.current === requestId) setDefinitionEntry(entry);
-    } catch {
-      if (definitionRequestRef.current === requestId) setDefinitionError('Could not load this definition. Check your connection and try again.');
-    } finally {
-      if (definitionRequestRef.current === requestId) setDefinitionLoading(false);
-    }
-  }
-
-  function closeDefinitionSheet(): void {
-    definitionRequestRef.current += 1;
-    setDefinitionWord(undefined);
-    setDefinitionEntry(undefined);
-    setDefinitionLoading(false);
-    setDefinitionError('');
-  }
-
   function renderNegativeWordBadge(entry: NegativeMarkedWord, index: number): JSX.Element {
     return (
       <Badge
@@ -712,7 +663,7 @@ export default function RoomPage(): JSX.Element {
       }
       if (payload.snapshot.phase === 'betting' && previousPhase !== 'betting') {
         setShowSoundLab(false);
-        playGameSound('bettingStart');
+        soundBus.play('bettingStart');
       }
       previousPhaseRef.current = payload.snapshot.phase;
       audioSnapshotRef.current = payload.snapshot;
@@ -729,13 +680,13 @@ export default function RoomPage(): JSX.Element {
       audioSnapshotRef.current = p.snapshot;
       setSnapshot(p.snapshot);
       setNotice(`${p.player.name} joined.`);
-      playGameSound('playerJoin');
+      soundBus.play('playerJoin');
     });
     socket.on('playerLeft', (p) => {
       audioSnapshotRef.current = p.snapshot;
       setSnapshot(p.snapshot);
       setNotice('A player left.');
-      playGameSound('playerLeave');
+      soundBus.play('playerLeave');
     });
     socket.on('hostChanged', (p) => {
       audioSnapshotRef.current = p.snapshot;
@@ -764,7 +715,7 @@ export default function RoomPage(): JSX.Element {
       setNegativeMarkedWords([]);
       setBetInput('');
       setBustFlash(undefined);
-      playGameSound('roundStart');
+      soundBus.emit({ type: 'roundStart' });
       void hapticMedium();
       // Restore keyboard focus when a new round begins
       requestAnimationFrame(() => inputRef.current?.focus());
@@ -780,27 +731,15 @@ export default function RoomPage(): JSX.Element {
           ? p.lightningTimeLeft?.[playerId] ?? previousPersonalTime ?? 0
           : p.timeLeft;
         const warningAt = usesLightning ? 5 : 10;
-        // Tick every second through the warning window, then the urgent
-        // final-3 tick takes over for 3-2-1.
-        if (audibleTime > 3 && audibleTime <= warningAt) {
-          const warningKey = `${audioSnapshot.currentRound}:warning:${audibleTime}`;
-          if (!playedTimerSoundsRef.current.has(warningKey)) {
-            playedTimerSoundsRef.current.add(warningKey);
-            playGameSound('timerWarning');
-          }
-        }
-        if (audibleTime > 0 && audibleTime <= 3) {
-          const tickKey = `${audioSnapshot.currentRound}:tick:${audibleTime}`;
-          if (!playedTimerSoundsRef.current.has(tickKey)) {
-            playedTimerSoundsRef.current.add(tickKey);
-            playGameSound('timerTick');
-          }
-        }
+        // The shared useGameSounds hook owns the tick cadence and per-second
+        // dedup (a calm tick through the warning window, the urgent tick for
+        // 3-2-1), so the room and the daily surface stay identical.
+        soundBus.emit({ type: 'timerTick', secondsLeft: audibleTime, warnAt: warningAt, roundKey: audioSnapshot.currentRound });
         if (usesLightning && previousPersonalTime !== undefined && previousPersonalTime > 0 && audibleTime <= 0) {
           const timeoutKey = `${audioSnapshot.currentRound}:lightning-timeout`;
           if (!playedTimerSoundsRef.current.has(timeoutKey)) {
             playedTimerSoundsRef.current.add(timeoutKey);
-            playGameSound('lightningTimeout');
+            soundBus.play('lightningTimeout');
           }
         }
 
@@ -813,7 +752,7 @@ export default function RoomPage(): JSX.Element {
           const nextRevealed = Math.floor(((total - p.timeLeft) * audioSnapshot.currentWord.length) / total);
           if (nextRevealed > intuitionRevealedRef.current && nextRevealed <= audioSnapshot.currentWord.length) {
             intuitionRevealedRef.current = nextRevealed;
-            playGameSound('intuitionReveal');
+            soundBus.play('intuitionReveal');
           }
         }
       }
@@ -830,7 +769,7 @@ export default function RoomPage(): JSX.Element {
       const audioSnapshot = audioSnapshotRef.current;
       const usesLightning = audioSnapshot?.settings.gameMode === 'lightning'
         || (audioSnapshot?.settings.gameMode === 'mix' && audioSnapshot.settings.mixModifiers.lightning);
-      playGameSound(classifyAcceptedSound(p.message, Boolean(usesLightning)));
+      soundBus.emit({ type: 'wordAccepted', message: p.message, lightning: Boolean(usesLightning) });
       void hapticLight();
       if (p.message) setNotice(p.message);
       if (p.message.includes('-3')) {
@@ -851,7 +790,7 @@ export default function RoomPage(): JSX.Element {
     socket.on('wordRejected', (p) => {
       setInputFeedback('error');
       if (p.penalty) queueScoreBurst(p.penalty);
-      playGameSound(classifyRejectedSound(p.message, p.penalty));
+      soundBus.emit({ type: 'wordRejected', message: p.message, penalty: p.penalty });
       void hapticError();
       setNotice(p.message);
       if (p.penalty && p.penalty < 0) {
@@ -890,9 +829,9 @@ export default function RoomPage(): JSX.Element {
       audioSnapshotRef.current = p.snapshot;
       if (p.snapshot.settings.gameMode === 'betting') {
         const localResult = p.results.find((result) => result.playerId === socket.id);
-        playGameSound(localResult?.bettingHit ? 'bettingWin' : 'bettingLoss');
+        soundBus.play(localResult?.bettingHit ? 'bettingWin' : 'bettingLoss');
       } else if (!sprintEndedRef.current) {
-        playGameSound('roundEnd');
+        soundBus.emit({ type: 'roundEnd' });
       }
       sprintEndedRef.current = false;
       setSnapshot(p.snapshot);
@@ -927,7 +866,7 @@ export default function RoomPage(): JSX.Element {
         localWon = p.finalScores.find((score) => score.playerId === socket.id)?.rank === 1;
       }
       stopGameAudio();
-      playGameSound(localWon ? 'victory' : 'gameOver');
+      soundBus.play(localWon ? 'victory' : 'gameOver');
       setSnapshot(p.snapshot);
       setFinalScores(p.finalScores);
       setFinalTeamScores(p.snapshot.teamScores);
@@ -961,7 +900,7 @@ export default function RoomPage(): JSX.Element {
       audioSnapshotRef.current = p.snapshot;
       setSnapshot(p.snapshot);
       setInputFeedback(p.playerId === socket.id ? 'error' : null);
-      playGameSound(p.playerId === socket.id ? 'bombSelf' : 'bomb');
+      soundBus.play(p.playerId === socket.id ? 'bombSelf' : 'bomb');
       setNotice(p.message);
       setBustFlash({ playerId: p.playerId, playerName: p.playerName, word: p.word, message: p.message });
       void hapticWarning();
@@ -984,7 +923,7 @@ export default function RoomPage(): JSX.Element {
       const sound = classifyNoticeSound(p.message);
       if (sound) {
         if (sound === 'sprintWin' || sound === 'elimination') sprintEndedRef.current = true;
-        playGameSound(sound);
+        soundBus.play(sound);
       }
     });
 
@@ -1075,7 +1014,7 @@ export default function RoomPage(): JSX.Element {
       if (!r.ok) setError(r.error);
       else {
         setError('');
-        playGameSound('betLocked');
+        soundBus.play('betLocked');
       }
     });
   }
@@ -2137,17 +2076,11 @@ export default function RoomPage(): JSX.Element {
         <Button variant="secondary" fullWidth onClick={() => setInfoMode(undefined)}>Got it</Button>
       </Dialog>
 
-      <WordDefinitionSheet
-        word={definitionWord}
-        entry={definitionEntry}
-        loading={definitionLoading}
-        error={definitionError}
-        onClose={closeDefinitionSheet}
-      />
+      <WordDefinitionSheet {...definitions.sheetProps} />
 
       {/* ── ROUND HISTORY MODAL ── */}
       <Dialog
-        open={showRoundHistory && !definitionWord}
+        open={showRoundHistory && !definitions.isOpen}
         onClose={() => setShowRoundHistory(false)}
         size="lg"
         ariaLabel="Round history"

@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 3000",
-    "build": "tsc -p tsconfig.json && vite build",
+    "build": "node scripts/check-game-parity.mjs && tsc -p tsconfig.json && vite build",
+    "parity": "node scripts/check-game-parity.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "pnpm typecheck",
     "preview": "vite preview --host 0.0.0.0 --port 3000",
