@@ -5317,3 +5317,73 @@ body:has(.game-shell.has-gameplay-chrome),
   .profile-menu__guest-label { display: none; }
   .starter-header__actions { gap: 9px; }
 }
+
+/* ── Home hero redesign (Phase 2): quiet links + compact identity box ── */
+.starter-quicklinks {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  color: var(--sub);
+  font-size: 0.72rem;
+}
+.starter-quicklink {
+  border: 0;
+  background: transparent;
+  color: var(--sub);
+  font: 600 0.72rem 'JetBrains Mono', monospace;
+  cursor: pointer;
+  padding: 2px 0;
+  transition: color 150ms ease;
+}
+.starter-quicklink:hover { color: var(--main); }
+.starter-quicklink:focus-visible { outline: 2px solid var(--main); outline-offset: 3px; }
+
+.identity-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid var(--sub-2);
+  border-radius: 14px;
+  background: var(--main-10);
+}
+.identity-box__avatar {
+  position: relative;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 12px;
+  line-height: 0;
+}
+.identity-box__avatar:focus-visible { outline: 2px solid var(--main); outline-offset: 3px; }
+.identity-box__avatar .ui-avatar { width: 52px; height: 52px; border-radius: 12px; }
+.identity-box__edit {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--main);
+  color: var(--bg);
+  box-shadow: 0 0 0 2px var(--bg);
+}
+.identity-box__edit svg { width: 11px; height: 11px; }
+.identity-box__fields { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.identity-box__fields .ui-input { width: 100%; }
+.identity-box__meta { color: var(--main); font-size: 0.68rem; font-weight: 700; }
+.identity-box__meta.muted { color: var(--sub); font-weight: 600; }
+
+.starter-live {
+  margin-top: 2px;
+  text-align: center;
+  color: var(--sub);
+  font-size: 0.64rem;
+  letter-spacing: 0.02em;
+}
+.starter-live b { color: var(--main); font-weight: 800; }

@@ -168,32 +168,27 @@ export default function HomePage(): JSX.Element {
       <div className="starter-center">
         <section className="starter-stage" aria-labelledby="starter-title">
           <div className="starter-intro">
-            <p className="starter-kicker">word battle · real-time</p>
             <h1 id="starter-title">words of word</h1>
-            <p>One enormous word. Hundreds hiding inside it. Race your friends to find them all before the clock hits zero.</p>
-            {stats && (
-              <div className="starter-proof" aria-label="Live game stats">
-                <span><strong>{stats.activeGames}</strong> rooms live</span>
-                <span><strong>{stats.wordsFound.toLocaleString()}</strong> words found</span>
-              </div>
-            )}
+            <div className="starter-quicklinks">
+              <button type="button" className="starter-quicklink" onClick={() => navigate('/about')}>How to play</button>
+              <span aria-hidden="true">·</span>
+              <button type="button" className="starter-quicklink" onClick={() => navigate('/about')}>About modes →</button>
+            </div>
           </div>
 
           <form className="starter-console" onSubmit={submit}>
-            <div className="starter-profile">
+            <div className="identity-box">
               <button
                 type="button"
-                className="starter-avatar-button"
+                className="identity-box__avatar"
                 onClick={() => { trackFeatureUsage('avatar_editor_opened'); setAvatarEditorOpen(true); }}
-                aria-label="Customize your player character"
+                aria-label="Edit your character"
               >
-                <span className="starter-avatar-frame">
-                  <Avatar name={username} avatar={avatar} size="lg" />
-                  <span className="starter-avatar-edit"><EditIcon /></span>
-                </span>
+                <Avatar name={username} avatar={avatar} size="lg" />
+                <span className="identity-box__edit"><EditIcon /></span>
               </button>
 
-              <div className="starter-name-field">
+              <div className="identity-box__fields">
                 <Input
                   id="username"
                   aria-label="Player name"
@@ -204,6 +199,9 @@ export default function HomePage(): JSX.Element {
                   autoComplete="nickname"
                   hasError={Boolean(error)}
                 />
+                {user
+                  ? (myStats && <span className="identity-box__meta">⚔ {myStats.eloRating} · 🔥 {myStats.currentStreak}</span>)
+                  : <span className="identity-box__meta muted">Guest · sign in to rank</span>}
               </div>
             </div>
 
@@ -223,6 +221,12 @@ export default function HomePage(): JSX.Element {
             </div>
 
             <NativeNotificationPrompt />
+
+            {stats && (
+              <p className="starter-live" aria-label="Live game stats">
+                <b>{stats.activePlayers}</b> playing · <b>{stats.activeGames}</b> rooms live
+              </p>
+            )}
           </form>
         </section>
       </div>
