@@ -9,6 +9,7 @@ import { getGameApiUrl } from '../services/platform';
 import { trackFeatureUsage } from '../services/aggregateAnalytics';
 import { ProfileMenu } from '../components/ProfileMenu';
 import { StreakDailyPill } from '../components/StreakDailyPill';
+import { SettingsDialog } from '../components/SettingsDialog';
 import { fetchMyStats, type PlayerStats } from '../services/stats';
 import { isTodayDailyDone } from '../services/dailyStatus';
 import { IDENTITY_CHANGE_EVENT, useAuth } from '../auth/AuthProvider';
@@ -38,6 +39,15 @@ function EditIcon(): JSX.Element {
   );
 }
 
+function GearIcon(): JSX.Element {
+  return (
+    <svg viewBox="0 0 18 18" aria-hidden="true">
+      <circle cx="9" cy="9" r="2.4" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M9 1.6v2M9 14.4v2M1.6 9h2M14.4 9h2M3.8 3.8l1.4 1.4M12.8 12.8l1.4 1.4M14.2 3.8l-1.4 1.4M5.2 12.8l-1.4 1.4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function TrophyIcon(): JSX.Element {
   return (
     <svg viewBox="0 0 18 18" aria-hidden="true">
@@ -57,6 +67,7 @@ export default function HomePage(): JSX.Element {
   const [isAvatarEditorOpen, setAvatarEditorOpen] = useState(false);
   const [myStats, setMyStats] = useState<PlayerStats | null>(null);
   const [dailyDone, setDailyDone] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // When a sign-in adopts a durable identity, refresh the fields from storage.
   useEffect(() => {
@@ -161,6 +172,7 @@ export default function HomePage(): JSX.Element {
             avatar={avatar}
             myStats={myStats}
             onEditIdentity={() => { trackFeatureUsage('avatar_editor_opened'); setAvatarEditorOpen(true); }}
+            onOpenSettings={() => setSettingsOpen(true)}
           />
         </div>
       </header>
@@ -233,6 +245,10 @@ export default function HomePage(): JSX.Element {
 
       <footer className="home-theme-footer home-theme-footer--starter">
         <ThemePicker />
+        <button type="button" className="footer-settings" onClick={() => setSettingsOpen(true)} aria-label="Open settings">
+          <GearIcon />
+          <span className="footer-settings__label">Settings</span>
+        </button>
       </footer>
 
       <PlayerAvatarEditor
@@ -242,6 +258,8 @@ export default function HomePage(): JSX.Element {
         name={username}
         onChange={updateAvatar}
       />
+
+      <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </main>
   );
 }

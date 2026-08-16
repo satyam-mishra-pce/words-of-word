@@ -2,16 +2,34 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { STORAGE_KEYS, readStoredValue, writeStoredValue } from '../services/storage';
 
+export type ThemeMode = 'dark' | 'light';
+
+/**
+ * Twelve themes: six accents on a dark base, and their light siblings. Each
+ * theme only needs its accent (the diagonal-swatch top colour) and its mode
+ * (which base the swatch/bottom depicts). The CSS in styles.css maps each value
+ * to the accent (and, for light themes, an inverted base palette).
+ */
 export const THEME_OPTIONS = [
-  { value: 'amber', label: 'Amber', color: '#e2b714' },
-  { value: 'sky', label: 'Sky', color: '#62c8ee' },
-  { value: 'lilac', label: 'Lilac', color: '#dba9f5' },
-  { value: 'mint', label: 'Mint', color: '#36d39e' },
-  { value: 'rose', label: 'Rose', color: '#f4a7ad' },
-  { value: 'apricot', label: 'Apricot', color: '#f5ad5c' }
+  { value: 'amber', label: 'Amber', color: '#e2b714', mode: 'dark' },
+  { value: 'sky', label: 'Sky', color: '#62c8ee', mode: 'dark' },
+  { value: 'lilac', label: 'Lilac', color: '#dba9f5', mode: 'dark' },
+  { value: 'mint', label: 'Mint', color: '#36d39e', mode: 'dark' },
+  { value: 'rose', label: 'Rose', color: '#f4a7ad', mode: 'dark' },
+  { value: 'apricot', label: 'Apricot', color: '#f5ad5c', mode: 'dark' },
+  { value: 'honey', label: 'Honey', color: '#a67c00', mode: 'light' },
+  { value: 'frost', label: 'Frost', color: '#1c8fb8', mode: 'light' },
+  { value: 'orchid', label: 'Orchid', color: '#9750c8', mode: 'light' },
+  { value: 'meadow', label: 'Meadow', color: '#12946b', mode: 'light' },
+  { value: 'blush', label: 'Blush', color: '#d1566e', mode: 'light' },
+  { value: 'peach', label: 'Peach', color: '#d1791d', mode: 'light' }
 ] as const;
 
 export type Theme = (typeof THEME_OPTIONS)[number]['value'];
+
+export function themeMode(theme: Theme): ThemeMode {
+  return THEME_OPTIONS.find((option) => option.value === theme)?.mode ?? 'dark';
+}
 
 interface ThemeChangeOrigin {
   x: number;

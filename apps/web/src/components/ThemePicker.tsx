@@ -1,5 +1,5 @@
 import type { CSSProperties, MouseEvent } from 'react';
-import { THEME_OPTIONS, type Theme, useTheme } from '../utils/useTheme';
+import { THEME_OPTIONS, themeMode, type Theme, useTheme } from '../utils/useTheme';
 import { trackFeatureUsage } from '../services/aggregateAnalytics';
 
 function getThemeOrigin(event: MouseEvent<HTMLButtonElement>): { x: number; y: number } {
@@ -10,8 +10,22 @@ function getThemeOrigin(event: MouseEvent<HTMLButtonElement>): { x: number; y: n
   };
 }
 
+export function swatchStyle(color: string, mode: 'dark' | 'light'): CSSProperties {
+  return {
+    '--sw-accent': color,
+    '--sw-base': mode === 'dark' ? '#111111' : '#ffffff'
+  } as CSSProperties;
+}
+
+/**
+ * Footer quick-picker: the six accents in the *current* mode (never more than
+ * six; four on phones via CSS). The full 12-theme dark/light grid lives in
+ * Settings → Appearance.
+ */
 export function ThemePicker(): JSX.Element {
   const { theme, setTheme } = useTheme();
+  const mode = themeMode(theme);
+  const options = THEME_OPTIONS.filter((option) => option.mode === mode);
 
   function selectTheme(event: MouseEvent<HTMLButtonElement>, nextTheme: Theme): void {
     if (nextTheme !== theme) trackFeatureUsage('theme_changed');
@@ -20,9 +34,8 @@ export function ThemePicker(): JSX.Element {
 
   return (
     <div className="theme-picker" role="group" aria-label="Choose a color theme">
-      {THEME_OPTIONS.map((option) => {
+      {options.map((option) => {
         const isActive = option.value === theme;
-
         return (
           <button
             key={option.value}
@@ -31,7 +44,7 @@ export function ThemePicker(): JSX.Element {
             className="theme-swatch"
             data-theme-option={option.value}
             onClick={(event) => selectTheme(event, option.value)}
-            style={{ '--theme-swatch': option.color } as CSSProperties}
+            style={swatchStyle(option.color, option.mode)}
             title={option.label}
             type="button"
           />

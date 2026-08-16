@@ -2101,6 +2101,33 @@ body:has(.game-shell.has-gameplay-chrome),
 [data-theme="rose"]    { --main: #f4a7ad; }
 [data-theme="apricot"] { --main: #f5ad5c; }
 
+/* Light siblings: invert the base palette; the accent (darkened for contrast on
+   a light surface) stays the theme's identity. */
+[data-theme="honey"],
+[data-theme="frost"],
+[data-theme="orchid"],
+[data-theme="meadow"],
+[data-theme="blush"],
+[data-theme="peach"] {
+  color-scheme: light;
+  --bg:       #faf9f6;
+  --bg-sub:   #efeee8;
+  --bg-3:     #e4e2d9;
+  --text:     #2b2a26;
+  --sub:      #85847e;
+  --sub-2:    #d9d7cd;
+  --ink:        #2b2a26;
+  --paper:      #efeee8;
+  --paper-warm: #faf9f6;
+  --paper-deep: #e4e2d9;
+}
+[data-theme="honey"]  { --main: #a67c00; }
+[data-theme="frost"]  { --main: #1c8fb8; }
+[data-theme="orchid"] { --main: #9750c8; }
+[data-theme="meadow"] { --main: #12946b; }
+[data-theme="blush"]  { --main: #d1566e; }
+[data-theme="peach"]  { --main: #d1791d; }
+
 .home-theme-footer {
   position: relative;
   z-index: 2;
@@ -2114,32 +2141,34 @@ body:has(.game-shell.has-gameplay-chrome),
   align-items: center;
   justify-content: center;
 }
+/* Sharp diagonal swatch: top-left triangle = accent, bottom-right = the base
+   (dark or light) the theme depicts. Accent + base supplied via CSS vars. */
 .theme-swatch {
   position: relative;
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 24px;
   padding: 0;
   border: 0;
-  border-radius: 50%;
   background: transparent;
+  cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
 .theme-swatch::before {
   content: '';
   position: absolute;
-  inset: 5px;
-  border-radius: 50%;
-  background: var(--theme-swatch);
-  transition: transform 180ms var(--ease-out), box-shadow 180ms ease;
+  inset: 3px;
+  border-radius: var(--r-xs);
+  border: 1px solid var(--sub-2);
+  background: linear-gradient(135deg, var(--sw-accent) 0 49%, var(--sw-base) 51% 100%);
+  transition: transform 160ms var(--ease-out), box-shadow 160ms ease;
 }
-.theme-swatch:hover::before { transform: scale(1.14); }
+.theme-swatch:hover::before { transform: scale(1.08); }
 .theme-swatch[aria-pressed="true"]::before {
-  transform: scale(1.08);
-  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--theme-swatch);
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 3px var(--main);
 }
 .theme-swatch:focus-visible {
-  outline: 2px solid var(--text);
-  outline-offset: -1px;
+  outline: 2px solid var(--main);
+  outline-offset: 2px;
 }
 
 /* The View Transitions API exposes the old page beneath a circular new-theme
@@ -5387,3 +5416,112 @@ body:has(.game-shell.has-gameplay-chrome),
   letter-spacing: 0.02em;
 }
 .starter-live b { color: var(--main); font-weight: 800; }
+
+/* ── Footer settings + Appearance/theme grid (Phase 3) ── */
+.home-theme-footer--starter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-inline: clamp(4px, 3vw, 20px);
+}
+.home-theme-footer--starter .theme-picker { justify-content: flex-start; gap: 4px; }
+
+.footer-settings {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px;
+  border: 1px solid var(--sub-2);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--sub);
+  font: 700 0.68rem 'JetBrains Mono', monospace;
+  cursor: pointer;
+  transition: color 150ms ease, border-color 150ms ease;
+}
+.footer-settings:hover { color: var(--main); border-color: var(--main); }
+.footer-settings:focus-visible { outline: 2px solid var(--main); outline-offset: 3px; }
+.footer-settings svg { width: 16px; height: 16px; }
+
+/* Settings dialog */
+.settings__tabs {
+  display: flex;
+  gap: 6px;
+  margin: 8px 0 16px;
+  border-bottom: 1px solid var(--sub-2);
+}
+.settings__tab {
+  padding: 8px 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--sub);
+  font: 700 0.72rem 'JetBrains Mono', monospace;
+  cursor: pointer;
+  transition: color 150ms ease, border-color 150ms ease;
+}
+.settings__tab:hover { color: var(--text); }
+.settings__tab.is-active { color: var(--main); border-bottom-color: var(--main); }
+.settings__section {
+  margin: 6px 0 10px;
+  color: var(--sub);
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.theme-thumb {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px;
+  border: 1px solid var(--sub-2);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--sub);
+  font: 700 0.72rem 'JetBrains Mono', monospace;
+  cursor: pointer;
+  transition: border-color 150ms ease, color 150ms ease;
+}
+.theme-thumb:hover { color: var(--text); border-color: var(--sub); }
+.theme-thumb.is-active { color: var(--main); border-color: var(--main); }
+.theme-thumb:focus-visible { outline: 2px solid var(--main); outline-offset: 2px; }
+.theme-thumb__chip {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 24px;
+  border-radius: var(--r-xs);
+  border: 1px solid var(--sub-2);
+  background: linear-gradient(135deg, var(--sw-accent) 0 49%, var(--sw-base) 51% 100%);
+}
+.theme-thumb.is-active .theme-thumb__chip { box-shadow: 0 0 0 2px var(--bg), 0 0 0 3px var(--main); }
+.theme-thumb__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.settings__about { color: var(--text); font-size: 0.82rem; line-height: 1.7; }
+.settings__about strong { color: var(--main); }
+.settings__links { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+.settings__link {
+  padding: 10px 12px;
+  border: 1px solid var(--sub-2);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text);
+  font: 700 0.74rem 'JetBrains Mono', monospace;
+  text-align: left;
+  cursor: pointer;
+}
+.settings__link:hover { border-color: var(--main); color: var(--main); }
+
+@media (max-width: 640px) {
+  .footer-settings { padding: 7px; }
+  .footer-settings__label { display: none; }
+  /* Never show more than four quick swatches on phones. */
+  .home-theme-footer--starter .theme-picker .theme-swatch:nth-child(n+5) { display: none; }
+  .theme-grid { grid-template-columns: repeat(2, 1fr); }
+}
