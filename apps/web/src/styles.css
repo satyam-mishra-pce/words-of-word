@@ -5148,7 +5148,7 @@ body:has(.game-shell.has-gameplay-chrome),
   gap: 5px;
   padding: 6px 10px;
   border: 1px solid var(--sub-2);
-  border-radius: 999px;
+  border-radius: var(--r-sm);
   background: var(--main-10);
   color: var(--text);
   font: 800 0.8rem 'JetBrains Mono', monospace;
@@ -5168,7 +5168,7 @@ body:has(.game-shell.has-gameplay-chrome),
   max-width: min(220px, 78vw);
   padding: 6px 10px;
   border: 1px solid var(--main-25);
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   background: var(--bg);
   color: var(--main);
   font: 700 0.62rem 'JetBrains Mono', monospace;
@@ -5199,7 +5199,7 @@ body:has(.game-shell.has-gameplay-chrome),
   gap: 7px;
   padding: 7px 12px;
   border: 1px solid var(--sub-2);
-  border-radius: 999px;
+  border-radius: var(--r-sm);
   background: transparent;
   color: var(--sub);
   font: 700 0.68rem 'JetBrains Mono', monospace;
@@ -5218,7 +5218,7 @@ body:has(.game-shell.has-gameplay-chrome),
   gap: 7px;
   padding: 4px 8px 4px 4px;
   border: 1px solid var(--sub-2);
-  border-radius: 999px;
+  border-radius: var(--r-sm);
   background: transparent;
   color: var(--text);
   font: 700 0.68rem 'JetBrains Mono', monospace;
@@ -5242,7 +5242,7 @@ body:has(.game-shell.has-gameplay-chrome),
   width: 264px;
   padding: 12px;
   border: 1px solid var(--sub-2);
-  border-radius: 16px;
+  border-radius: var(--r-lg);
   background: var(--bg);
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
   animation: streak-tip-in 180ms ease both;
@@ -5267,7 +5267,7 @@ body:has(.game-shell.has-gameplay-chrome),
   width: 100%;
   padding: 10px 8px;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   background: transparent;
   color: var(--text);
   font: 600 0.78rem 'JetBrains Mono', monospace;
@@ -5304,10 +5304,10 @@ body:has(.game-shell.has-gameplay-chrome),
     top: auto;
     width: auto;
     padding: 10px 14px calc(18px + env(safe-area-inset-bottom, 0px));
-    border-radius: 20px 20px 0 0;
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
     animation: sheet-up 240ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
   }
-  .profile-menu__grip { display: block; width: 40px; height: 4px; margin: 2px auto 10px; border-radius: 999px; background: var(--sub-2); }
+  .profile-menu__grip { display: block; width: 40px; height: 4px; margin: 2px auto 10px; border-radius: var(--r-xs); background: var(--sub-2); }
   .profile-menu__item { padding: 13px 8px; font-size: 0.85rem; }
 }
 @keyframes sheet-up { from { transform: translateY(100%); } to { transform: none; } }
@@ -5345,7 +5345,7 @@ body:has(.game-shell.has-gameplay-chrome),
   gap: 12px;
   padding: 10px;
   border: 1px solid var(--sub-2);
-  border-radius: 14px;
+  border-radius: var(--r-sm);
   background: var(--main-10);
 }
 .identity-box__avatar {
@@ -5355,11 +5355,11 @@ body:has(.game-shell.has-gameplay-chrome),
   border: 0;
   background: transparent;
   cursor: pointer;
-  border-radius: 12px;
+  border-radius: var(--r-sm);
   line-height: 0;
 }
 .identity-box__avatar:focus-visible { outline: 2px solid var(--main); outline-offset: 3px; }
-.identity-box__avatar .ui-avatar { width: 52px; height: 52px; border-radius: 12px; }
+.identity-box__avatar .ui-avatar { width: 52px; height: 52px; border-radius: var(--r-sm); }
 .identity-box__edit {
   position: absolute;
   right: -4px;
@@ -5368,7 +5368,7 @@ body:has(.game-shell.has-gameplay-chrome),
   place-items: center;
   width: 20px;
   height: 20px;
-  border-radius: 50%;
+  border-radius: var(--r-xs);
   background: var(--main);
   color: var(--bg);
   box-shadow: 0 0 0 2px var(--bg);
