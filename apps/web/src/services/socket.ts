@@ -48,9 +48,23 @@ export function resumeGameConnection(): void {
   if (!socket.connected) socket.connect();
 }
 
+let currentSupabaseToken: string | null = null;
+
+/**
+ * Give the server the current Supabase access token (or clear it) so ranked
+ * (ELO) results can be attributed to the signed-in account. Sent as a normal
+ * event so it applies without reconnecting mid-game. Called by AuthProvider on
+ * every auth state change.
+ */
+export function setSupabaseAuthToken(token: string | null): void {
+  currentSupabaseToken = token;
+  if (token && socket.connected) socket.emit('identify', { supabaseToken: token });
+}
+
 socket.on('connect', () => {
   console.info('Connected to server', socket.id);
   if (isNativeApp) socket.emit('setAppActivity', { isActive: appIsActive });
+  if (currentSupabaseToken) socket.emit('identify', { supabaseToken: currentSupabaseToken });
   syncPushRegistration();
 });
 

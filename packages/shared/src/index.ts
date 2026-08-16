@@ -193,6 +193,41 @@ export const SetAppActivityPayloadSchema = z.object({
 });
 
 /**
+ * Optional Supabase access token a signed-in client sends so the server can
+ * attribute ranked (ELO) results to their account. Anonymous play omits it.
+ */
+export const IdentifyPayloadSchema = z.object({
+  supabaseToken: z.string().trim().min(1).max(8192)
+});
+
+/**
+ * Deterministic Daily Word selection shared by the web app (single-player run)
+ * and the server (authoritative streak recording). A single source of truth so
+ * the two can never disagree about "today's" word.
+ */
+export const DAILY_SOURCE_WORDS = [
+  'extraordinary',
+  'communication',
+  'transformation',
+  'imagination',
+  'celebration',
+  'architecture',
+  'conversation',
+  'technology',
+  'friendship',
+  'adventure'
+] as const;
+
+export function dailyDayNumber(nowMs: number = Date.now()): number {
+  return Math.floor(nowMs / 86_400_000);
+}
+
+export function dailySourceWordForDay(day: number = dailyDayNumber()): string {
+  const index = ((day % DAILY_SOURCE_WORDS.length) + DAILY_SOURCE_WORDS.length) % DAILY_SOURCE_WORDS.length;
+  return DAILY_SOURCE_WORDS[index] ?? DAILY_SOURCE_WORDS[0];
+}
+
+/**
  * Strict, content-free signals for features that are entirely client-side.
  * Multiplayer gameplay itself is measured authoritatively by the server.
  */
@@ -247,6 +282,7 @@ export type RestartGamePayload = z.infer<typeof RestartGamePayloadSchema>;
 export type LeaveRoomPayload = z.infer<typeof LeaveRoomPayloadSchema>;
 export type PushPlatform = z.infer<typeof PushPlatformSchema>;
 export type RegisterPushTokenPayload = z.infer<typeof RegisterPushTokenPayloadSchema>;
+export type IdentifyPayload = z.infer<typeof IdentifyPayloadSchema>;
 export type SetAppActivityPayload = z.infer<typeof SetAppActivityPayloadSchema>;
 export type FeatureUsageEvent = z.infer<typeof FeatureUsageEventSchema>;
 export type RecordFeatureUsagePayload = z.infer<typeof RecordFeatureUsagePayloadSchema>;
@@ -549,4 +585,5 @@ export interface ClientToServerEvents {
   registerPushToken: (payload: RegisterPushTokenPayload, ack?: Ack<EmptyResult>) => void;
   setAppActivity: (payload: SetAppActivityPayload, ack?: Ack<EmptyResult>) => void;
   recordFeatureUsage: (payload: RecordFeatureUsagePayload) => void;
+  identify: (payload: IdentifyPayload, ack?: Ack<EmptyResult>) => void;
 }

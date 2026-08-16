@@ -51,9 +51,13 @@ jobs:
           # Variables so they stay viewable. Absent -> sign-in UI hides itself.
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+          # Server runtime identity for authoritative streak/ELO writes. The URL
+          # reuses the public Variable; the service-role key is a real Secret.
+          SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           ssh -i ~/.ssh/lightsail "ubuntu@$LIGHTSAIL_HOST" \
-            "VITE_SUPABASE_URL='$VITE_SUPABASE_URL' VITE_SUPABASE_ANON_KEY='$VITE_SUPABASE_ANON_KEY' bash -s" <<'REMOTE'
+            "VITE_SUPABASE_URL='$VITE_SUPABASE_URL' VITE_SUPABASE_ANON_KEY='$VITE_SUPABASE_ANON_KEY' SUPABASE_URL='$SUPABASE_URL' SUPABASE_SERVICE_ROLE_KEY='$SUPABASE_SERVICE_ROLE_KEY' bash -s" <<'REMOTE'
             set -euo pipefail
             sudo rm -rf /opt/words-of-word
             sudo mkdir -p /opt/words-of-word/data
@@ -70,6 +74,8 @@ jobs:
               -p 127.0.0.1:7860:7860 \
               -v /opt/words-of-word/data:/data \
               -e ANALYTICS_AGGREGATE_FILE=/data/aggregate-analytics.json \
+              -e SUPABASE_URL="$SUPABASE_URL" \
+              -e SUPABASE_SERVICE_ROLE_KEY="$SUPABASE_SERVICE_ROLE_KEY" \
               words-of-word:latest
             sudo docker ps --filter name=words-of-word
           REMOTE

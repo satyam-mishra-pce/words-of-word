@@ -151,6 +151,10 @@ export default function HomePage(): JSX.Element {
             <span><b>Daily</b> <em>word</em></span>
             <ArrowIcon />
           </button>
+          <button type="button" className="starter-daily-link" onClick={() => navigate('/leaderboard')} aria-label="View the leaderboard">
+            <span><b>Leader</b> <em>board</em></span>
+            <ArrowIcon />
+          </button>
           <AuthControl variant="compact" />
         </div>
       </header>

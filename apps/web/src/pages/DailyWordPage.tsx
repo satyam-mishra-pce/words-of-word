@@ -8,22 +8,13 @@ import { readStoredValue, writeStoredValue } from '../services/storage';
 import { getDailyChallengeUrl } from '../services/platform';
 import { shareContent } from '../services/nativeShare';
 import { trackFeatureUsage } from '../services/aggregateAnalytics';
-import { validateDailyWord } from '../services/dailyWord';
+import { completeDailyRun, validateDailyWord } from '../services/dailyWord';
+import { dailyDayNumber, dailySourceWordForDay } from '@wow/shared';
+import { useAuth } from '../auth/AuthProvider';
+import { fetchMyStats } from '../services/stats';
 
 const DAILY_SECONDS = 30;
 const DAILY_WARNING_AT = 10;
-const DAILY_WORDS = [
-  'extraordinary',
-  'communication',
-  'transformation',
-  'imagination',
-  'celebration',
-  'architecture',
-  'conversation',
-  'technology',
-  'friendship',
-  'adventure'
-];
 
 interface DailyAttempt {
   day: number;
@@ -35,11 +26,7 @@ interface DailyAttempt {
 }
 
 function currentDayNumber(): number {
-  return Math.floor(Date.now() / 86_400_000);
-}
-
-function dayIndex(day = currentDayNumber()): number {
-  return day % DAILY_WORDS.length;
+  return dailyDayNumber();
 }
 
 function dailyStorageKey(day = currentDayNumber()): string {
@@ -99,8 +86,20 @@ function pluralizeWords(count: number): string {
 }
 
 export default function DailyWordPage(): JSX.Element {
+  const { user } = useAuth();
   const day = useMemo(() => currentDayNumber(), []);
-  const sourceWord = useMemo(() => DAILY_WORDS[dayIndex(day)] ?? 'extraordinary', [day]);
+  const sourceWord = useMemo(() => dailySourceWordForDay(day), [day]);
+  const [streak, setStreak] = useState<number | null>(null);
+
+  // Show the signed-in player's current streak, and refresh it after a run.
+  useEffect(() => {
+    let cancelled = false;
+    if (!user) { setStreak(null); return; }
+    void fetchMyStats(user.id).then((stats) => {
+      if (!cancelled) setStreak(stats?.currentStreak ?? 0);
+    });
+    return () => { cancelled = true; };
+  }, [user]);
   const existingAttempt = useMemo(() => loadDailyAttempt(day), [day]);
   const initialRemaining = existingAttempt ? Math.max(0, Math.ceil((existingAttempt.endsAt - Date.now()) / 1000)) : DAILY_SECONDS;
   const initialFinished = Boolean(existingAttempt?.finished || (existingAttempt && initialRemaining <= 0));
@@ -159,6 +158,14 @@ export default function DailyWordPage(): JSX.Element {
     if (!wasFinished && !dailyCompletionTrackedRef.current) {
       dailyCompletionTrackedRef.current = true;
       trackFeatureUsage('daily_completed');
+
+      // Record the run server-side to advance the streak (no-op when signed out).
+      if (user && finalWords.length > 0) {
+        void completeDailyRun(finalWords).then((result) => {
+          if (!result?.counted) return;
+          void fetchMyStats(user.id).then((stats) => setStreak(stats?.currentStreak ?? 0));
+        });
+      }
     }
   }
 
@@ -347,6 +354,11 @@ export default function DailyWordPage(): JSX.Element {
           <span>{pluralizeWords(words.length)}</span>
         </div>
         <p className="daily-run-panel__copy">{isFinished ? 'Final result saved for today.' : isRunning ? 'Clock is running.' : 'Thirty seconds. One source word.'}</p>
+        {streak !== null && (
+          <p className="daily-run-panel__streak" title="Your daily streak">
+            <span aria-hidden="true">🔥</span> {streak}-day streak
+          </p>
+        )}
       </aside>
 
       <section className="word-stage glass-panel daily-stage">

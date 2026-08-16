@@ -5036,3 +5036,103 @@ body:has(.game-shell.has-gameplay-chrome),
   color: var(--error, #ff6b6b);
   font-size: 0.85rem;
 }
+
+/* Daily streak chip + Leaderboard */
+.daily-run-panel__streak {
+  margin-top: 8px;
+  font-weight: 800;
+  color: var(--main);
+}
+
+.leaderboard-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.leaderboard-me {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin: 4px 0 18px;
+}
+
+.leaderboard-me__stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 12px 8px;
+  border-radius: 14px;
+  background: var(--main-10);
+  border: 1px solid var(--sub-2);
+}
+
+.leaderboard-me__stat strong { font-size: 1.25rem; color: var(--text); }
+.leaderboard-me__stat span { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--sub); }
+
+.leaderboard-signin {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 4px 0 18px;
+}
+
+.leaderboard-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.leaderboard-tab {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--sub-2);
+  background: transparent;
+  color: var(--sub);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.leaderboard-tab.is-active {
+  background: var(--main);
+  border-color: var(--main);
+  color: var(--bg);
+}
+
+.leaderboard-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.leaderboard-row {
+  display: grid;
+  grid-template-columns: 32px 32px 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: var(--main-10);
+}
+
+.leaderboard-row.is-me {
+  outline: 2px solid var(--main);
+}
+
+.leaderboard-rank { font-weight: 800; color: var(--sub); text-align: center; }
+.leaderboard-name { font-weight: 700; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.leaderboard-sub { font-size: 0.85rem; color: var(--sub); }
+.leaderboard-metric { font-weight: 800; color: var(--main); white-space: nowrap; }
+
+@media (max-width: 520px) {
+  .leaderboard-me { grid-template-columns: repeat(2, 1fr); }
+  .leaderboard-sub { display: none; }
+}

@@ -70,6 +70,9 @@ import {
   type ValidWordIndex
 } from '@wow/game-engine';
 import { loadPlayableWordsFromManifest, openDefinitionStore, resolveLocalArtifact } from '@wow/lexicon';
+import { dailyDayNumber, dailySourceWordForDay, IdentifyPayloadSchema } from '@wow/shared';
+import { verifyAccessToken } from './supabaseAdmin.js';
+import { recordDailyPlay, recordRankedMatch, type RankedParticipant } from './playerStats.js';
 
 const PORT = Number(process.env.PORT ?? 4000);
 const WEB_DIST_DIR = fileURLToPath(new URL('../../web/dist', import.meta.url));
@@ -293,6 +296,8 @@ interface RegisteredPushToken {
 
 const reconnectSessions = new Map<string, ReconnectSession>();
 const clientIdBySocketId = new Map<string, string>();
+/** socketId -> verified Supabase user id, for attributing ranked (ELO) results. */
+const userIdBySocketId = new Map<string, string>();
 const inactiveClientIds = new Set<string>();
 const reboundSocketIds = new Set<string>();
 /** Sockets from the current web/mobile build that understand compact score patches. */
@@ -1631,6 +1636,26 @@ class GameRoomManager {
 
     this.analytics.recordGameFinished(room.id, room.settings, room.players.map((player) => player.id));
 
+    // Ranked ELO: only online public matches count, and only among signed-in
+    // players (attributed via the verified Supabase user id on each socket).
+    if (room.isPublic) {
+      const participants: RankedParticipant[] = finalScores
+        .map((entry) => {
+          const userId = userIdBySocketId.get(entry.playerId);
+          return userId ? { userId, score: entry.score, rank: entry.rank } : undefined;
+        })
+        .filter((entry): entry is RankedParticipant => entry !== undefined);
+
+      if (participants.length >= 2) {
+        void recordRankedMatch({
+          roomId: room.id,
+          gameMode: room.settings.gameMode,
+          playersCount: room.players.length,
+          participants
+        });
+      }
+    }
+
     const payload: GameOverPayload = {
       finalScores,
       playerWords,
@@ -2214,6 +2239,53 @@ fastify.post('/api/daily/validate-word', async (request, reply) => {
     .send({ ok: true, data: evaluateDailyWordSubmission(payload.data.sourceWord, payload.data.word) });
 });
 
+const DailyCompletePayloadSchema = z.object({
+  words: z.array(z.string().trim().min(1).max(40)).max(500)
+}).strict();
+
+function bearerToken(authorization: string | undefined): string | undefined {
+  if (!authorization) return undefined;
+  const match = /^Bearer\s+(.+)$/i.exec(authorization.trim());
+  return match?.[1]?.trim() || undefined;
+}
+
+/**
+ * Authoritatively record a finished daily run for the signed-in player and
+ * advance their streak. The server derives today's day + source word itself
+ * (deterministic, shared with the client) and re-validates every submitted
+ * word, so neither the day, the word list, nor the score can be spoofed.
+ */
+fastify.post('/api/daily/complete', async (request, reply) => {
+  const userId = await verifyAccessToken(bearerToken(request.headers.authorization));
+  if (!userId) {
+    return reply.header('Cache-Control', 'no-store').code(401).send({ ok: false, error: 'Sign in required.' });
+  }
+
+  const payload = DailyCompletePayloadSchema.safeParse(request.body);
+  if (!payload.success) {
+    return reply.header('Cache-Control', 'no-store').code(400).send({ ok: false, error: 'Invalid daily completion request.' });
+  }
+
+  const day = dailyDayNumber();
+  const sourceWord = dailySourceWordForDay(day);
+  const accepted = new Set<string>();
+  let score = 0;
+  for (const rawWord of payload.data.words) {
+    const evaluation = evaluateDailyWordSubmission(sourceWord, rawWord);
+    if (evaluation.isValid && !accepted.has(evaluation.normalizedWord)) {
+      accepted.add(evaluation.normalizedWord);
+      score += scoreWord(evaluation.normalizedWord, 'classic');
+    }
+  }
+
+  if (accepted.size === 0) {
+    return reply.header('Cache-Control', 'no-store').send({ ok: true, data: { counted: false, wordsCount: 0, day } });
+  }
+
+  await recordDailyPlay({ userId, day, wordsCount: accepted.size, score });
+  return reply.header('Cache-Control', 'no-store').send({ ok: true, data: { counted: true, wordsCount: accepted.size, score, day } });
+});
+
 function startAnalyticsSession(cookiePath: '/api/admin/analytics' | '/admin/analytics') {
   return async (request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> => {
     const configuredToken = process.env.ANALYTICS_TOKEN;
@@ -2559,6 +2631,9 @@ function restoreReconnectSession(socket: TypedSocket, clientId: string): boolean
   previousSession.removalTimer = undefined;
   clientIdBySocketId.delete(previousSocketId);
   clientIdBySocketId.set(socket.id, clientId);
+  const reboundUserId = userIdBySocketId.get(previousSocketId);
+  userIdBySocketId.delete(previousSocketId);
+  if (reboundUserId) userIdBySocketId.set(socket.id, reboundUserId);
 
   if (!rebound.ok) {
     // The installation may have reconnected after intentionally leaving a room.
@@ -2635,6 +2710,23 @@ io.on('connection', (socket) => {
   // Session deduplication in the store prevents this from inflating sessions.
   if (!wasRebound) analytics.recordSocketConnected(socket.id, analyticsIdentity);
   fastify.log.info({ recovered: socket.recovered }, 'socket connected');
+
+  // Optional Supabase identity so the server can attribute ranked results. Sent
+  // by signed-in clients on connect and whenever their token refreshes.
+  socket.on('identify', (payload, ack) => {
+    const parsed = IdentifyPayloadSchema.safeParse(payload);
+    if (!parsed.success) {
+      reply(ack, { ok: false, error: 'Invalid identify payload.' });
+      return;
+    }
+    void verifyAccessToken(parsed.data.supabaseToken)
+      .then((userId) => {
+        if (userId) userIdBySocketId.set(socket.id, userId);
+        else userIdBySocketId.delete(socket.id);
+        reply(ack, { ok: true, data: { ok: true } });
+      })
+      .catch(() => reply(ack, { ok: false, error: 'Could not verify sign-in.' }));
+  });
 
   socket.on('createRoom', (payload, ack) => {
     const parsed = CreateRoomPayloadSchema.safeParse(payload);
@@ -2906,6 +2998,7 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', (reason) => {
     compactScoreUpdateSocketIds.delete(socket.id);
+    userIdBySocketId.delete(socket.id);
     const roomId = manager.findRoomIdForSocket(socket.id);
     fastify.log.info({ reason }, 'socket disconnected');
 

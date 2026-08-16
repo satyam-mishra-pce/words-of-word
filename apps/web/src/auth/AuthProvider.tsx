@@ -5,6 +5,7 @@ import type { PlayerAvatar } from '@wow/shared';
 import { isSupabaseConfigured, NATIVE_AUTH_CALLBACK_URL, supabase } from '../services/supabase';
 import { saveProfile, syncProfileOnSignIn } from '../services/profile';
 import { isNativeApp } from '../services/platform';
+import { setSupabaseAuthToken } from '../services/socket';
 
 /** Fired after a sign-in adopts a durable identity so anonymous surfaces refresh. */
 export const IDENTITY_CHANGE_EVENT = 'wow:identity-change';
@@ -55,12 +56,16 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
     void supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
       setLoading(false);
+      setSupabaseAuthToken(data.session?.access_token ?? null);
       void reconcile(data.session);
     });
 
     const { data: subscription } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
       setLoading(false);
+      // Keep the game server's ranked-identity token current on sign-in,
+      // sign-out, and silent token refreshes.
+      setSupabaseAuthToken(nextSession?.access_token ?? null);
       void reconcile(nextSession);
     });
 
