@@ -23,6 +23,13 @@ COPY packages packages
 ARG VITE_DEPLOYMENT_SURFACE=game
 ENV VITE_DEPLOYMENT_SURFACE=$VITE_DEPLOYMENT_SURFACE
 
+# Optional Supabase Google sign-in. Omitted -> the game runs anonymously and the
+# sign-in UI hides itself. The anon key is a public, RLS-protected client key.
+ARG VITE_SUPABASE_URL=
+ARG VITE_SUPABASE_ANON_KEY=
+ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
+ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
+
 RUN pnpm lexicon:ensure \
   && pnpm lexicon:validate \
   && pnpm --filter @wow/shared build \

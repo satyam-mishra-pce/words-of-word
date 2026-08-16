@@ -5,6 +5,9 @@ build
 .env.local
 apps/web/.env.mobile
 apps/web/.env.mobile.local
+
+# Local secrets vault — the always-readable source of truth. Never committed.
+secrets/
 .DS_Store
 .turbo
 coverage

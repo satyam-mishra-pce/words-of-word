@@ -87,16 +87,19 @@ async function bootstrap(): Promise<void> {
   // synchronous username/theme/session reads begin with the durable device value.
   await hydrateApplicationStorage();
 
-  const [{ default: App }, { NativeAppBridge }] = await Promise.all([
+  const [{ default: App }, { NativeAppBridge }, { AuthProvider }] = await Promise.all([
     import('./App'),
-    import('./components/NativeAppBridge')
+    import('./components/NativeAppBridge'),
+    import('./auth/AuthProvider')
   ]);
 
   root.render(
     <React.StrictMode>
       <BrowserRouter>
-        <NativeAppBridge />
-        <App />
+        <AuthProvider>
+          <NativeAppBridge />
+          <App />
+        </AuthProvider>
       </BrowserRouter>
     </React.StrictMode>
   );

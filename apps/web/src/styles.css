@@ -5008,3 +5008,31 @@ body:has(.game-shell.has-gameplay-chrome),
     flex-direction: column;
   }
 }
+
+/* Optional Google auth control (hidden entirely when Supabase is unconfigured). */
+.auth-control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.auth-control__who {
+  color: var(--sub);
+  font-size: 0.9rem;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.auth-control__google {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.auth-control__error {
+  color: var(--error, #ff6b6b);
+  font-size: 0.85rem;
+}

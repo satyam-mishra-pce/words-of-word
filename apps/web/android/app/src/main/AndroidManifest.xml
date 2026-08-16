@@ -32,8 +32,10 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="wordsofword" android:host="join" />
                 <data android:scheme="wordsofword" android:host="daily" />
+                <data android:scheme="wordsofword" android:host="auth" />
                 <data android:scheme="com.wordsofword.game" android:host="join" />
                 <data android:scheme="com.wordsofword.game" android:host="daily" />
+                <data android:scheme="com.wordsofword.game" android:host="auth" />
             </intent-filter>
 
             <intent-filter android:autoVerify="true">

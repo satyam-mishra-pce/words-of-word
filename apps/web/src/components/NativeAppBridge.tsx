@@ -9,8 +9,20 @@ import { SplashScreen } from '@capacitor/splash-screen';
 import { installNativePushListeners } from '../services/nativePush';
 import { isNativeApp, nativePlatform, routeFromExternalUrl } from '../services/platform';
 import { resumeGameConnection, setGameAppActivity, syncPushRegistration } from '../services/socket';
+import { useAuth } from '../auth/AuthProvider';
 
 type Navigate = ReturnType<typeof useNavigate>;
+
+/** wordsofword://auth/callback — the Supabase OAuth redirect target on native. */
+function isAuthCallbackUrl(rawUrl: string): boolean {
+  try {
+    const url = new URL(rawUrl);
+    const isAppScheme = url.protocol === 'wordsofword:' || url.protocol === 'com.wordsofword.game:';
+    return isAppScheme && url.hostname === 'auth';
+  } catch {
+    return false;
+  }
+}
 
 async function configureSystemBars(): Promise<void> {
   if (!isNativeApp) return;
@@ -69,9 +81,18 @@ function navigateFromNotification(navigate: Navigate, data: unknown): void {
  */
 export function NativeAppBridge(): null {
   const navigate = useNavigate();
+  const { completeNativeOAuth } = useAuth();
 
   useEffect(() => {
     if (!isNativeApp) return;
+
+    function handleExternalUrl(url: string): void {
+      if (isAuthCallbackUrl(url)) {
+        void completeNativeOAuth(url);
+        return;
+      }
+      navigateExternalUrl(navigate, url);
+    }
 
     document.documentElement.dataset.nativeApp = 'true';
     document.body.classList.add('native-app');
@@ -108,7 +129,7 @@ export function NativeAppBridge(): null {
       });
     });
 
-    addListener(App.addListener('appUrlOpen', ({ url }) => navigateExternalUrl(navigate, url)));
+    addListener(App.addListener('appUrlOpen', ({ url }) => handleExternalUrl(url)));
     addListener(App.addListener('appStateChange', ({ isActive }) => {
       document.documentElement.dataset.appState = isActive ? 'active' : 'inactive';
       setGameAppActivity(isActive);
@@ -123,7 +144,7 @@ export function NativeAppBridge(): null {
 
     void App.getLaunchUrl()
       .then((launchUrl) => {
-        if (!disposed && launchUrl?.url) navigateExternalUrl(navigate, launchUrl.url);
+        if (!disposed && launchUrl?.url) handleExternalUrl(launchUrl.url);
       })
       .catch((error: unknown) => console.warn('Launch URL lookup failed', error));
 
@@ -150,7 +171,7 @@ export function NativeAppBridge(): null {
         void handle.remove();
       }
     };
-  }, [navigate]);
+  }, [navigate, completeNativeOAuth]);
 
   return null;
 }

@@ -47,14 +47,22 @@ jobs:
       - name: Build and restart application
         env:
           LIGHTSAIL_HOST: ${{ secrets.LIGHTSAIL_HOST }}
+          # Public Supabase client vars (safe to expose). Stored as repo/environment
+          # Variables so they stay viewable. Absent -> sign-in UI hides itself.
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
         run: |
-          ssh -i ~/.ssh/lightsail "ubuntu@$LIGHTSAIL_HOST" 'bash -s' <<'REMOTE'
+          ssh -i ~/.ssh/lightsail "ubuntu@$LIGHTSAIL_HOST" \
+            "VITE_SUPABASE_URL='$VITE_SUPABASE_URL' VITE_SUPABASE_ANON_KEY='$VITE_SUPABASE_ANON_KEY' bash -s" <<'REMOTE'
             set -euo pipefail
             sudo rm -rf /opt/words-of-word
             sudo mkdir -p /opt/words-of-word/data
             sudo tar -xzf /tmp/words-of-word-source.tar.gz -C /opt/words-of-word
             cd /opt/words-of-word
-            sudo docker build -t words-of-word:latest .
+            sudo docker build \
+              --build-arg VITE_SUPABASE_URL="$VITE_SUPABASE_URL" \
+              --build-arg VITE_SUPABASE_ANON_KEY="$VITE_SUPABASE_ANON_KEY" \
+              -t words-of-word:latest .
             sudo docker rm -f words-of-word || true
             sudo docker run -d \
               --name words-of-word \

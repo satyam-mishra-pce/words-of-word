@@ -7,6 +7,8 @@ import { Alert, Avatar, Button, Input } from '../components/ui';
 import { loadPlayerAvatar, loadUsername, savePlayerAvatar, saveUsername } from '../services/session';
 import { getGameApiUrl } from '../services/platform';
 import { trackFeatureUsage } from '../services/aggregateAnalytics';
+import { AuthControl } from '../components/AuthControl';
+import { IDENTITY_CHANGE_EVENT, useAuth } from '../auth/AuthProvider';
 
 const FLOAT_CHARS = ['W', 'O', 'R', 'D', 'S', '?'];
 const statsUrl = getGameApiUrl('/api/stats');
@@ -45,11 +47,22 @@ function DailyWordIcon(): JSX.Element {
 
 export default function HomePage(): JSX.Element {
   const navigate = useNavigate();
+  const { persistIdentity } = useAuth();
   const [username, setUsername] = useState(loadUsername());
   const [avatar, setAvatar] = useState(loadPlayerAvatar());
   const [error, setError] = useState('');
   const [stats, setStats] = useState<PublicStats | undefined>();
   const [isAvatarEditorOpen, setAvatarEditorOpen] = useState(false);
+
+  // When a sign-in adopts a durable identity, refresh the fields from storage.
+  useEffect(() => {
+    function onIdentityChange(): void {
+      setUsername(loadUsername());
+      setAvatar(loadPlayerAvatar());
+    }
+    window.addEventListener(IDENTITY_CHANGE_EVENT, onIdentityChange);
+    return () => window.removeEventListener(IDENTITY_CHANGE_EVENT, onIdentityChange);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -75,6 +88,7 @@ export default function HomePage(): JSX.Element {
   function updateAvatar(nextAvatar: typeof avatar): void {
     setAvatar(nextAvatar);
     savePlayerAvatar(nextAvatar);
+    persistIdentity({ avatar: nextAvatar });
   }
 
   function requireUsername(): string | undefined {
@@ -85,6 +99,7 @@ export default function HomePage(): JSX.Element {
     }
     saveUsername(trimmed);
     savePlayerAvatar(avatar);
+    persistIdentity({ username: trimmed, avatar });
     return trimmed;
   }
 
@@ -136,6 +151,7 @@ export default function HomePage(): JSX.Element {
             <span><b>Daily</b> <em>word</em></span>
             <ArrowIcon />
           </button>
+          <AuthControl variant="compact" />
         </div>
       </header>
 
