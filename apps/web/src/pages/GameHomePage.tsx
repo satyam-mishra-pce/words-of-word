@@ -12,6 +12,7 @@ import { StreakDailyPill } from '../components/StreakDailyPill';
 import { SettingsDialog } from '../components/SettingsDialog';
 import { fetchMyStats, type PlayerStats } from '../services/stats';
 import { isTodayDailyDone } from '../services/dailyStatus';
+import { loadBackgroundLetters, UI_PREFS_EVENT } from '../services/uiPreferences';
 import { IDENTITY_CHANGE_EVENT, useAuth } from '../auth/AuthProvider';
 
 const FLOAT_CHARS = ['W', 'O', 'R', 'D', 'S', '?'];
@@ -68,6 +69,13 @@ export default function HomePage(): JSX.Element {
   const [myStats, setMyStats] = useState<PlayerStats | null>(null);
   const [dailyDone, setDailyDone] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [bgLetters, setBgLetters] = useState(loadBackgroundLetters());
+
+  useEffect(() => {
+    function onUiPrefsChange(): void { setBgLetters(loadBackgroundLetters()); }
+    window.addEventListener(UI_PREFS_EVENT, onUiPrefsChange);
+    return () => window.removeEventListener(UI_PREFS_EVENT, onUiPrefsChange);
+  }, []);
 
   // When a sign-in adopts a durable identity, refresh the fields from storage.
   useEffect(() => {
@@ -153,9 +161,11 @@ export default function HomePage(): JSX.Element {
 
   return (
     <main className="starter-shell">
-      <div className="starter-letter-field" aria-hidden="true">
-        {FLOAT_CHARS.map((char, index) => <span key={`${char}-${index}`}>{char}</span>)}
-      </div>
+      {bgLetters && (
+        <div className="starter-letter-field" aria-hidden="true">
+          {FLOAT_CHARS.map((char, index) => <span key={`${char}-${index}`}>{char}</span>)}
+        </div>
+      )}
 
       <header className="starter-header">
         <a className="starter-brand" href="/" aria-label="Words of Word home">

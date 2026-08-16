@@ -3,8 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { Dialog } from './ui';
 import { THEME_OPTIONS, useTheme, type Theme } from '../utils/useTheme';
 import { swatchStyle } from './ThemePicker';
+import { getSoundPreferences, setSoundPreferences } from '../services/gameAudio';
+import { loadBackgroundLetters, setBackgroundLetters } from '../services/uiPreferences';
 
-const TABS = ['Appearance', 'About'] as const;
+const TABS = ['Appearance', 'Sound', 'About'] as const;
 type Tab = (typeof TABS)[number];
 
 const DARK_THEMES = THEME_OPTIONS.filter((option) => option.mode === 'dark');
@@ -24,6 +26,19 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps): JSX.Elem
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>('Appearance');
   const { theme, setTheme } = useTheme();
+  const [sound, setSound] = useState(getSoundPreferences());
+  const [bgLetters, setBgLettersState] = useState(loadBackgroundLetters());
+
+  function updateSound(next: { enabled?: boolean; volume?: number }): void {
+    const merged = { ...sound, ...next };
+    setSound(merged);
+    setSoundPreferences(merged);
+  }
+
+  function toggleBackgroundLetters(on: boolean): void {
+    setBgLettersState(on);
+    setBackgroundLetters(on);
+  }
 
   function pickTheme(event: MouseEvent<HTMLButtonElement>, value: Theme): void {
     setTheme(value, { x: event.clientX, y: event.clientY });
@@ -75,6 +90,34 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps): JSX.Elem
               {renderThemeRow(DARK_THEMES)}
               <h3 className="settings__section">Light</h3>
               {renderThemeRow(LIGHT_THEMES)}
+
+              <h3 className="settings__section">Interface</h3>
+              <label className="settings__row">
+                <span>Background letters</span>
+                <input type="checkbox" className="settings__switch" checked={bgLetters} onChange={(event) => toggleBackgroundLetters(event.currentTarget.checked)} />
+              </label>
+            </>
+          )}
+
+          {tab === 'Sound' && (
+            <>
+              <label className="settings__row">
+                <span>Game sounds</span>
+                <input type="checkbox" className="settings__switch" checked={sound.enabled} onChange={(event) => updateSound({ enabled: event.currentTarget.checked })} />
+              </label>
+              <label className="settings__row settings__row--stack">
+                <span>Volume</span>
+                <input
+                  type="range"
+                  className="settings__slider"
+                  min={0}
+                  max={100}
+                  value={Math.round(sound.volume * 100)}
+                  disabled={!sound.enabled}
+                  onChange={(event) => updateSound({ volume: Number(event.currentTarget.value) / 100 })}
+                />
+              </label>
+              <p className="settings__hint">Timer ticks, word accepts/rejects, and round cues.</p>
             </>
           )}
 
