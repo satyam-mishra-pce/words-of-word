@@ -2146,7 +2146,7 @@ body:has(.game-shell.has-gameplay-chrome),
 .theme-swatch {
   position: relative;
   width: 30px;
-  height: 24px;
+  height: 30px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -2156,8 +2156,8 @@ body:has(.game-shell.has-gameplay-chrome),
 .theme-swatch::before {
   content: '';
   position: absolute;
-  inset: 3px;
-  border-radius: var(--r-xs);
+  inset: 4px;
+  border-radius: 50%;
   border: 1px solid var(--sub-2);
   background: linear-gradient(135deg, var(--sw-accent) 0 49%, var(--sw-base) 51% 100%);
   transition: transform 160ms var(--ease-out), box-shadow 160ms ease;
