@@ -5590,3 +5590,15 @@ body:has(.game-shell.has-gameplay-chrome),
 }
 .settings__slider:disabled { opacity: 0.4; }
 .settings__hint { margin-top: 10px; color: var(--sub); font-size: 0.68rem; line-height: 1.5; }
+
+/* My Profile page (Phase 6) */
+.profile-id {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 4px 0 18px;
+}
+.profile-id .identity-box__avatar .ui-avatar { width: 64px; height: 64px; border-radius: var(--r-sm); }
+.profile-id__fields { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.profile-id__email { color: var(--sub); font-size: 0.72rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profile-shell .button-row { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }

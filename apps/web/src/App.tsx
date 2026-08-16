@@ -9,6 +9,7 @@ import RoomPage from './pages/RoomPage';
 import SettingsPage from './pages/SettingsPage';
 import OnlinePage from './pages/OnlinePage';
 import LeaderboardPage from './pages/LeaderboardPage';
+import ProfilePage from './pages/ProfilePage';
 import { FeatureUsageRouteTracker } from './components/FeatureUsageRouteTracker';
 import { stopGameAudio, unlockGameAudio } from './services/gameAudio';
 
@@ -55,6 +56,7 @@ export default function App(): JSX.Element {
         <Route path="/online" element={<OnlinePage />} />
         <Route path="/daily" element={<DailyWordPage />} />
         <Route path="/leaderboard" element={<LeaderboardPage />} />
+        <Route path="/profile" element={<ProfilePage />} />
         <Route path="/join" element={<JoinPage />} />
         <Route path="/join/:roomId" element={<JoinPage />} />
         <Route path="/room/:roomId" element={<RoomPage />} />

@@ -106,6 +106,11 @@ export function ProfileMenu({ username, avatar, myStats, onEditIdentity, onOpenS
               <p className="profile-menu__hint">Save your streak, ELO &amp; leaderboard rank.</p>
             )}
 
+            {isMember && (
+              <button type="button" className="profile-menu__item" role="menuitem" onClick={() => go('/profile')}>
+                <span className="profile-menu__icon">👤</span> My profile
+              </button>
+            )}
             <button type="button" className="profile-menu__item" role="menuitem" onClick={() => { setOpen(false); onEditIdentity(); }}>
               <span className="profile-menu__icon">🎨</span> Edit character
             </button>

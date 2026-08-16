@@ -42,6 +42,16 @@ export async function fetchMyStats(userId: string): Promise<PlayerStats | null> 
   };
 }
 
+/** The signed-in player's leaderboard ranks (null when unranked / not present). */
+export async function fetchMyRanks(userId: string): Promise<{ global: number | null; weekly: number | null }> {
+  if (!supabase) return { global: null, weekly: null };
+  const [globalRow, weeklyRow] = await Promise.all([
+    supabase.from('leaderboard_global').select('rank').eq('user_id', userId).maybeSingle(),
+    supabase.from('leaderboard_weekly').select('rank').eq('user_id', userId).maybeSingle()
+  ]);
+  return { global: globalRow.data?.rank ?? null, weekly: weeklyRow.data?.rank ?? null };
+}
+
 export async function fetchGlobalLeaderboard(limit = 100): Promise<LeaderboardEntry[]> {
   if (!supabase) return [];
   const { data, error } = await supabase
