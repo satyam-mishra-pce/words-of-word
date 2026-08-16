@@ -7,7 +7,10 @@ import { Alert, Avatar, Button, Input } from '../components/ui';
 import { loadPlayerAvatar, loadUsername, savePlayerAvatar, saveUsername } from '../services/session';
 import { getGameApiUrl } from '../services/platform';
 import { trackFeatureUsage } from '../services/aggregateAnalytics';
-import { AuthControl } from '../components/AuthControl';
+import { ProfileMenu } from '../components/ProfileMenu';
+import { StreakDailyPill } from '../components/StreakDailyPill';
+import { fetchMyStats, type PlayerStats } from '../services/stats';
+import { isTodayDailyDone } from '../services/dailyStatus';
 import { IDENTITY_CHANGE_EVENT, useAuth } from '../auth/AuthProvider';
 
 const FLOAT_CHARS = ['W', 'O', 'R', 'D', 'S', '?'];
@@ -35,24 +38,25 @@ function EditIcon(): JSX.Element {
   );
 }
 
-function DailyWordIcon(): JSX.Element {
+function TrophyIcon(): JSX.Element {
   return (
     <svg viewBox="0 0 18 18" aria-hidden="true">
-      <rect x="3" y="3.5" width="12" height="11.5" rx="2" fill="none" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M6 2v3M12 2v3M3.5 7h11" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5" />
-      <path d="m9 9 .55 1.45L11 11l-1.45.55L9 13l-.55-1.45L7 11l1.45-.55L9 9Z" fill="currentColor" />
+      <path d="M5 3h8v3a4 4 0 0 1-8 0V3Z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M5 4H3v1.5A2.5 2.5 0 0 0 5 8M13 4h2v1.5A2.5 2.5 0 0 1 13 8M7 11h4M9 10v2M6.5 15h5M8 13h2l.4 2h-2.8L8 13Z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
 
 export default function HomePage(): JSX.Element {
   const navigate = useNavigate();
-  const { persistIdentity } = useAuth();
+  const { persistIdentity, user } = useAuth();
   const [username, setUsername] = useState(loadUsername());
   const [avatar, setAvatar] = useState(loadPlayerAvatar());
   const [error, setError] = useState('');
   const [stats, setStats] = useState<PublicStats | undefined>();
   const [isAvatarEditorOpen, setAvatarEditorOpen] = useState(false);
+  const [myStats, setMyStats] = useState<PlayerStats | null>(null);
+  const [dailyDone, setDailyDone] = useState(false);
 
   // When a sign-in adopts a durable identity, refresh the fields from storage.
   useEffect(() => {
@@ -63,6 +67,16 @@ export default function HomePage(): JSX.Element {
     window.addEventListener(IDENTITY_CHANGE_EVENT, onIdentityChange);
     return () => window.removeEventListener(IDENTITY_CHANGE_EVENT, onIdentityChange);
   }, []);
+
+  useEffect(() => { setDailyDone(isTodayDailyDone()); }, []);
+
+  // The signed-in player's competitive stats power the header streak + menu.
+  useEffect(() => {
+    let cancelled = false;
+    if (!user) { setMyStats(null); return; }
+    void fetchMyStats(user.id).then((stats) => { if (!cancelled) setMyStats(stats); });
+    return () => { cancelled = true; };
+  }, [user]);
 
   useEffect(() => {
     let cancelled = false;
@@ -137,25 +151,17 @@ export default function HomePage(): JSX.Element {
           words <i>of</i> word
         </a>
         <div className="starter-header__actions">
-          {stats && (
-            <span className="starter-live-count" title={`${stats.activeGames} live rooms`}>
-              <i /> {stats.activePlayers} playing
-            </span>
-          )}
-          <button type="button" className="starter-daily-link" onClick={() => navigate('/about')} aria-label="Open the Words of Word mode guide">
-            <span><b>About</b> <em>modes</em></span>
-            <ArrowIcon />
+          <StreakDailyPill streak={user ? (myStats?.currentStreak ?? 0) : null} done={dailyDone} />
+          <button type="button" className="header-leaderboard" onClick={() => navigate('/leaderboard')} aria-label="View the leaderboard">
+            <TrophyIcon />
+            <span className="header-leaderboard__label">Leaderboard</span>
           </button>
-          <button type="button" className="starter-daily-link" onClick={() => navigate('/daily')} aria-label="Play the Daily Word challenge">
-            <span className="starter-daily-link__icon"><DailyWordIcon /></span>
-            <span><b>Daily</b> <em>word</em></span>
-            <ArrowIcon />
-          </button>
-          <button type="button" className="starter-daily-link" onClick={() => navigate('/leaderboard')} aria-label="View the leaderboard">
-            <span><b>Leader</b> <em>board</em></span>
-            <ArrowIcon />
-          </button>
-          <AuthControl variant="compact" />
+          <ProfileMenu
+            username={username}
+            avatar={avatar}
+            myStats={myStats}
+            onEditIdentity={() => { trackFeatureUsage('avatar_editor_opened'); setAvatarEditorOpen(true); }}
+          />
         </div>
       </header>
 
