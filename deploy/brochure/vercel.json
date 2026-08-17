@@ -1,0 +1,15 @@
+{
+  "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
+  "buildCommand": "cd ../.. && pnpm --filter @wow/shared build && pnpm --filter @wow/web build && rm -rf deploy/brochure/dist && cp -r apps/web/dist deploy/brochure/dist",
+  "outputDirectory": "dist",
+  "env": {
+    "VITE_DEPLOYMENT_SURFACE": "brochure",
+    "VITE_PUBLIC_WEB_URL": "https://brochure.wordsofword.in",
+    "VITE_GAME_URL": "https://wordsofword.in/",
+    "VITE_GAME_SERVER_URL": "https://words-of-word.onrender.com"
+  },
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "https://words-of-word.onrender.com/api/:path*" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
