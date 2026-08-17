@@ -5602,3 +5602,12 @@ body:has(.game-shell.has-gameplay-chrome),
 .profile-id__fields { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .profile-id__email { color: var(--sub); font-size: 0.72rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .profile-shell .button-row { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+
+/* Consistent header CTA sizing (streak · leaderboard · profile) */
+.starter-header__actions .streak-daily__btn,
+.starter-header__actions .header-leaderboard,
+.starter-header__actions .profile-menu__trigger {
+  height: 32px;
+  box-sizing: border-box;
+  font-size: 0.72rem;
+}
