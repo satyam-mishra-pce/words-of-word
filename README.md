@@ -1,4 +1,4 @@
-# Words of Word
+# Words of Word 
 
 A type-safe multiplayer word game built as a pnpm monorepo.
 
