@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import AboutPage from './pages/AboutPage';
 import DailyWordPage from './pages/DailyWordPage';
 import HomePage from './pages/HomePage';
+import BrochurePage from './pages/BrochurePage';
 import GameHomePage from './pages/GameHomePage';
 import JoinPage from './pages/JoinPage';
 import RoomPage from './pages/RoomPage';
@@ -40,14 +41,22 @@ export default function App(): JSX.Element {
   }, []);
 
   // The game is the default for local development and AWS. Vercel explicitly
-  // sets this to "portfolio" for the separate marketing site.
-  const isGameDeployment = import.meta.env.VITE_DEPLOYMENT_SURFACE !== 'portfolio';
+  // sets this to "portfolio" for the separate marketing site, or "brochure"
+  // for the external-link-free brochure site.
+  const deploymentSurface = import.meta.env.VITE_DEPLOYMENT_SURFACE;
+  const isBrochureDeployment = deploymentSurface === 'brochure';
+  const isGameDeployment = deploymentSurface !== 'portfolio' && !isBrochureDeployment;
+
+  function renderRootPage(): JSX.Element {
+    if (isBrochureDeployment) return <BrochurePage />;
+    return isGameDeployment ? <GameHomePage /> : <HomePage />;
+  }
 
   return (
     <>
       <FeatureUsageRouteTracker />
       <Routes>
-        <Route path="/" element={isGameDeployment ? <GameHomePage /> : <HomePage />} />
+        <Route path="/" element={renderRootPage()} />
         <Route path="/play" element={<PlayRedirect />} />
         <Route path="/about" element={<AboutPage />} />
         <Route path="/settings" element={<SettingsPage />} />
