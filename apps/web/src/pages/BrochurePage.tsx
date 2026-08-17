@@ -18,10 +18,11 @@ const waysToPlay = [
 const gameModes = GAME_MODE_INFO;
 
 const screenshots = [
-  { src: '/media/gameplay.png', alt: 'Words of Word gameplay screen' },
-  { src: '/media/final-standings.png', alt: 'Final standings screen' },
-  { src: '/media/game-settings.png', alt: 'Game settings screen' },
-  { src: '/media/daily-word-preview.png', alt: 'Daily Word preview' },
+  { src: '/media/brochure-home.png', alt: 'Words of Word home screen' },
+  { src: '/media/brochure-online-multiplayer.png', alt: 'Online multiplayer matchmaking screen' },
+  { src: '/media/brochure-create-room.png', alt: 'Create online room settings screen' },
+  { src: '/media/brochure-gameplay.png', alt: 'Words of Word gameplay screen' },
+  { src: '/media/brochure-final-standings.png', alt: 'Final standings screen' },
 ];
 
 export default function BrochurePage(): JSX.Element {
