@@ -1,118 +1,44 @@
 import { getGameApiUrl } from './platform';
 
-export type CounterMap = Record<string, number>;
-
-export type AnalyticsReportWindow = {
+export type AnalyticWindow = {
   /** UTC ISO timestamp, inclusive. */
   from: string;
   /** UTC ISO timestamp, exclusive. */
   to: string;
 };
 
+export type MetricBucket = { value: string; count: number };
+
 export interface AnalyticsReport {
   version: number;
   updatedAt: string;
-  window: {
-    from: string;
-    to: string;
-    isAllTime: boolean;
-    exactMetricsAvailable: boolean;
-    metricsRecordedFrom: string;
+  window: { from: string; to: string; isAllTime: boolean };
+  headline: {
+    events: number;
+    uniqueVisitors: number;
+    uniqueSessions: number;
+    signedInEvents: number;
+    uniqueUsers: number;
+    firstEvent: string | null;
+    lastEvent: string | null;
+    byKind: Record<string, number>;
   };
-  totals: CounterMap;
-  byGameMode: Record<string, {
-    roomsCreated: number;
-    gamesStarted: number;
-    gamesFinished: number;
-    gamesAbandoned: number;
-    participantSlots: number;
-    completedParticipantSlots: number;
-    playerRounds: number;
-  }>;
-  modeAdoption: CounterMap;
-  settings: Record<string, CounterMap>;
-  featureUsage: CounterMap;
-  featureAdoption: CounterMap;
-  engagement: {
-    participantsInStartedGames: number;
-    participantsInCompletedGames: number;
-    playerRounds: number;
-    playerDepartures: number;
-    activeGameDepartures: number;
-    gameDurationMs: { completed: number; abandoned: number };
-    playerPresenceDurationMs: number;
-    playerGameDurationMs: number;
-    roomSizeAtGameStart: CounterMap;
-    roomFillAtGameStart: CounterMap;
-    gameDuration: CounterMap;
-    playerPresenceDuration: CounterMap;
-    playerGameDuration: CounterMap;
-    playerRoundDepth: CounterMap;
-    departuresByPhase: CounterMap;
-    departuresByReason: CounterMap;
-    activeGameDropoffByRound: CounterMap;
-  };
-  audience: {
-    knownVisitors: number;
-    activeToday: number;
-    active7d: number;
-    active30d: number;
-    newToday: number;
-    returningToday: number;
-    sessionsToday: number;
-    retention: {
-      day1: RetentionMetric;
-      day7: RetentionMetric;
-      day30: RetentionMetric;
-    };
-  };
+  totals: Record<string, number>;
+  byEvent: Array<{ event: string; count: number }>;
   trends: {
-    daily: Array<DailyMetric>;
-    hourOfWeek: Array<HourOfWeekMetric>;
+    daily: Array<{ day: string; counts: Record<string, number> }>;
+    hourOfWeek: Array<{ weekday: number; hour: number; count: number }>;
   };
-  live: {
-    connectedSockets: number;
-    activeGames: number;
+  breakdowns: Record<string, MetricBucket[]>;
+  audience: {
+    uniqueVisitors: number;
+    uniqueSessions: number;
+    uniqueUsers: number;
+    signedInEvents: number;
   };
-}
-
-export interface RetentionMetric {
-  eligible: number;
-  returned: number;
-  rate: number;
-}
-
-export interface DailyMetric {
-  date: string;
-  uniqueVisitors: number;
-  newVisitors: number;
-  returningVisitors: number;
-  sessions: number;
-  roomsCreated: number;
-  roomsJoined: number;
-  roomsPlayable: number;
-  gamesStarted: number;
-  gamesFinished: number;
-  gamesAbandoned: number;
-  roundsCompleted: number;
-  participantSlots: number;
-  playerRounds: number;
-  playerDepartures: number;
-  wordsAccepted: number;
-  featureEvents: number;
-  peakConnectedSockets: number;
-  peakActiveGames: number;
-}
-
-export interface HourOfWeekMetric {
-  weekday: number;
-  hour: number;
-  sessions: number;
-  roomsJoined: number;
-  gamesStarted: number;
-  participantSlots: number;
-  peakConnectedSockets: number;
-  peakActiveGames: number;
+  topEmoters: Array<{ visitorId: string; count: number }>;
+  activeUsers: Array<{ userId: string; username: string | null; eventCount: number; lastTs: string | null }>;
+  live: { connectedSockets: number; activeGames: number };
 }
 
 export class AnalyticsUnauthorizedError extends Error {
@@ -121,7 +47,7 @@ export class AnalyticsUnauthorizedError extends Error {
   }
 }
 
-function analyticsUrl(path = '', window?: AnalyticsReportWindow): string {
+function analyticsUrl(path = '', window?: AnalyticWindow): string {
   const base = getGameApiUrl(`/api/admin/analytics${path}`);
   if (!window) return base;
   const query = new URLSearchParams({ from: window.from, to: window.to });
@@ -136,7 +62,7 @@ async function parsePayload(response: Response): Promise<{ ok?: boolean; data?: 
   }
 }
 
-export async function loadAnalyticsReport(window?: AnalyticsReportWindow): Promise<AnalyticsReport> {
+export async function loadAnalyticsReport(window?: AnalyticWindow): Promise<AnalyticsReport> {
   const response = await fetch(analyticsUrl('', window), {
     credentials: 'same-origin',
     cache: 'no-store',

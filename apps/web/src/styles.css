@@ -5008,3 +5008,76 @@ body:has(.game-shell.has-gameplay-chrome),
     flex-direction: column;
   }
 }
+
+
+/* Privacy shield footer button + analytics opt-out toggle (PrivacyDialog) */
+.privacy-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+  cursor: pointer;
+  font: 700 0.8rem 'JetBrains Mono', monospace;
+}
+.privacy-toggle input { position: absolute; opacity: 0; pointer-events: none; }
+.privacy-toggle__track {
+  position: relative;
+  width: 40px; height: 22px;
+  border-radius: 999px;
+  background: var(--sub-2);
+  transition: background 160ms ease;
+  flex: 0 0 auto;
+}
+.privacy-toggle__thumb {
+  position: absolute; top: 3px; left: 3px;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: #fff;
+  transition: transform 160ms ease;
+}
+.privacy-toggle input:checked + .privacy-toggle__track { background: var(--main, #4f8cff); }
+.privacy-toggle input:checked + .privacy-toggle__track .privacy-toggle__thumb { transform: translateX(18px); }
+.privacy-toggle:focus-within .privacy-toggle__track { outline: 2px solid var(--main); outline-offset: 2px; }
+
+/* ------------------------------------------------------------------ */
+/* Admin analytics dashboard (Supabase-backed)                          */
+/* ------------------------------------------------------------------ */
+.analytics-admin { max-width: 1080px; margin: 0 auto; }
+.analytics-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.analytics-head h1 { margin: 0; font-size: 1.6rem; }
+.analytics-head__actions { display: flex; align-items: center; gap: 0.75rem; }
+.analytics-loading { display: flex; align-items: center; gap: 0.6rem; color: var(--sub); padding: 2rem 0; }
+.analytics-toolbar { background: var(--panel, #fff); border: 1px solid var(--sub-2); border-radius: var(--r-md); padding: 1rem; margin: 1rem 0; }
+.analytics-window__presets { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+.analytics-window__custom { display: flex; align-items: flex-end; gap: 0.75rem; flex-wrap: wrap; }
+.analytics-window__custom label { display: flex; flex-direction: column; font: 700 0.68rem 'JetBrains Mono', monospace; gap: 0.25rem; }
+.analytics-window__custom input { padding: 0.4rem 0.5rem; border: 1px solid var(--sub-2); border-radius: var(--r-sm); background: transparent; color: inherit; font: 500 0.8rem inherit; }
+.analytics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+.analytics-grid--stats { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.analytics-card { background: var(--panel, #fff); border: 1px solid var(--sub-2); border-radius: var(--r-md); padding: 1rem 1.1rem; }
+.analytics-card h3 { margin: 0 0 0.75rem; font-size: 0.95rem; }
+.analytics-stat { display: flex; flex-direction: column; gap: 0.15rem; }
+.analytics-stat__label { font: 700 0.68rem 'JetBrains Mono', monospace; color: var(--sub); text-transform: uppercase; letter-spacing: 0.04em; }
+.analytics-stat__value { font-size: 1.7rem; font-weight: 800; line-height: 1.1; }
+.analytics-stat__sub { font-size: 0.75rem; color: var(--sub); }
+.analytics-chart { width: 100%; height: auto; max-height: 220px; }
+.analytics-heatmap { width: 100%; height: auto; display: block; }
+.analytics-heatmap__axis { display: flex; font: 700 0.6rem 'JetBrains Mono', monospace; color: var(--sub); margin-top: 0.25rem; }
+.analytics-list { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow: auto; }
+.analytics-list li { display: flex; justify-content: space-between; gap: 1rem; padding: 0.35rem 0; border-bottom: 1px solid var(--sub-2); font-size: 0.8rem; }
+.analytics-list li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.analytics-list li b { font-family: 'JetBrains Mono', monospace; }
+
+/* Privacy opt-out link shown next to the theme picker on the home footer. */
+.home-privacy-link {
+  margin-left: 1rem;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--sub-2);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--sub);
+  font: 700 0.72rem 'JetBrains Mono', monospace;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.home-privacy-link:hover { color: var(--main); border-color: var(--main); }
+.home-privacy-link:focus-visible { outline: 2px solid var(--main); outline-offset: 3px; }

@@ -7,6 +7,7 @@ import { Alert, Avatar, Button, Input } from '../components/ui';
 import { loadPlayerAvatar, loadUsername, savePlayerAvatar, saveUsername } from '../services/session';
 import { getGameApiUrl } from '../services/platform';
 import { trackFeatureUsage } from '../services/aggregateAnalytics';
+import { PrivacyDialog } from '../components/PrivacyDialog';
 
 const FLOAT_CHARS = ['W', 'O', 'R', 'D', 'S', '?'];
 const statsUrl = getGameApiUrl('/api/stats');
@@ -50,6 +51,7 @@ export default function HomePage(): JSX.Element {
   const [error, setError] = useState('');
   const [stats, setStats] = useState<PublicStats | undefined>();
   const [isAvatarEditorOpen, setAvatarEditorOpen] = useState(false);
+  const [privacyOpen, setPrivacyOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -203,6 +205,14 @@ export default function HomePage(): JSX.Element {
 
       <footer className="home-theme-footer home-theme-footer--starter">
         <ThemePicker />
+        <button
+          type="button"
+          className="home-privacy-link"
+          onClick={() => setPrivacyOpen(true)}
+          aria-label="Privacy & analytics"
+        >
+          Privacy
+        </button>
       </footer>
 
       <PlayerAvatarEditor
@@ -212,6 +222,8 @@ export default function HomePage(): JSX.Element {
         name={username}
         onChange={updateAvatar}
       />
+
+      <PrivacyDialog open={privacyOpen} onClose={() => setPrivacyOpen(false)} />
     </main>
   );
 }

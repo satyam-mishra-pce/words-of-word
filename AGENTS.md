@@ -47,3 +47,40 @@ The runtime refuses to load any lexicon artifact that is not `release_status =
 build (e.g. a WordNet-only artifact) from silently dropping definitions for
 generated-only words on any server, including production. Do not weaken this
 check; ship a complete artifact instead.
+
+## Analytics: every feature is tracked (guardrail)
+
+**Problem this solves:** the whole product decision loop runs on the analytics
+dashboard. It is an event-sourced stream in Supabase (`public.analytics_event`),
+aggregated over a time window by the admin page (`/admin/analytics`). Features
+that aren't instrumented are invisible, so we decide what to build next from
+half the data. The rule: **no new feature ships untracked.**
+
+**The contract**
+
+- Every trackable behaviour is emitted, nothing is optional:
+  - **Server / game lifecycle** (rooms, games, rounds, words, emotes, bets,
+    teams, departures, feature usage) → add/keep a `record*` on
+    `apps/server/src/supabaseAnalytics.ts` and call it from `index.ts`. Each
+    `record*` emits one row into `public.analytics_event` (column `event`),
+    carrying its dimensions in `props` so the SQL aggregates can slice it by any
+    time window and any prop.
+  - **Client UI** (pages, buttons, menus, toggles, share, settings, auth) → call
+    `track('event_name', props)` / `trackPage` / `trackUi` from
+    `apps/web/src/services/analytics.ts`, or tag the element with
+    `data-analytics="label"` to be auto-captured by the global click listener.
+- New events go into the same flat `analytics_event` stream — no new tables, no
+  per-feature storage. Pick a **snake_case** event name and put any filterable
+  dimension in `props` (e.g. `mode`, `settings`, `bucket`).
+- The admin dashboard aggregates from the stream automatically: adding an
+  event is enough for it to appear in “All events” and any `props` key can be
+  surfaced via `analytics_grouped`. If a new dimension deserves a first-class
+  card, add the breakdown key in `supabaseAnalytics.ts → report()` and a
+  `<BreakdownSection>` in `apps/web/src/pages/AnalyticsPage.tsx`.
+- Privacy: users are **opted in by default**. Do not silently bypass the opt-out
+  (`isAnalyticsEnabled()` in `apps/web/src/services/analytics.ts`); a user who
+  opted out must stay untracked on that installation.
+
+**When adding a round feature (both surfaces),** track it too: server round
+events via the shared store, client UI via `track`/`data-analytics`. Check the
+admin dashboard for the selected window to confirm the new event is flowing.
