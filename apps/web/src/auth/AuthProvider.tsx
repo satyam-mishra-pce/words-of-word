@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { track as trackAuth } from '../services/analytics';
 import { Browser } from '@capacitor/browser';
 import type { Session, User } from '@supabase/supabase-js';
 import type { PlayerAvatar } from '@wow/shared';
@@ -67,6 +68,8 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
       // sign-out, and silent token refreshes.
       setSupabaseAuthToken(nextSession?.access_token ?? null);
       void reconcile(nextSession);
+      if (_event === 'SIGNED_IN' || _event === 'TOKEN_REFRESHED') trackAuth('auth_login', {});
+      else if (_event === 'SIGNED_OUT') trackAuth('auth_logout', {});
     });
 
     return () => subscription.subscription.unsubscribe();

@@ -4,6 +4,8 @@ import { Preferences } from '@capacitor/preferences';
 export const STORAGE_KEYS = {
   installationId: 'wow.installation-id',
   analyticsVisitorId: 'wow.analytics-visitor-id',
+  analyticsSessionId: 'wow.analytics-session-id',
+  analyticsOptedOut: 'wow.analytics-opted-out',
   pushRegistration: 'wow.push-registration',
   soundPreferences: 'wow.sound-preferences',
   theme: 'wow-theme',

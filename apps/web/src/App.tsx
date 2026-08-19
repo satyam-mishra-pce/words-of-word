@@ -13,6 +13,7 @@ import LeaderboardPage from './pages/LeaderboardPage';
 import ProfilePage from './pages/ProfilePage';
 import { FeatureUsageRouteTracker } from './components/FeatureUsageRouteTracker';
 import { stopGameAudio, unlockGameAudio } from './services/gameAudio';
+import { initAnalytics } from './services/analytics';
 
 function PlayRedirect(): JSX.Element {
   useEffect(() => {
@@ -32,6 +33,7 @@ function PlayRedirect(): JSX.Element {
 
 export default function App(): JSX.Element {
   useEffect(() => {
+    initAnalytics();
     const unlock = (): void => { void unlockGameAudio(); };
     window.addEventListener('pointerdown', unlock, { passive: true });
     window.addEventListener('keydown', unlock);

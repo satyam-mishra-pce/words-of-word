@@ -52,8 +52,7 @@ import {
   WordAcceptedPayload,
   WordRejectedPayload
 } from '@wow/shared';
-import { AggregateAnalyticsStore, type AnalyticsVisitorIdentity } from './aggregateAnalytics.js';
-import { createAnalyticsPersistence } from './analyticsPersistence.js';
+import { SupabaseAnalyticsStore, type AnalyticsVisitorIdentity } from './supabaseAnalytics.js';
 import { DictionaryEntryCache, firstSourceDefinition, FixedWindowRateLimiter, lookupDictionaryEntries } from './dictionaryDefinitions.js';
 import {
   canMakeWord,
@@ -71,15 +70,11 @@ import {
 } from '@wow/game-engine';
 import { loadPlayableWordsFromManifest, openDefinitionStore, resolveLocalArtifact } from '@wow/lexicon';
 import { dailyDayNumber, dailySourceWordForDay, IdentifyPayloadSchema } from '@wow/shared';
-import { verifyAccessToken } from './supabaseAdmin.js';
+import { supabaseAdmin, verifyAccessToken } from './supabaseAdmin.js';
 import { recordDailyPlay, recordRankedMatch, type RankedParticipant } from './playerStats.js';
 
 const PORT = Number(process.env.PORT ?? 4000);
 const WEB_DIST_DIR = fileURLToPath(new URL('../../web/dist', import.meta.url));
-const ANALYTICS_AGGREGATE_FILE = process.env.ANALYTICS_AGGREGATE_FILE?.trim() || join(process.cwd(), 'logs', 'aggregate-analytics.json');
-const ANALYTICS_DATABASE_URL = process.env.ANALYTICS_DATABASE_URL?.trim();
-const ANALYTICS_MIGRATION_FILE = process.env.ANALYTICS_MIGRATION_FILE?.trim() || ANALYTICS_AGGREGATE_FILE;
-const REQUIRE_DURABLE_ANALYTICS = process.env.REQUIRE_DURABLE_ANALYTICS === 'true';
 const WAIT_BETWEEN_ROUNDS_SECONDS = 10;
 const BETTING_SECONDS = 15;
 const LIGHTNING_SECONDS = 10;
@@ -344,7 +339,7 @@ class GameRoomManager {
     private readonly io: TypedIo,
     private readonly dictionary: readonly string[],
     private readonly validWordIndex: ValidWordIndex,
-    private readonly analytics: AggregateAnalyticsStore
+    private readonly analytics: SupabaseAnalyticsStore
   ) {}
 
   private isMixMode(settings: GameSettings): boolean {
@@ -2065,18 +2060,12 @@ await fastify.register(cors, {
   methods: ['GET', 'POST']
 });
 
-const analyticsPersistence = createAnalyticsPersistence({
-  filePath: ANALYTICS_AGGREGATE_FILE,
-  ...(ANALYTICS_DATABASE_URL ? { databaseUrl: ANALYTICS_DATABASE_URL } : {}),
-  requireDurableStorage: REQUIRE_DURABLE_ANALYTICS
-});
-const analytics = new AggregateAnalyticsStore(
-  analyticsPersistence,
-  (message, error) => fastify.log.warn({ error }, message),
-  ANALYTICS_MIGRATION_FILE
+const analytics = new SupabaseAnalyticsStore(
+  supabaseAdmin,
+  (message, error) => fastify.log.warn({ error }, message)
 );
 await analytics.load();
-fastify.log.info({ storage: analyticsPersistence.kind }, 'product analytics storage ready');
+fastify.log.info({ storage: 'supabase' }, 'product analytics storage ready');
 
 const ANALYTICS_SESSION_COOKIE = 'wow_analytics_session';
 const ANALYTICS_SESSION_CONTEXT = 'words-of-word:analytics-admin-session:v1';

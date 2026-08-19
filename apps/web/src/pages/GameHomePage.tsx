@@ -10,6 +10,7 @@ import { trackFeatureUsage } from '../services/aggregateAnalytics';
 import { ProfileMenu } from '../components/ProfileMenu';
 import { StreakDailyPill } from '../components/StreakDailyPill';
 import { SettingsDialog } from '../components/SettingsDialog';
+import { PrivacyDialog } from '../components/PrivacyDialog';
 import { fetchMyStats, type PlayerStats } from '../services/stats';
 import { isTodayDailyDone } from '../services/dailyStatus';
 import { loadBackgroundLetters, UI_PREFS_EVENT } from '../services/uiPreferences';
@@ -36,6 +37,15 @@ function EditIcon(): JSX.Element {
   return (
     <svg viewBox="0 0 18 18" aria-hidden="true">
       <path d="m11.8 3.2 3 3M3.5 14.5l2.4-.5 8.5-8.5-2-2L3.9 12l-.4 2.5Z" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.55" />
+    </svg>
+  );
+}
+
+function ShieldIcon(): JSX.Element {
+  return (
+    <svg viewBox="0 0 18 18" aria-hidden="true">
+      <path d="M9 1.8 15 3.8v4.6c0 4-2.6 6.9-6 7.8-3.4-.9-6-3.8-6-7.8V3.8L9 1.8Z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M6.6 9.2 8.2 10.8 11.4 7.4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -69,6 +79,7 @@ export default function HomePage(): JSX.Element {
   const [myStats, setMyStats] = useState<PlayerStats | null>(null);
   const [dailyDone, setDailyDone] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [privacyOpen, setPrivacyOpen] = useState(false);
   const [bgLetters, setBgLetters] = useState(loadBackgroundLetters());
 
   useEffect(() => {
@@ -259,6 +270,10 @@ export default function HomePage(): JSX.Element {
           <GearIcon />
           <span className="footer-settings__label">Settings</span>
         </button>
+        <button type="button" className="footer-settings" onClick={() => setPrivacyOpen(true)} aria-label="Privacy & analytics">
+          <ShieldIcon />
+          <span className="footer-settings__label">Privacy</span>
+        </button>
       </footer>
 
       <PlayerAvatarEditor
@@ -270,6 +285,7 @@ export default function HomePage(): JSX.Element {
       />
 
       <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <PrivacyDialog open={privacyOpen} onClose={() => setPrivacyOpen(false)} />
     </main>
   );
 }
