@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@fastify/cors": "^10.1.0",
+    "@supabase/supabase-js": "^2.112.3",
     "@wow/game-engine": "workspace:*",
     "@wow/lexicon": "workspace:*",
     "@wow/shared": "workspace:*",
