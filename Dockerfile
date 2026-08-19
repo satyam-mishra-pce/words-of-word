@@ -23,6 +23,15 @@ COPY packages packages
 ARG VITE_DEPLOYMENT_SURFACE=game
 ENV VITE_DEPLOYMENT_SURFACE=$VITE_DEPLOYMENT_SURFACE
 
+# Client-side analytics: the anon key + project URL are baked into the web
+# bundle so the browser can write UI/page/click events to public.analytics_event.
+# They are public-safe (anon key, RLS-guarded); the service-role key is NOT set
+# here — it is only passed at runtime (docker run -e) to the server.
+ARG VITE_SUPABASE_URL=
+ARG VITE_SUPABASE_ANON_KEY=
+ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL \
+    VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
+
 RUN pnpm lexicon:ensure \
   && pnpm lexicon:validate \
   && pnpm --filter @wow/shared build \
@@ -43,7 +52,6 @@ COPY --from=builder /runtime/ ./
 ENV NODE_ENV=production \
     PORT=7860 \
     LEXICON_DB_PATH=/app/packages/lexicon/artifacts/words-of-word-lexicon-v0.2.0.sqlite \
-    LEXICON_MANIFEST_PATH=/app/packages/lexicon/artifacts/manifest.json \
-    ANALYTICS_AGGREGATE_FILE=/tmp/wow-analytics/aggregate-analytics.json
+    LEXICON_MANIFEST_PATH=/app/packages/lexicon/artifacts/manifest.json
 EXPOSE 7860
 CMD ["node", "apps/server/dist/index.js"]

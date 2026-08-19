@@ -47,6 +47,11 @@ jobs:
       - name: Build and restart application
         env:
           LIGHTSAIL_HOST: ${{ secrets.LIGHTSAIL_HOST }}
+          LIGHTSAIL_SSH_KEY: ${{ secrets.LIGHTSAIL_SSH_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          ANALYTICS_TOKEN: ${{ secrets.ANALYTICS_TOKEN }}
         run: |
           ssh -i ~/.ssh/lightsail "ubuntu@$LIGHTSAIL_HOST" 'bash -s' <<'REMOTE'
             set -euo pipefail
@@ -54,14 +59,19 @@ jobs:
             sudo mkdir -p /opt/words-of-word/data
             sudo tar -xzf /tmp/words-of-word-source.tar.gz -C /opt/words-of-word
             cd /opt/words-of-word
-            sudo docker build -t words-of-word:latest .
+            sudo docker build \
+              --build-arg VITE_SUPABASE_URL="$SUPABASE_URL" \
+              --build-arg VITE_SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
+              -t words-of-word:latest .
             sudo docker rm -f words-of-word || true
             sudo docker run -d \
               --name words-of-word \
               --restart unless-stopped \
               -p 127.0.0.1:7860:7860 \
               -v /opt/words-of-word/data:/data \
-              -e ANALYTICS_AGGREGATE_FILE=/data/aggregate-analytics.json \
+              -e SUPABASE_URL="$SUPABASE_URL" \
+              -e SUPABASE_SERVICE_ROLE_KEY="$SUPABASE_SERVICE_ROLE_KEY" \
+              -e ANALYTICS_TOKEN="$ANALYTICS_TOKEN" \
               words-of-word:latest
             sudo docker ps --filter name=words-of-word
           REMOTE
