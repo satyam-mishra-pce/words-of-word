@@ -8,6 +8,7 @@ import { loadPlayerAvatar, loadUsername, savePlayerAvatar, saveUsername } from '
 import { getGameApiUrl } from '../services/platform';
 import { trackFeatureUsage } from '../services/aggregateAnalytics';
 import { PrivacyDialog } from '../components/PrivacyDialog';
+import { isSupabaseConfigured } from '../services/supabase';
 
 const FLOAT_CHARS = ['W', 'O', 'R', 'D', 'S', '?'];
 const statsUrl = getGameApiUrl('/api/stats');
@@ -205,14 +206,16 @@ export default function HomePage(): JSX.Element {
 
       <footer className="home-theme-footer home-theme-footer--starter">
         <ThemePicker />
-        <button
-          type="button"
-          className="home-privacy-link"
-          onClick={() => setPrivacyOpen(true)}
-          aria-label="Privacy & analytics"
-        >
-          Privacy
-        </button>
+        {isSupabaseConfigured && (
+          <button
+            type="button"
+            className="home-privacy-link"
+            onClick={() => setPrivacyOpen(true)}
+            aria-label="Privacy & analytics"
+          >
+            Privacy
+          </button>
+        )}
       </footer>
 
       <PlayerAvatarEditor
