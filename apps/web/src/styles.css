@@ -5081,3 +5081,119 @@ body:has(.game-shell.has-gameplay-chrome),
 }
 .home-privacy-link:hover { color: var(--main); border-color: var(--main); }
 .home-privacy-link:focus-visible { outline: 2px solid var(--main); outline-offset: 3px; }
+
+/* ============================================================
+   SOCIAL PAGE (/social) — centered social hub
+   ============================================================ */
+.social-shell {
+  position: relative;
+  isolation: isolate;
+  min-height: 100dvh;
+  height: var(--vv-height, 100dvh);
+  display: grid;
+  place-items: center;
+  padding: clamp(20px, 5vw, 64px);
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 22% 20%, var(--main-10), transparent 30%),
+    radial-gradient(circle at 80% 80%, rgba(109,156,197,0.09), transparent 30%),
+    var(--bg);
+}
+.social-shell::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  opacity: 0.4;
+  background-image:
+    linear-gradient(var(--sub-2) 1px, transparent 1px),
+    linear-gradient(90deg, var(--sub-2) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(circle at center, black, transparent 72%);
+  pointer-events: none;
+}
+
+.social-card {
+  display: grid;
+  justify-items: center;
+  gap: 18px;
+  width: min(560px, 100%);
+  text-align: center;
+}
+
+.social-eyebrow {
+  color: var(--sub);
+  font-size: 0.64rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.social-title {
+  margin: 0;
+  color: var(--text);
+  font-size: clamp(2.2rem, 8vw, 4.4rem);
+  line-height: 0.92;
+  letter-spacing: -0.09em;
+  text-transform: lowercase;
+}
+.social-title em {
+  color: var(--main);
+  font-style: normal;
+}
+
+.social-sub {
+  margin: 0 0 6px;
+  max-width: 44ch;
+  color: var(--sub);
+  font-size: clamp(0.78rem, 1.6vw, 0.92rem);
+  line-height: 1.7;
+}
+
+.social-play {
+  min-width: 210px;
+  margin-top: 10px;
+}
+
+.social-links {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 8px;
+}
+
+/* Muted icon buttons — icons only, tooltip shows the platform name. */
+.social-icon {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border-radius: var(--r-md);
+  color: var(--sub);
+  transition: color 140ms ease, background 140ms ease, transform 100ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.social-icon svg {
+  width: 22px;
+  height: 22px;
+  display: block;
+}
+.social-icon:hover,
+.social-icon:focus-visible {
+  color: var(--text);
+  background: var(--bg-3);
+}
+.social-icon:focus-visible {
+  outline: 2px solid var(--main);
+  outline-offset: 3px;
+}
+.social-icon:active { transform: scale(0.94); }
+
+/* Tooltip host keeps the icon centred under its label. */
+.social-links .ui-tooltip-host { display: flex; }
+.social-link-tip .ui-tooltip-box {
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}

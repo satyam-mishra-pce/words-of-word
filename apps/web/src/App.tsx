@@ -9,6 +9,7 @@ import JoinPage from './pages/JoinPage';
 import RoomPage from './pages/RoomPage';
 import SettingsPage from './pages/SettingsPage';
 import OnlinePage from './pages/OnlinePage';
+import SocialPage from './pages/SocialPage';
 import { FeatureUsageRouteTracker } from './components/FeatureUsageRouteTracker';
 import { stopGameAudio, unlockGameAudio } from './services/gameAudio';
 import { initAnalytics } from './services/analytics';
@@ -61,6 +62,7 @@ export default function App(): JSX.Element {
         <Route path="/" element={renderRootPage()} />
         <Route path="/play" element={<PlayRedirect />} />
         <Route path="/about" element={<AboutPage />} />
+        <Route path="/social" element={<SocialPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/online" element={<OnlinePage />} />
         <Route path="/daily" element={<DailyWordPage />} />

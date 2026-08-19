@@ -69,6 +69,20 @@ const routes = [
       ['/about', 'How to play'],
     ],
   },
+  {
+    path: '/social',
+    title: 'Follow Words of Word — X, Instagram, YouTube & Discord',
+    description:
+      'Follow Words of Word across X (Twitter), Instagram, YouTube, and Discord for puzzles, updates, and behind-the-words moments. Play the game free in your browser.',
+    h1: 'Follow the word',
+    intro:
+      'Join the Words of Word community on X, Instagram, YouTube, and Discord — puzzles, updates, and behind-the-words moments. Play the game free, no sign-up, in your browser.',
+    links: [
+      ['/', 'Play now'],
+      ['/daily', 'Daily Word challenge'],
+      ['/online', 'Play online with friends'],
+    ],
+  },
 ];
 
 let template;
